@@ -196,11 +196,7 @@ $arrow = $dir === 'DESC' ? ' &#9660;' : ' &#9650;';
       <td><?= h($r['nickname'] ?? '') ?></td>
       <td><?= h($r['email']) ?></td>
       <td><?= $r['joined_at'] ? h($r['joined_at']) : '<em>—</em>' ?></td>
-      <td><?php
-        if (!empty($r['last_seen_at'])) {
-            echo h($r['last_seen_at']) . ' ' . h(ago($r['last_seen_at']));
-        }
-      ?></td>
+      <td><?= !empty($r['last_seen_at']) ? h(ago($r['last_seen_at'])) : '' ?></td>
     </tr>
     <?php endforeach; ?>
   </tbody>
