@@ -3,9 +3,9 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-$config = __DIR__ . '/config.php';
+$config = __DIR__ . '/sig-users-config.php';
 if (!is_readable($config)) {
-    die('<p style="color:red">Missing config.php. Copy config.example.php to config.php and add your database settings.</p>');
+    die('<p style="color:red">Missing sig-users-config.php. Copy sig-users-config.example.php to sig-users-config.php and add your database settings.</p>');
 }
 require $config;
 
