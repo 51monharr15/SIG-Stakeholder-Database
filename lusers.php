@@ -21,7 +21,7 @@ $pass    = $db['password'] ?? '';
 $charset = $db['charset'] ?? 'utf8mb4';
 $prefix  = $db['prefix'] ?? '';
 $table   = $prefix . 'users';
-$pageSize = 20;
+$pageSize = 50;
 
 // Sortable columns: default direction when first clicked
 $sort_options = [
