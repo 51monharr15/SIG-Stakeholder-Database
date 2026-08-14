@@ -1,0 +1,2 @@
+# Deny all direct access to meeting data files
+Require all denied

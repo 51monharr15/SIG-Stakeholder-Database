@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Pretty URL: /meet/team-standup -> index.php?m=team-standup
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([A-Za-z0-9][A-Za-z0-9\-_]*)$ index.php?m=$1 [L,QSA]
+
+# Protect data directory from direct web access
+RewriteRule ^data/ - [F,L]
