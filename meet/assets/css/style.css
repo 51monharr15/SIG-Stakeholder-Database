@@ -123,8 +123,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 700px) {
   .sticky-top-inner { padding: 0.5rem 0.65rem; }
   .meet-title { font-size: 1.05rem; }
-  .tab { padding: 0.32rem 0.55rem; font-size: 0.78rem; }
-  .desktop-share { display: none; }
+  .tab { padding: 0.28rem 0.5rem; font-size: 0.72rem; }
+  .desktop-share { display: none !important; }
   .sticky-head { gap: 0.35rem; }
   .site-footer { padding: 0.4rem 0; font-size: 0.8rem; }
 }

@@ -186,7 +186,7 @@
               ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
               <div class="share-row row desktop-share">
                 <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
-                <button type="button" class="secondary" data-action="copy-link">Copy link</button>
+                <button type="button" class="secondary" data-action="copy-link">Copy meeting link</button>
               </div>
             </div>
             <nav class="tab-nav" role="tablist">
@@ -707,26 +707,84 @@
     return { hour: h || 0, minute: m || 0 };
   }
 
+  const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function weekdaySelect(name, value) {
+    return `<select name="${name}">${WEEKDAYS.map((d, i) =>
+      `<option value="${i}"${Number(value) === i ? ' selected' : ''}>${d}</option>`).join('')}</select>`;
+  }
+
+  function nthSelect(name, value) {
+    return `<select name="${name}">${[[1, '1st'], [2, '2nd'], [3, '3rd'], [4, '4th'], [-1, 'last (e.g. last Friday)']].map(([v, l]) =>
+      `<option value="${v}"${Number(value) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  }
+
   function recurrenceOptions(current) {
-    return [['none', 'One-off'], ['weekly', 'Weekly'], ['monthly_day', 'Day of month'], ['monthly_nth_weekday', 'Nth weekday'], ['friday_13th', 'Friday 13th only (rare)']]
-      .map(([v, l]) => `<option value="${v}"${v === current ? ' selected' : ''}>${l}</option>`).join('');
+    return [
+      ['none', 'One-off (find one time, then confirm)'],
+      ['weekly', 'Weekly on chosen day(s)'],
+      ['monthly_day', 'Same date each month (e.g. the 19th)'],
+      ['monthly_nth_weekday', 'Same weekday each month (e.g. 3rd Monday)'],
+      ['friday_13th', 'Friday 13th only (rare)'],
+    ].map(([v, l]) => `<option value="${v}"${v === current ? ' selected' : ''}>${l}</option>`).join('');
   }
 
   function recurrenceExtraFields(rec) {
     const type = rec.type || 'none';
-    if (type === 'weekly') return `<label>Every N weeks<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label><label>Weekdays (0=Sun…6=Sat)<input name="weekdays" value="${(rec.weekdays || [1]).join(',')}"></label>`;
-    if (type === 'monthly_day') return `<label>Day of month<input type="number" name="day" value="${rec.day || 1}" min="1" max="31"></label><label>Every N months<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label>`;
-    if (type === 'monthly_nth_weekday') return `<label>Nth<input type="number" name="nth" value="${rec.nth || 3}"></label><label>Weekday<input type="number" name="weekday" value="${rec.weekday ?? 1}" min="0" max="6"></label><label>Every N months<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label>`;
-    if (type === 'friday_13th') return '<p class="meta">Highlights every calendar date that is both the <strong>13th</strong> of the month and a <strong>Friday</strong> (e.g. for folklore/joke meetings). Rare — usually leave as One-off.</p>';
-    return '<p class="meta">No extra fields.</p>';
+    if (type === 'weekly') {
+      return `
+        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="52"> week(s)</label>
+        <label>On these days <span class="label-hint">(comma-separated: Monday, Tuesday… or 0–6)</span>
+          <input name="weekdays" value="${weekdaysToNames(rec.weekdays || [1])}">
+        </label>`;
+    }
+    if (type === 'monthly_day') {
+      return `
+        <label>Date in the month <input type="number" name="day" value="${rec.day || 1}" min="1" max="31" required> (1–31)</label>
+        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="24"> month(s)</label>
+        <p class="meta">Example: the 19th of every month. Shorter months use the last day if needed.</p>`;
+    }
+    if (type === 'monthly_nth_weekday') {
+      return `
+        <label>Which in the month? ${nthSelect('nth', rec.nth ?? 3)}</label>
+        <label>Day of the week ${weekdaySelect('weekday', rec.weekday ?? 1)}</label>
+        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="24"> month(s)</label>
+        <p class="meta">Example: 3rd + Monday + every 2 months = every second month’s third Monday. The first slot everyone agrees is the pattern for future meetings.</p>`;
+    }
+    if (type === 'friday_13th') {
+      return '<p class="meta">Highlights dates that are both the <strong>13th</strong> and a <strong>Friday</strong>. Rare — usually leave as One-off.</p>';
+    }
+    return '<p class="meta">Pick a time everyone can make, then confirm it. Recurrence marks similar future dates on the calendar.</p>';
+  }
+
+  function weekdaysToNames(nums) {
+    return (nums || [1]).map((n) => WEEKDAYS[Number(n)] || n).join(', ');
+  }
+
+  function weekdaysFromNames(str) {
+    const parts = String(str).split(',').map((s) => s.trim()).filter(Boolean);
+    return parts.map((p) => {
+      const i = WEEKDAYS.findIndex((d) => d.toLowerCase() === p.toLowerCase());
+      if (i >= 0) return i;
+      const n = Number(p);
+      return Number.isNaN(n) ? 1 : n;
+    });
   }
 
   function buildRecurrenceFromForm(fd) {
     const type = fd.get('recurrence_type');
     const base = { type };
-    if (type === 'weekly') { base.interval = Number(fd.get('interval') || 1); base.weekdays = String(fd.get('weekdays') || '1').split(',').map((n) => Number(n.trim())).filter((n) => !Number.isNaN(n)); }
-    else if (type === 'monthly_day') { base.day = Number(fd.get('day') || 1); base.interval = Number(fd.get('interval') || 1); }
-    else if (type === 'monthly_nth_weekday') { base.nth = Number(fd.get('nth') || 3); base.weekday = Number(fd.get('weekday') ?? 1); base.interval = Number(fd.get('interval') || 1); }
+    if (type === 'weekly') {
+      base.interval = Math.max(1, Math.min(52, Number(fd.get('interval') || 1)));
+      base.weekdays = weekdaysFromNames(fd.get('weekdays'));
+    } else if (type === 'monthly_day') {
+      base.day = Math.max(1, Math.min(31, Number(fd.get('day') || 1)));
+      base.interval = Math.max(1, Math.min(24, Number(fd.get('interval') || 1)));
+    } else if (type === 'monthly_nth_weekday') {
+      base.nth = Number(fd.get('nth') || 3);
+      base.weekday = Number(fd.get('weekday') ?? 1);
+      base.interval = Math.max(1, Math.min(24, Number(fd.get('interval') || 1)));
+    }
     return base;
   }
 
