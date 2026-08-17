@@ -109,25 +109,28 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
     $alias = trim((string) ($input['contact'] ?? ($input['alias'] ?? '')));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
 
-    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials) {
-        if ($attendeeId !== '') {
-            foreach ($m['attendees'] as &$att) {
-                if ($att['id'] === $attendeeId) {
-                    $att['display_name'] = $displayName;
-                    if ($alias !== '') {
-                        $att['contact'] = $alias;
-                    }
-                    if ($initials !== '') {
-                        $att['initials'] = $initials;
-                    }
-                    return $m;
-                }
+    $resolvedId = null;
+    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials, &$resolvedId) {
+        $idx = attendeeIndexById($m['attendees'], $attendeeId);
+        if ($idx !== null) {
+            applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
+            $resolvedId = $m['attendees'][$idx]['id'];
+            return $m;
+        }
+
+        $matchedId = matchExistingAttendee($m['attendees'], $displayName, $alias, $initials);
+        if ($matchedId !== null) {
+            $idx = attendeeIndexById($m['attendees'], $matchedId);
+            if ($idx !== null) {
+                applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
+                $resolvedId = $matchedId;
+                return $m;
             }
         }
 
-        $newId = MeetFile::generateId('usr');
+        $resolvedId = MeetFile::generateId('usr');
         $m['attendees'][] = [
-            'id' => $newId,
+            'id' => $resolvedId,
             'display_name' => $displayName,
             'contact' => $alias,
             'initials' => $initials,
@@ -135,12 +138,86 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         return $m;
     });
 
-    $attendee = end($meet['attendees']);
     Response::json([
         'ok' => true,
-        'attendee_id' => $attendee['id'],
+        'attendee_id' => $resolvedId,
         'meet' => $store->publicView($meet),
     ]);
+}
+
+/** @param array<int, array<string, mixed>> $attendees */
+function attendeeIndexById(array $attendees, string $id): ?int
+{
+    if ($id === '') {
+        return null;
+    }
+    foreach ($attendees as $i => $att) {
+        if (($att['id'] ?? '') === $id) {
+            return $i;
+        }
+    }
+    return null;
+}
+
+/** @param array<string, mixed> $attendee */
+function applyAttendeeJoin(array &$attendee, string $displayName, string $contact, string $initials): void
+{
+    $attendee['display_name'] = $displayName;
+    if ($contact !== '') {
+        $attendee['contact'] = $contact;
+    }
+    if ($initials !== '') {
+        $attendee['initials'] = $initials;
+    }
+}
+
+/**
+ * Reuse an existing row when the join clearly refers to the same person.
+ *
+ * @param array<int, array<string, mixed>> $attendees
+ */
+function matchExistingAttendee(array $attendees, string $displayName, string $contact, string $initials): ?string
+{
+    $nameKey = strtolower($displayName);
+    $contactKey = strtolower($contact);
+    $initialsKey = strtoupper($initials);
+
+    if ($contactKey !== '') {
+        $matches = [];
+        foreach ($attendees as $att) {
+            if (strtolower(trim((string) ($att['contact'] ?? ''))) === $contactKey) {
+                $matches[] = $att['id'];
+            }
+        }
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+    }
+
+    if ($initialsKey !== '') {
+        $matches = [];
+        foreach ($attendees as $att) {
+            if (strtolower(trim((string) ($att['display_name'] ?? ''))) === $nameKey
+                && strtoupper(trim((string) ($att['initials'] ?? ''))) === $initialsKey) {
+                $matches[] = $att['id'];
+            }
+        }
+        if (count($matches) === 1) {
+            return $matches[0];
+        }
+    }
+
+    $matches = [];
+    foreach ($attendees as $att) {
+        if (strtolower(trim((string) ($att['display_name'] ?? ''))) === $nameKey) {
+            $matches[] = $att['id'];
+        }
+    }
+    if (count($matches) === 1) {
+        return $matches[0];
+    }
+
+    return null;
 }
 
 function handleSaveAvailability(MeetStore $store, string $slug, array $input): void

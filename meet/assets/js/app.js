@@ -47,6 +47,10 @@
 
     try {
       state.meet = await fetchMeet(slug);
+      if (state.attendeeId && !state.meet.attendees.some((a) => a.id === state.attendeeId)) {
+        state.attendeeId = '';
+        localStorage.removeItem(attendeeKey(slug));
+      }
       const explicit = tabFromUrl();
       state.activeTab = explicit || (state.meet.attendees.length ? 'calendar' : 'organiser');
       restoreAttendeeSelections(state);
@@ -177,11 +181,12 @@
               <div class="row">
                 ${m.confirmed_slot ? '<span class="badge good">Confirmed</span>' : ''}
                 ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : ''}
-                <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy</button>
+                <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
               ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER)}
+              ${tabPageIntro(m, state)}
               <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
               ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
               <div class="share-row row desktop-share">
@@ -212,11 +217,21 @@
     return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}">${label}</button>`;
   }
 
-  function renderIntroBlock(m, state, field, text, placeholder) {
+  function tabPageIntro(m, state) {
+    if (state.activeTab === 'times') {
+      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.', 'Page intro');
+    }
+    if (state.activeTab === 'after') {
+      return renderIntroBlock(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for recordings and summaries.', 'Page intro');
+    }
+    return '';
+  }
+
+  function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text') {
     if (state.editingIntro === field) {
       return `
         <div class="meet-intro-edit">
-          <label>Meeting text <span class="label-hint">(simple HTML)</span></label>
+          <label>${escapeHtml(editLabel)} <span class="label-hint">(simple HTML)</span></label>
           ${formatToolbar(field)}
           <textarea id="intro-edit-${field}" name="${field}" rows="4">${escapeHtml(text || '')}</textarea>
           <div class="row">
@@ -233,26 +248,6 @@
         <div class="meet-intro-body">${body}</div>
         <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit meeting text">✎</button>
       </div>`;
-  }
-
-  function renderPageIntro(m, state, field, text, placeholder) {
-    if (state.editingIntro === field) {
-      return `
-        <section class="panel">
-          <label>Page intro <span class="label-hint">(simple HTML)</span></label>
-          ${formatToolbar(field)}
-          <textarea id="intro-edit-${field}" name="${field}" rows="3">${escapeHtml(text || '')}</textarea>
-          <div class="row">
-            <button type="button" data-action="save-intro" data-field="${field}">Save</button>
-            <button type="button" class="secondary" data-action="cancel-intro">Cancel</button>
-          </div>
-        </section>`;
-    }
-    return `
-      <section class="panel meet-intro row">
-        <div class="meet-intro-body">${(text || '').trim() ? sanitizeHtml(text) : `<span class="intro-placeholder">${escapeHtml(placeholder)}</span>`}</div>
-        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit page intro">✎</button>
-      </section>`;
   }
 
   function formatToolbar(field) {
@@ -285,10 +280,11 @@
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
-          <label>Meeting text <span class="label-hint">(simple HTML — p, br, strong, em, a, ul, li)</span>
+          <label>Meeting text <span class="label-hint">(simple HTML — see note below)</span>
             ${formatToolbar('organizer_intro')}
             <textarea name="organizer_intro" rows="4">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
+          <p class="meta">Allowed tags: <code>p</code>, <code>br</code>, <code>strong</code>, <code>em</code>, <code>a</code>, <code>ul</code>, <code>ol</code>, <code>li</code> (and <code>b</code>/<code>i</code>). Inline CSS and other tags are stripped for safety — use plain formatting only.</p>
           <details>
             <summary>Recurrence</summary>
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
@@ -373,7 +369,6 @@
     const mtz = meetingTz(m);
     const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
     return `
-      ${renderPageIntro(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.')}
       <section class="panel stack">
         <div class="row" style="justify-content:space-between">
           <h2 class="section-title" style="margin:0">Meeting details</h2>
@@ -458,7 +453,6 @@
 
   function renderAfterTab(m, state) {
     return `
-      ${renderPageIntro(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for recordings and summaries.')}
       <section class="panel stack">
         <h2 class="section-title">Recordings, transcripts &amp; AI summaries</h2>
         ${m.attachments.length ? m.attachments.map(renderAttachment).join('') : '<p class="meta">Nothing attached yet.</p>'}
@@ -734,9 +728,10 @@
     if (type === 'weekly') {
       return `
         <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="52"> week(s)</label>
-        <label>On these days <span class="label-hint">(comma-separated: Monday, Tuesday… or 0–6)</span>
+        <label>On these days <span class="label-hint">(comma-separated day names)</span>
           <input name="weekdays" value="${weekdaysToNames(rec.weekdays || [1])}">
-        </label>`;
+        </label>
+        <p class="meta">Use day names (<strong>Monday</strong>, <strong>Tuesday</strong>, …) separated by commas. If you use numbers instead: <strong>Sunday&nbsp;=&nbsp;0</strong>, Monday&nbsp;=&nbsp;1, … Saturday&nbsp;=&nbsp;6 — Monday is <em>not</em> 0. Example: <code>Monday, Wednesday</code> for every Mon and Wed in the pattern.</p>`;
     }
     if (type === 'monthly_day') {
       return `
