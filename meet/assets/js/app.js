@@ -19,8 +19,8 @@
       e.preventDefault();
       const data = new FormData(e.target);
       try {
-        await apiPost({ action: 'create', slug: slugify(data.get('slug')), title: String(data.get('title') || '').trim() });
-        window.location.href = meetingUrl(slugify(data.get('slug')));
+        const res = await apiPost({ action: 'create', title: String(data.get('title') || '').trim() });
+        window.location.href = meetingUrl(res.slug);
       } catch (err) {
         alert(err.message);
       }
@@ -55,6 +55,7 @@
       const explicit = tabFromUrl();
       state.activeTab = explicit || (state.meet.attendees.length ? 'calendar' : 'organiser');
       restoreAttendeeSelections(state);
+      state.viewStart = calendarMinStart(state.meet);
       render(root, state);
     } catch (err) {
       root.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
@@ -275,8 +276,6 @@
             </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            <label>Range start<input type="date" name="range_start" value="${escapeHtml(m.range_start)}"></label>
-            <label>Range end<input type="date" name="range_end" value="${escapeHtml(m.range_end)}"></label>
             <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
@@ -298,17 +297,19 @@
 
   function renderCalendarTab(m, state, attendee) {
     const dayCount = visibleDayCount();
-    const days = getVisibleDays(state.viewStart, dayCount, m.show_weekends);
+    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
     const saveRow = attendee ? renderSaveRow(state) : '';
+    const todayStr = meetingTodayStr(m);
+    const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
 
     return `
       <section class="panel stack calendar-panel">
         <div class="row meta-line">
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
-          <span>${escapeHtml(m.range_start)} → ${escapeHtml(m.range_end)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
+          <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
         ${renderAttendeesSection(m, state, attendee, { mode: 'picker' })}
         ${attendee ? `
@@ -317,7 +318,7 @@
           </p>` : ''}
         ${saveRow}
         <div class="calendar-toolbar">
-          <button type="button" class="secondary" data-action="prev-days">←</button>
+          <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(days)}</strong>
           <button type="button" class="secondary" data-action="next-days">→</button>
         </div>
@@ -463,8 +464,8 @@
         <label>Your name<input name="display_name" required></label>
         <label>Initials (optional)<input name="initials" maxlength="4"></label>
         <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
-        <label>PIN (optional) <span class="label-hint">(4+ chars — secures your row on other devices)</span>
-          <input name="pin" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="32" placeholder="Optional">
+        <label>PIN (optional) <span class="label-hint">(numbers only — secures your row on other devices)</span>
+          <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="Optional">
         </label>
       </div>
       <button type="submit">Register as new attendee</button>
@@ -474,24 +475,31 @@
   function renderAttendeesSection(m, state, attendee, { mode = 'details' } = {}) {
     const isPicker = mode === 'picker';
     const title = isPicker ? 'Who are you?' : 'Attendees';
-    const hint = isPicker
+    const hint = isPicker && !attendee
       ? 'Click your name if you are already listed. Otherwise register as a new attendee below.'
-      : 'If you appear more than once, sign in as yourself on the calendar tab, then merge the duplicate here.';
+      : (!isPicker && attendee
+        ? (attendee.is_organizer
+          ? 'As meeting organiser you can merge any two rows or grant organiser to others.'
+          : 'If you appear more than once, sign in on the calendar tab, then merge the duplicate here.')
+        : '');
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
+    const showOrganiserCol = !isPicker && attendee?.is_organizer;
+    const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
     return `
       <section class="panel stack attendee-section">
         <h2 class="section-title">${title}</h2>
-        <p class="meta">${hint}</p>
+        ${hint ? `<p class="meta">${hint}</p>` : ''}
         <div class="table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${isPicker ? '<th></th>' : '<th></th>'}</tr></thead>
+            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { mode })).join('') : `<tr><td colspan="5">No one has joined yet.</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { mode, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No one has joined yet.</td></tr>`}
             </tbody>
           </table>
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
+        ${!isPicker && attendee?.is_organizer ? renderOrganiserMergePanel(m) : ''}
         ${isPicker && !attendee ? `
           <details class="register-block" open>
             <summary>Register as new attendee</summary>
@@ -500,27 +508,47 @@
       </section>`;
   }
 
-  function renderAttendeeRow(m, state, current, a, { mode }) {
+  function renderOrganiserMergePanel(m) {
+    const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
+    return `
+      <details class="merge-organiser-panel">
+        <summary>Merge any two attendees (organiser)</summary>
+        <form class="inline-form row" data-form="merge-organiser">
+          <label>Keep <select name="keep_id" required>${opts}</select></label>
+          <label>Remove <select name="remove_id" required>${opts}</select></label>
+          <button type="submit">Merge</button>
+        </form>
+        <p class="meta">Combines availability and removes the second row. You do not need their PIN as organiser.</p>
+      </details>`;
+  }
+
+  function renderAttendeeRow(m, state, current, a, { mode, showOrganiserCol }) {
     const isSelf = current?.id === a.id;
     const isPicker = mode === 'picker';
     const dupOfSelf = current && a.id !== current.id
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
     const pinBadge = a.has_pin ? '<span class="badge" title="PIN protected">PIN</span>' : '';
+    const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
     if (isPicker) {
       if (!current || isSelf) {
         actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
       }
-    } else if (current && dupOfSelf) {
+    } else if (current && a.id !== current.id && (dupOfSelf || current.is_organizer)) {
       actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Merge into me</button>`);
     }
 
+    const organiserCell = showOrganiserCol
+      ? `<td><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
+      : '';
+
     return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${isPicker && !current ? ' is-selectable' : ''}">
-      <td>${escapeHtml(a.display_name)} ${pinBadge}</td>
+      <td>${escapeHtml(a.display_name)} ${pinBadge} ${orgBadge}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${a.contact ? `<a href="${contactHref(a.contact)}">${escapeHtml(a.contact)}</a>` : '—'}</td>
       <td>${countSlotsFor(m, a.id)}</td>
+      ${organiserCell}
       <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
     </tr>`;
   }
@@ -530,12 +558,12 @@
     return `
       <form class="inline-form claim-form" data-form="claim">
         <input type="hidden" name="attendee_id" value="${escapeHtml(target.id)}">
-        <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your PIN to continue' : 'optional: set a PIN so only you can reclaim this row later'}</p>
+        <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your PIN, then press Enter or click Continue' : 'optional: set a numeric PIN, then press Enter or click Continue'}</p>
         <label>${needsPin ? 'PIN' : 'PIN (optional)'}
-          <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" ${needsPin ? 'required minlength="4"' : 'minlength="4" maxlength="32"'}>
+          <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" ${needsPin ? 'required' : ''} maxlength="12">
         </label>
         <div class="row">
-          <button type="submit">${needsPin ? 'Continue' : 'Continue without PIN'}</button>
+          <button type="submit">${needsPin ? 'Continue' : 'Continue'}</button>
           <button type="button" class="secondary" data-action="cancel-claim">Cancel</button>
         </div>
       </form>`;
@@ -567,7 +595,6 @@
         state.claimingId = null;
       } else if (kind === 'update-settings') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, title: fd.get('title'),
-          range_start: fd.get('range_start'), range_end: fd.get('range_end'),
           duration_minutes: Number(fd.get('duration_minutes')), slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
           day_start: fd.get('day_start'), day_end: fd.get('day_end'),
           timezone: String(fd.get('timezone') || '').trim() || tz,
@@ -582,6 +609,18 @@
       } else if (kind === 'confirm') {
         data = await apiPost({ action: 'confirm', slug: state.slug, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
         state.pendingConfirmSlot = null;
+      } else if (kind === 'merge-organiser') {
+        const keepId = fd.get('keep_id');
+        const removeId = fd.get('remove_id');
+        if (keepId === removeId) throw new Error('Choose two different attendees');
+        data = await apiPost({
+          action: 'merge_attendees', slug: state.slug, keep_id: keepId, remove_id: removeId,
+          acting_attendee_id: state.attendeeId,
+        });
+        if (state.attendeeId === removeId) {
+          state.attendeeId = keepId;
+          localStorage.setItem(attendeeKey(state.slug), keepId);
+        }
       } else return;
       state.meet = data.meet;
       if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
@@ -638,7 +677,14 @@
       render(root, state);
       return;
     }
-    if (action === 'prev-days') { state.viewStart = addDays(state.viewStart, -visibleDayCount()); render(root, state); return; }
+    if (action === 'prev-days') {
+      const min = calendarMinStart(state.meet);
+      const step = visibleDayCount();
+      state.viewStart = addDays(state.viewStart, -step);
+      if (state.viewStart < min) state.viewStart = min;
+      render(root, state);
+      return;
+    }
     if (action === 'next-days') { state.viewStart = addDays(state.viewStart, visibleDayCount()); render(root, state); return; }
     if (action === 'jump-slot') {
       state.viewStart = startOfDay(new Date(btn.dataset.slot));
@@ -740,10 +786,26 @@
   }
 
   function handleChange(e, root, state) {
-    if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); }
+    if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
     if (e.target.name === 'recurrence_type') {
       const extra = root.querySelector('#recurrence-extra');
       if (extra) extra.innerHTML = recurrenceExtraFields({ type: e.target.value });
+      return;
+    }
+    if (e.target.matches('[data-action="toggle-organizer"]')) {
+      const targetId = e.target.dataset.attendeeId;
+      const checked = e.target.checked;
+      apiPost({
+        action: 'set_organizer', slug: state.slug,
+        acting_attendee_id: state.attendeeId, attendee_id: targetId, organizer: checked,
+      }).then((data) => {
+        state.meet = data.meet;
+        render(root, state);
+        toast('Organiser updated');
+      }).catch((err) => {
+        e.target.checked = !checked;
+        toast(err.message, true);
+      });
     }
   }
 
@@ -898,6 +960,20 @@
 
   function startOfDay(date) { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
   function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
+  function meetingTodayStr(m) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: meetingTz(m) }).format(new Date());
+  }
+  function parseDateIsoLocal(iso) {
+    const [y, mo, d] = iso.split('-').map(Number);
+    return startOfDay(new Date(y, mo - 1, d));
+  }
+  function calendarMinStart(m) {
+    return parseDateIsoLocal(m.calendar_start || meetingTodayStr(m));
+  }
+  function calendarViewStart(state, m) {
+    const min = calendarMinStart(m);
+    return state.viewStart < min ? min : state.viewStart;
+  }
   function toDateIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function formatDayHead(d) { return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
   function formatDayRangeLabel(days) {

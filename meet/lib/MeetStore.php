@@ -16,7 +16,23 @@ final class MeetStore
         return MeetFile::slugify($rawSlug);
     }
 
-    public function loadBySlug(string $rawSlug, bool $create = true): array
+    public function slugExists(string $slug): bool
+    {
+        return $this->lookupIdBySlug($this->resolveSlug($slug)) !== null;
+    }
+
+    public function createMeeting(string $title = ''): array
+    {
+        do {
+            $slug = MeetFile::generateRandomSlug();
+        } while ($this->slugExists($slug));
+
+        $meet = MeetFile::create($slug, $title);
+        $this->save($meet);
+        return $meet;
+    }
+
+    public function loadBySlug(string $rawSlug, bool $create = false): array
     {
         $slug = $this->resolveSlug($rawSlug);
         $id = $this->lookupIdBySlug($slug);
@@ -98,10 +114,13 @@ final class MeetStore
     public function publicView(array $meet): array
     {
         $suggestions = $this->buildSuggestions($meet);
+        $today = gmdate('Y-m-d');
+        $rangeStart = max($meet['range_start'], $today);
+        $rangeEnd = gmdate('Y-m-d', strtotime('+2 years'));
         $recurrenceDates = Recurrence::expand(
             $meet['recurrence'],
-            $meet['range_start'],
-            $meet['range_end']
+            $rangeStart,
+            $rangeEnd
         );
 
         return [
@@ -112,8 +131,9 @@ final class MeetStore
             'updated' => $meet['updated'],
             'duration_minutes' => $meet['duration_minutes'],
             'slot_granularity_minutes' => $meet['slot_granularity_minutes'],
-            'range_start' => $meet['range_start'],
-            'range_end' => $meet['range_end'],
+            'range_start' => $rangeStart,
+            'range_end' => $rangeEnd,
+            'calendar_start' => $today,
             'recurrence' => $meet['recurrence'],
             'recurrence_label' => Recurrence::describe($meet['recurrence']),
             'recurrence_dates' => $recurrenceDates,
@@ -126,7 +146,8 @@ final class MeetStore
                 'display_name' => $a['display_name'],
                 'contact' => $a['contact'] ?? ($a['alias'] ?? ''),
                 'initials' => $a['initials'] ?? '',
-                'has_pin' => !empty($a['pin_hash']),
+                'has_pin' => ($a['pin'] ?? '') !== '',
+                'is_organizer' => !empty($a['organizer']),
             ], $meet['attendees']),
             'availability' => $meet['availability'],
             'location_preferences' => $meet['location_preferences'],

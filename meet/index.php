@@ -61,16 +61,12 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
         <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
         <form id="create-form" class="create-form">
           <label>
-            Meeting link name
-            <input type="text" name="slug" placeholder="e.g. board-review" required pattern="[A-Za-z0-9 _\-]+">
-          </label>
-          <label>
-            Title (optional)
-            <input type="text" name="title" placeholder="Board review">
+            Meeting title
+            <input type="text" name="title" placeholder="Board review" required>
           </label>
           <button type="submit">Create meeting</button>
         </form>
-        <p class="hint">Or open an existing link: <code>meet/?your-meeting-name</code></p>
+        <p class="hint">You will get a private link with a random code (e.g. <code>meet/?=a7f3b2c91d04</code>). Save it — that link is the only way in.</p>
       </section>
     <?php else: ?>
       <div id="app" class="app-loading">Loading meeting…</div>

@@ -38,7 +38,7 @@ After cloning, click **Repository → Show in Explorer** (or **Show in Finder** 
 
 ## Get the latest Meet Scheduler code
 
-The scheduler may be on a branch until merged. To switch branch:
+The scheduler is on branch `cursor/meet-scheduler-ca2b` until merged:
 
 ```bat
 cd path\to\SIG-Stakeholder-Database
@@ -47,16 +47,34 @@ git checkout cursor/meet-scheduler-ca2b
 git pull
 ```
 
-After the pull request is merged into `main`, you can stay on `main`:
+After merge to `main`:
 
 ```bat
 git checkout main
 git pull
 ```
 
+## Multiple working copies (alpha / beta)
+
+`git pull` only updates **the folder you are in**. Each clone is independent.
+
+Example — two test folders on your PC:
+
+```bat
+cd %USERPROFILE%\Documents
+git clone -b cursor/meet-scheduler-ca2b https://github.com/51monharr15/SIG-Stakeholder-Database.git meet-alpha
+git clone -b cursor/meet-scheduler-ca2b https://github.com/51monharr15/SIG-Stakeholder-Database.git meet-beta
+```
+
+- Work in `meet-alpha`, run `git pull` there as often as you like.
+- When stable, `cd` to `meet-beta`, run `git pull` once — that copy jumps to whatever is latest on the branch (e.g. build 1.5.9 → 1.6.2).
+- You do **not** need to stay in one directory name; only the **current working directory** matters for `git pull`.
+
+`(cd ~/SIG-Stakeholder-Database && git pull)` in Git Bash runs pull in that path and returns to wherever you were — useful from any directory.
+
 ## What to upload to your web server
 
-Upload the **`meet`** folder contents (see [UPDATING.md](UPDATING.md)). Do **not** overwrite `meet/data/` on the server.
+Upload the **`meet`** folder (see [UPDATING.md](UPDATING.md)).
 
 ## Useful git commands (minimal)
 

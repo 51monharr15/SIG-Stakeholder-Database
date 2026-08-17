@@ -24,7 +24,7 @@ final class MeetFile
             'duration_minutes' => 60,
             'slot_granularity_minutes' => 30,
             'range_start' => gmdate('Y-m-d'),
-            'range_end' => gmdate('Y-m-d', strtotime('+6 weeks')),
+            'range_end' => '2099-12-31',
             'recurrence' => ['type' => 'none'],
             'agenda' => [],
             'decisions' => [],
@@ -166,7 +166,8 @@ final class MeetFile
                 $att['display_name'],
                 $att['contact'] ?? ($att['alias'] ?? ''),
                 $att['initials'] ?? '',
-                $att['pin_hash'] ?? '',
+                $att['pin'] ?? '',
+                !empty($att['organizer']) ? '1' : '0',
             ]);
         }
 
@@ -256,7 +257,8 @@ final class MeetFile
                         'display_name' => $parts[1] ?? 'Guest',
                         'contact' => $parts[2] ?? '',
                         'initials' => $parts[3] ?? '',
-                        'pin_hash' => $parts[4] ?? '',
+                        'pin' => $parts[4] ?? '',
+                        'organizer' => in_array(strtolower($parts[5] ?? ''), ['1', 'true', 'yes'], true),
                     ];
                 }, $buffer);
                 break;
@@ -363,7 +365,8 @@ final class MeetFile
             }
             $attendee['contact'] = $attendee['contact'] ?? '';
             $attendee['initials'] = $attendee['initials'] ?? '';
-            $attendee['pin_hash'] = $attendee['pin_hash'] ?? '';
+            $attendee['pin'] = preg_replace('/\D/', '', (string) ($attendee['pin'] ?? ''));
+            $attendee['organizer'] = !empty($attendee['organizer']);
         }
         unset($attendee);
         return $meet;
@@ -412,6 +415,11 @@ final class MeetFile
     public static function generateId(string $prefix = 'meet'): string
     {
         return $prefix . '_' . bin2hex(random_bytes(6));
+    }
+
+    public static function generateRandomSlug(): string
+    {
+        return substr(bin2hex(random_bytes(6)), 0, 12);
     }
 
     public static function slugify(string $input): string

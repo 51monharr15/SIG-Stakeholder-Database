@@ -19,7 +19,7 @@ try {
         if ($slug === '') {
             Response::error('Missing slug', 400);
         }
-        $meet = $store->loadBySlug($slug, true);
+        $meet = $store->loadBySlug($slug, false);
         Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
     }
 
@@ -43,6 +43,9 @@ try {
                 break;
             case 'merge_attendees':
                 handleMergeAttendees($store, $slug, $input);
+                break;
+            case 'set_organizer':
+                handleSetOrganizer($store, $slug, $input);
                 break;
             case 'save_availability':
                 handleSaveAvailability($store, $slug, $input);
@@ -80,27 +83,16 @@ try {
 
 function handleCreate(MeetStore $store, array $input): void
 {
-    $slug = MeetFile::slugify((string) ($input['slug'] ?? ''));
-    if ($slug === '') {
-        Response::error('Slug is required');
-    }
-
-    $meet = MeetFile::create($slug, (string) ($input['title'] ?? ''));
-    if (!empty($input['range_start'])) {
-        $meet['range_start'] = $input['range_start'];
-    }
-    if (!empty($input['range_end'])) {
-        $meet['range_end'] = $input['range_end'];
-    }
+    $title = trim((string) ($input['title'] ?? ''));
+    $meet = $store->createMeeting($title);
     if (!empty($input['duration_minutes'])) {
         $meet['duration_minutes'] = (int) $input['duration_minutes'];
     }
     if (!empty($input['recurrence']) && is_array($input['recurrence'])) {
         $meet['recurrence'] = $input['recurrence'];
     }
-
     $store->save($meet);
-    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+    Response::json(['ok' => true, 'slug' => $meet['slug'], 'meet' => $store->publicView($meet)]);
 }
 
 function handleJoin(MeetStore $store, string $slug, array $input): void
@@ -138,12 +130,14 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         }
 
         $resolvedId = MeetFile::generateId('usr');
+        $isFirst = count($m['attendees']) === 0;
         $newAttendee = [
             'id' => $resolvedId,
             'display_name' => $displayName,
             'contact' => $alias,
             'initials' => $initials,
-            'pin_hash' => '',
+            'pin' => '',
+            'organizer' => $isFirst,
         ];
         maybeSetAttendeePin($newAttendee, $pin);
         $m['attendees'][] = $newAttendee;
@@ -275,8 +269,8 @@ function handleMergeAttendees(MeetStore $store, string $slug, array $input): voi
     if ($keepId === '' || $removeId === '' || $keepId === $removeId) {
         Response::error('keep_id and remove_id required and must differ');
     }
-    if ($actingId === '' || !in_array($actingId, [$keepId, $removeId], true)) {
-        Response::error('acting_attendee_id must be keep_id or remove_id');
+    if ($actingId === '' || !in_array($actingId, array_column($m['attendees'], 'id'), true)) {
+        Response::error('acting_attendee_id required');
     }
 
     $meet = $store->loadBySlug($slug);
@@ -287,6 +281,17 @@ function handleMergeAttendees(MeetStore $store, string $slug, array $input): voi
             throw new \RuntimeException('Attendee not found', 404);
         }
         $remove = $m['attendees'][$removeIdx];
+        $actingIsOrganizer = attendeeIsOrganizer($m['attendees'], $actingId);
+
+        if ($actingIsOrganizer) {
+            mergeAttendeeRows($m, $keepId, $removeId);
+            return $m;
+        }
+
+        if ($actingId !== $keepId && $actingId !== $removeId) {
+            throw new \RuntimeException('acting_attendee_id must be keep_id or remove_id', 403);
+        }
+
         if (attendeeHasPin($remove)) {
             if (!verifyAttendeePin($remove, $pin)) {
                 throw new \RuntimeException('PIN required to merge the duplicate row', 403);
@@ -308,7 +313,7 @@ function handleMergeAttendees(MeetStore $store, string $slug, array $input): voi
 /** @param array<string, mixed> $attendee */
 function attendeeHasPin(array $attendee): bool
 {
-    return !empty($attendee['pin_hash']);
+    return ($attendee['pin'] ?? '') !== '';
 }
 
 /** @param array<string, mixed> $attendee */
@@ -317,19 +322,21 @@ function verifyAttendeePin(array $attendee, string $pin): bool
     if (!attendeeHasPin($attendee)) {
         return true;
     }
+    $pin = normalizePin($pin);
     if ($pin === '') {
         return false;
     }
-    return password_verify($pin, (string) $attendee['pin_hash']);
+    return $pin === (string) ($attendee['pin'] ?? '');
 }
 
 /** @param array<string, mixed> $attendee */
 function setAttendeePin(array &$attendee, string $pin): void
 {
+    $pin = normalizePin($pin);
     if ($pin === '') {
         return;
     }
-    $attendee['pin_hash'] = password_hash($pin, PASSWORD_DEFAULT);
+    $attendee['pin'] = $pin;
 }
 
 /** @param array<string, mixed> $attendee */
@@ -339,6 +346,57 @@ function maybeSetAttendeePin(array &$attendee, string $pin): void
         return;
     }
     setAttendeePin($attendee, $pin);
+}
+
+function normalizePin(string $pin): string
+{
+    return preg_replace('/\D/', '', $pin) ?? '';
+}
+
+/** @param array<int, array<string, mixed>> $attendees */
+function attendeeIsOrganizer(array $attendees, string $id): bool
+{
+    $idx = attendeeIndexById($attendees, $id);
+    if ($idx === null) {
+        return false;
+    }
+    return !empty($attendees[$idx]['organizer']);
+}
+
+function handleSetOrganizer(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $targetId = trim((string) ($input['attendee_id'] ?? ''));
+    $organizer = !empty($input['organizer']);
+    if ($actingId === '' || $targetId === '') {
+        Response::error('acting_attendee_id and attendee_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($actingId, $targetId, $organizer) {
+        if (!attendeeIsOrganizer($m['attendees'], $actingId)) {
+            throw new \RuntimeException('Only a meeting organiser can change organiser flags', 403);
+        }
+        $targetIdx = attendeeIndexById($m['attendees'], $targetId);
+        if ($targetIdx === null) {
+            throw new \RuntimeException('Attendee not found', 404);
+        }
+        if (!$organizer && !empty($m['attendees'][$targetIdx]['organizer'])) {
+            $others = 0;
+            foreach ($m['attendees'] as $att) {
+                if (!empty($att['organizer']) && ($att['id'] ?? '') !== $targetId) {
+                    $others++;
+                }
+            }
+            if ($others === 0) {
+                throw new \RuntimeException('At least one meeting organiser is required', 400);
+            }
+        }
+        $m['attendees'][$targetIdx]['organizer'] = $organizer;
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }
 
 /** @param array<string, mixed> $meet */

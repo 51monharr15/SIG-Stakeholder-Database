@@ -8,17 +8,15 @@ This app is intentionally isolated from the SIG stakeholder database (`lusers.ph
 
 1. Deploy the `meet/` folder to your Apache web root (or serve as a subdirectory).
 2. Ensure PHP 8.1+ is enabled and `meet/data/` is writable by the web server.
-3. Visit `/meet/` to create a meeting, or share a direct link:
+3. Visit `/meet/` to create a meeting. You receive a **random link** such as `/meet/?=a7f3b2c91d04` — save it; that code is the only way in.
 
 ```
-/meet/?board-review
-/meet/board-review          (with mod_rewrite)
-/meet/?m=board-review
+/meet/?=a7f3b2c91d04
 ```
 
 **Docs:** [LOCAL-TEST.md](LOCAL-TEST.md) · [UPDATING.md](UPDATING.md) · [GIT.md](GIT.md)
 
-The URL slug is a friendly name chosen by the organiser. Internally each meeting gets a stable ID (e.g. `meet_a1b2c3d4e5f6`) stored in `data/aliases/{slug}.alias`.
+Meetings are not created by visiting a guessed URL. The slug is a random 12-character code. Internally each meeting also has a stable ID (e.g. `meet_a1b2c3d4e5f6`) in `data/aliases/{slug}.alias`.
 
 ## Features
 
