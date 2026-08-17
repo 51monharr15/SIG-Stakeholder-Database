@@ -106,15 +106,19 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
 
     $meet = $store->loadBySlug($slug);
     $attendeeId = trim((string) ($input['attendee_id'] ?? ''));
-    $alias = trim((string) ($input['alias'] ?? ''));
+    $alias = trim((string) ($input['contact'] ?? ($input['alias'] ?? '')));
+    $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
 
-    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias) {
+    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials) {
         if ($attendeeId !== '') {
             foreach ($m['attendees'] as &$att) {
                 if ($att['id'] === $attendeeId) {
                     $att['display_name'] = $displayName;
                     if ($alias !== '') {
-                        $att['alias'] = $alias;
+                        $att['contact'] = $alias;
+                    }
+                    if ($initials !== '') {
+                        $att['initials'] = $initials;
                     }
                     return $m;
                 }
@@ -125,7 +129,8 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         $m['attendees'][] = [
             'id' => $newId,
             'display_name' => $displayName,
-            'alias' => $alias,
+            'contact' => $alias,
+            'initials' => $initials,
         ];
         return $m;
     });
@@ -174,11 +179,19 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
 {
     $meet = $store->loadBySlug($slug);
     $meet = $store->update($meet['id'], function (array $m) use ($input) {
-        $fields = ['title', 'notes', 'range_start', 'range_end', 'duration_minutes', 'slot_granularity_minutes'];
+        $fields = [
+            'title', 'notes', 'range_start', 'range_end',
+            'duration_minutes', 'slot_granularity_minutes',
+            'day_start', 'day_end',
+            'organizer_intro', 'page_times_intro', 'page_after_intro',
+        ];
         foreach ($fields as $field) {
             if (array_key_exists($field, $input)) {
                 $m[$field] = $input[$field];
             }
+        }
+        if (array_key_exists('show_weekends', $input)) {
+            $m['show_weekends'] = (bool) $input['show_weekends'];
         }
         if (!empty($input['agenda']) && is_array($input['agenda'])) {
             $m['agenda'] = array_values(array_filter(array_map('trim', $input['agenda'])));

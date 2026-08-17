@@ -16,6 +16,8 @@ This app is intentionally isolated from the SIG stakeholder database (`lusers.ph
 /meet/?m=board-review
 ```
 
+**Docs:** [LOCAL-TEST.md](LOCAL-TEST.md) · [UPDATING.md](UPDATING.md) · [GIT.md](GIT.md)
+
 The URL slug is a friendly name chosen by the organiser. Internally each meeting gets a stable ID (e.g. `meet_a1b2c3d4e5f6`) stored in `data/aliases/{slug}.alias`.
 
 ## Features

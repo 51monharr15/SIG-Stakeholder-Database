@@ -34,6 +34,12 @@ final class MeetFile
             'availability' => [],
             'location_preferences' => [],
             'notes' => '',
+            'show_weekends' => false,
+            'day_start' => '08:00',
+            'day_end' => '20:00',
+            'organizer_intro' => '',
+            'page_times_intro' => '',
+            'page_after_intro' => '',
             'confirmed_slot' => null,
             'confirmed_location' => null,
         ];
@@ -95,6 +101,7 @@ final class MeetFile
             'id', 'slug', 'title', 'created', 'updated',
             'duration_minutes', 'slot_granularity_minutes',
             'range_start', 'range_end', 'notes',
+            'show_weekends', 'day_start', 'day_end',
         ];
         foreach ($header as $key) {
             if (!array_key_exists($key, $meet) || $meet[$key] === null || $meet[$key] === '') {
@@ -156,8 +163,27 @@ final class MeetFile
             $out[] = self::pipe([
                 $att['id'],
                 $att['display_name'],
-                $att['alias'] ?? '',
+                $att['contact'] ?? ($att['alias'] ?? ''),
+                $att['initials'] ?? '',
             ]);
+        }
+
+        $out[] = '';
+        $out[] = '@@ organizer_intro';
+        if (($meet['organizer_intro'] ?? '') !== '') {
+            $out[] = $meet['organizer_intro'];
+        }
+
+        $out[] = '';
+        $out[] = '@@ page_times_intro';
+        if (($meet['page_times_intro'] ?? '') !== '') {
+            $out[] = $meet['page_times_intro'];
+        }
+
+        $out[] = '';
+        $out[] = '@@ page_after_intro';
+        if (($meet['page_after_intro'] ?? '') !== '') {
+            $out[] = $meet['page_after_intro'];
         }
 
         $out[] = '';
@@ -226,9 +252,19 @@ final class MeetFile
                     return [
                         'id' => $parts[0] ?? self::generateId('usr'),
                         'display_name' => $parts[1] ?? 'Guest',
-                        'alias' => $parts[2] ?? '',
+                        'contact' => $parts[2] ?? '',
+                        'initials' => $parts[3] ?? '',
                     ];
                 }, $buffer);
+                break;
+            case 'organizer_intro':
+                $meet['organizer_intro'] = implode("\n", $buffer);
+                break;
+            case 'page_times_intro':
+                $meet['page_times_intro'] = implode("\n", $buffer);
+                break;
+            case 'page_after_intro':
+                $meet['page_after_intro'] = implode("\n", $buffer);
                 break;
             case 'availability':
                 $availability = [];
@@ -311,11 +347,28 @@ final class MeetFile
         $meet['availability'] = $meet['availability'] ?? [];
         $meet['location_preferences'] = $meet['location_preferences'] ?? [];
         $meet['recurrence'] = $meet['recurrence'] ?? ['type' => 'none'];
+        $meet['show_weekends'] = (bool) ($meet['show_weekends'] ?? false);
+        $meet['day_start'] = $meet['day_start'] ?? '08:00';
+        $meet['day_end'] = $meet['day_end'] ?? '20:00';
+        $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
+        $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
+        $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
+        foreach ($meet['attendees'] as &$attendee) {
+            if (!isset($attendee['contact']) && isset($attendee['alias'])) {
+                $attendee['contact'] = $attendee['alias'];
+            }
+            $attendee['contact'] = $attendee['contact'] ?? '';
+            $attendee['initials'] = $attendee['initials'] ?? '';
+        }
+        unset($attendee);
         return $meet;
     }
 
     private static function castScalar(string $key, string $value): mixed
     {
+        if ($key === 'show_weekends') {
+            return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
+        }
         if (in_array($key, ['duration_minutes', 'slot_granularity_minutes', 'version', 'nth', 'interval', 'day', 'weekday', 'count'], true)) {
             return (int) $value;
         }
@@ -327,6 +380,9 @@ final class MeetFile
 
     private static function scalarToString(mixed $value): string
     {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
         if (is_array($value)) {
             return implode(',', $value);
         }
