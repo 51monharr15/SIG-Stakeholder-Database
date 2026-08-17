@@ -126,6 +126,7 @@ final class MeetStore
                 'display_name' => $a['display_name'],
                 'contact' => $a['contact'] ?? ($a['alias'] ?? ''),
                 'initials' => $a['initials'] ?? '',
+                'has_pin' => !empty($a['pin_hash']),
             ], $meet['attendees']),
             'availability' => $meet['availability'],
             'location_preferences' => $meet['location_preferences'],

@@ -42,6 +42,7 @@
       dragSelect: true,
       editingIntro: null,
       headerExpanded: !isTouchUi,
+      claimingId: null,
       lastDayCount: visibleDayCount(),
     };
 
@@ -309,10 +310,11 @@
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
           <span>${escapeHtml(m.range_start)} → ${escapeHtml(m.range_end)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
-        ${!attendee ? renderJoinForm() : `
+        ${renderAttendeesSection(m, state, attendee, { mode: 'picker' })}
+        ${attendee ? `
           <p class="meta">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
             <button type="button" class="secondary" data-action="switch-user">Switch</button>
-          </p>`}
+          </p>` : ''}
         ${saveRow}
         <div class="calendar-toolbar">
           <button type="button" class="secondary" data-action="prev-days">←</button>
@@ -394,20 +396,7 @@
             </div>`).join('') : '<p class="meta">No matches yet.</p>'}
         </div>
       </section>
-      <section class="panel stack">
-        <h2 class="section-title">Attendees</h2>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th></tr></thead>
-            <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => `
-                <tr><td>${escapeHtml(a.display_name)}</td><td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
-                <td>${a.contact ? `<a href="${contactHref(a.contact)}">${escapeHtml(a.contact)}</a>` : '—'}</td>
-                <td>${countSlotsFor(m, a.id)}</td></tr>`).join('') : '<tr><td colspan="4">No one has joined yet.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      ${renderAttendeesSection(m, state, attendee, { mode: 'details' })}
       <section class="panel stack">
         <h2 class="section-title">Locations</h2>
         <div class="chip-list">${m.locations.map((loc) => `
@@ -474,9 +463,82 @@
         <label>Your name<input name="display_name" required></label>
         <label>Initials (optional)<input name="initials" maxlength="4"></label>
         <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
+        <label>PIN (optional) <span class="label-hint">(4+ chars — secures your row on other devices)</span>
+          <input name="pin" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="32" placeholder="Optional">
+        </label>
       </div>
-      <button type="submit">Join this meeting</button>
+      <button type="submit">Register as new attendee</button>
     </form>`;
+  }
+
+  function renderAttendeesSection(m, state, attendee, { mode = 'details' } = {}) {
+    const isPicker = mode === 'picker';
+    const title = isPicker ? 'Who are you?' : 'Attendees';
+    const hint = isPicker
+      ? 'Click your name if you are already listed. Otherwise register as a new attendee below.'
+      : 'If you appear more than once, sign in as yourself on the calendar tab, then merge the duplicate here.';
+    const claiming = m.attendees.find((a) => a.id === state.claimingId);
+
+    return `
+      <section class="panel stack attendee-section">
+        <h2 class="section-title">${title}</h2>
+        <p class="meta">${hint}</p>
+        <div class="table-wrap">
+          <table class="data-table attendee-table">
+            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${isPicker ? '<th></th>' : '<th></th>'}</tr></thead>
+            <tbody>
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { mode })).join('') : `<tr><td colspan="5">No one has joined yet.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        ${claiming ? renderClaimPinForm(claiming) : ''}
+        ${isPicker && !attendee ? `
+          <details class="register-block" open>
+            <summary>Register as new attendee</summary>
+            ${renderJoinForm()}
+          </details>` : ''}
+      </section>`;
+  }
+
+  function renderAttendeeRow(m, state, current, a, { mode }) {
+    const isSelf = current?.id === a.id;
+    const isPicker = mode === 'picker';
+    const dupOfSelf = current && a.id !== current.id
+      && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
+    const pinBadge = a.has_pin ? '<span class="badge" title="PIN protected">PIN</span>' : '';
+    const actions = [];
+
+    if (isPicker) {
+      if (!current || isSelf) {
+        actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
+      }
+    } else if (current && dupOfSelf) {
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Merge into me</button>`);
+    }
+
+    return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${isPicker && !current ? ' is-selectable' : ''}">
+      <td>${escapeHtml(a.display_name)} ${pinBadge}</td>
+      <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
+      <td>${a.contact ? `<a href="${contactHref(a.contact)}">${escapeHtml(a.contact)}</a>` : '—'}</td>
+      <td>${countSlotsFor(m, a.id)}</td>
+      <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
+    </tr>`;
+  }
+
+  function renderClaimPinForm(target) {
+    const needsPin = target.has_pin;
+    return `
+      <form class="inline-form claim-form" data-form="claim">
+        <input type="hidden" name="attendee_id" value="${escapeHtml(target.id)}">
+        <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your PIN to continue' : 'optional: set a PIN so only you can reclaim this row later'}</p>
+        <label>${needsPin ? 'PIN' : 'PIN (optional)'}
+          <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" ${needsPin ? 'required minlength="4"' : 'minlength="4" maxlength="32"'}>
+        </label>
+        <div class="row">
+          <button type="submit">${needsPin ? 'Continue' : 'Continue without PIN'}</button>
+          <button type="button" class="secondary" data-action="cancel-claim">Cancel</button>
+        </div>
+      </form>`;
   }
 
   function renderAttachment(att) {
@@ -494,9 +556,15 @@
       let data;
       if (kind === 'join') {
         data = await apiPost({ action: 'join', slug: state.slug, display_name: fd.get('display_name'), contact: fd.get('contact'),
-          initials: fd.get('initials') || deriveInitials(fd.get('display_name')), attendee_id: state.attendeeId || undefined });
+          initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
+          pin: fd.get('pin') || undefined, attendee_id: state.attendeeId || undefined });
         state.attendeeId = data.attendee_id;
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+      } else if (kind === 'claim') {
+        data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: fd.get('attendee_id'), pin: fd.get('pin') || undefined });
+        state.attendeeId = data.attendee_id;
+        localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        state.claimingId = null;
       } else if (kind === 'update-settings') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, title: fd.get('title'),
           range_start: fd.get('range_start'), range_end: fd.get('range_end'),
@@ -516,7 +584,7 @@
         state.pendingConfirmSlot = null;
       } else return;
       state.meet = data.meet;
-      if (kind === 'join') restoreAttendeeSelections(state);
+      if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
       render(root, state);
       toast('Saved');
     } catch (err) { toast(err.message, true); }
@@ -587,10 +655,49 @@
     }
     if (action === 'switch-user') {
       state.attendeeId = '';
+      state.claimingId = null;
       localStorage.removeItem(attendeeKey(state.slug));
       state.selectedSlots.clear();
       state.selectedLocations.clear();
       render(root, state);
+      return;
+    }
+    if (action === 'claim-row') {
+      if (state.attendeeId === btn.dataset.attendeeId) {
+        toast('Already signed in as this attendee');
+        return;
+      }
+      state.claimingId = btn.dataset.attendeeId;
+      render(root, state);
+      return;
+    }
+    if (action === 'cancel-claim') {
+      state.claimingId = null;
+      render(root, state);
+      return;
+    }
+    if (action === 'merge-into-me') {
+      const removeId = btn.dataset.removeId;
+      const target = state.meet.attendees.find((a) => a.id === removeId);
+      let pin = '';
+      if (target?.has_pin) {
+        pin = window.prompt('Enter the PIN for the duplicate row you are merging away:') || '';
+        if (!pin) return;
+      } else if (!window.confirm('Merge this duplicate row into your attendee record? Their availability will be combined.')) {
+        return;
+      }
+      try {
+        const data = await apiPost({
+          action: 'merge_attendees', slug: state.slug, keep_id: state.attendeeId, remove_id: removeId,
+          acting_attendee_id: state.attendeeId, pin: pin || undefined,
+        });
+        state.meet = data.meet;
+        state.attendeeId = data.attendee_id;
+        localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        restoreAttendeeSelections(state);
+        render(root, state);
+        toast('Duplicate merged');
+      } catch (err) { toast(err.message, true); }
       return;
     }
     if (action === 'save-availability') {

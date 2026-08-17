@@ -314,6 +314,12 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .data-table th { background: #f8fafc; }
 
+.attendee-table tr.is-self { background: var(--accent-soft); }
+.attendee-table tr.is-selectable:hover { background: #f3f4f6; }
+.attendee-actions { white-space: nowrap; }
+.claim-form, .register-block { margin-top: 0.75rem; }
+.register-block summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
+
 .list-plain { margin: 0; padding-left: 1.1rem; }
 
 .confirmed { border-left: 4px solid var(--good); padding-left: 0.75rem; }

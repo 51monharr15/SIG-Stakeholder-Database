@@ -166,6 +166,7 @@ final class MeetFile
                 $att['display_name'],
                 $att['contact'] ?? ($att['alias'] ?? ''),
                 $att['initials'] ?? '',
+                $att['pin_hash'] ?? '',
             ]);
         }
 
@@ -255,6 +256,7 @@ final class MeetFile
                         'display_name' => $parts[1] ?? 'Guest',
                         'contact' => $parts[2] ?? '',
                         'initials' => $parts[3] ?? '',
+                        'pin_hash' => $parts[4] ?? '',
                     ];
                 }, $buffer);
                 break;
@@ -361,6 +363,7 @@ final class MeetFile
             }
             $attendee['contact'] = $attendee['contact'] ?? '';
             $attendee['initials'] = $attendee['initials'] ?? '';
+            $attendee['pin_hash'] = $attendee['pin_hash'] ?? '';
         }
         unset($attendee);
         return $meet;

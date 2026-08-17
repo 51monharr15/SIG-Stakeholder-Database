@@ -38,6 +38,12 @@ try {
             case 'join':
                 handleJoin($store, $slug, $input);
                 break;
+            case 'claim':
+                handleClaim($store, $slug, $input);
+                break;
+            case 'merge_attendees':
+                handleMergeAttendees($store, $slug, $input);
+                break;
             case 'save_availability':
                 handleSaveAvailability($store, $slug, $input);
                 break;
@@ -108,12 +114,14 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
     $attendeeId = trim((string) ($input['attendee_id'] ?? ''));
     $alias = trim((string) ($input['contact'] ?? ($input['alias'] ?? '')));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
+    $pin = trim((string) ($input['pin'] ?? ''));
 
     $resolvedId = null;
-    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials, &$resolvedId) {
+    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials, $pin, &$resolvedId) {
         $idx = attendeeIndexById($m['attendees'], $attendeeId);
         if ($idx !== null) {
             applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
+            maybeSetAttendeePin($m['attendees'][$idx], $pin);
             $resolvedId = $m['attendees'][$idx]['id'];
             return $m;
         }
@@ -123,18 +131,22 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
             $idx = attendeeIndexById($m['attendees'], $matchedId);
             if ($idx !== null) {
                 applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
+                maybeSetAttendeePin($m['attendees'][$idx], $pin);
                 $resolvedId = $matchedId;
                 return $m;
             }
         }
 
         $resolvedId = MeetFile::generateId('usr');
-        $m['attendees'][] = [
+        $newAttendee = [
             'id' => $resolvedId,
             'display_name' => $displayName,
             'contact' => $alias,
             'initials' => $initials,
+            'pin_hash' => '',
         ];
+        maybeSetAttendeePin($newAttendee, $pin);
+        $m['attendees'][] = $newAttendee;
         return $m;
     });
 
@@ -218,6 +230,142 @@ function matchExistingAttendee(array $attendees, string $displayName, string $co
     }
 
     return null;
+}
+
+function handleClaim(MeetStore $store, string $slug, array $input): void
+{
+    $attendeeId = trim((string) ($input['attendee_id'] ?? ''));
+    $pin = trim((string) ($input['pin'] ?? ''));
+    if ($attendeeId === '') {
+        Response::error('attendee_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($attendeeId, $pin) {
+        $idx = attendeeIndexById($m['attendees'], $attendeeId);
+        if ($idx === null) {
+            throw new \RuntimeException('Attendee not found', 404);
+        }
+        $att = &$m['attendees'][$idx];
+        if (!attendeeHasPin($att)) {
+            if ($pin !== '') {
+                setAttendeePin($att, $pin);
+            }
+            return $m;
+        }
+        if (!verifyAttendeePin($att, $pin)) {
+            throw new \RuntimeException('Incorrect PIN for this attendee', 403);
+        }
+        return $m;
+    });
+
+    Response::json([
+        'ok' => true,
+        'attendee_id' => $attendeeId,
+        'meet' => $store->publicView($meet),
+    ]);
+}
+
+function handleMergeAttendees(MeetStore $store, string $slug, array $input): void
+{
+    $keepId = trim((string) ($input['keep_id'] ?? ''));
+    $removeId = trim((string) ($input['remove_id'] ?? ''));
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $pin = trim((string) ($input['pin'] ?? ''));
+    if ($keepId === '' || $removeId === '' || $keepId === $removeId) {
+        Response::error('keep_id and remove_id required and must differ');
+    }
+    if ($actingId === '' || !in_array($actingId, [$keepId, $removeId], true)) {
+        Response::error('acting_attendee_id must be keep_id or remove_id');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($keepId, $removeId, $actingId, $pin) {
+        $keepIdx = attendeeIndexById($m['attendees'], $keepId);
+        $removeIdx = attendeeIndexById($m['attendees'], $removeId);
+        if ($keepIdx === null || $removeIdx === null) {
+            throw new \RuntimeException('Attendee not found', 404);
+        }
+        $remove = $m['attendees'][$removeIdx];
+        if (attendeeHasPin($remove)) {
+            if (!verifyAttendeePin($remove, $pin)) {
+                throw new \RuntimeException('PIN required to merge the duplicate row', 403);
+            }
+        } elseif ($actingId !== $keepId) {
+            throw new \RuntimeException('Only the row you are keeping can merge an unsecured duplicate', 403);
+        }
+        mergeAttendeeRows($m, $keepId, $removeId);
+        return $m;
+    });
+
+    Response::json([
+        'ok' => true,
+        'attendee_id' => $keepId,
+        'meet' => $store->publicView($meet),
+    ]);
+}
+
+/** @param array<string, mixed> $attendee */
+function attendeeHasPin(array $attendee): bool
+{
+    return !empty($attendee['pin_hash']);
+}
+
+/** @param array<string, mixed> $attendee */
+function verifyAttendeePin(array $attendee, string $pin): bool
+{
+    if (!attendeeHasPin($attendee)) {
+        return true;
+    }
+    if ($pin === '') {
+        return false;
+    }
+    return password_verify($pin, (string) $attendee['pin_hash']);
+}
+
+/** @param array<string, mixed> $attendee */
+function setAttendeePin(array &$attendee, string $pin): void
+{
+    if ($pin === '') {
+        return;
+    }
+    $attendee['pin_hash'] = password_hash($pin, PASSWORD_DEFAULT);
+}
+
+/** @param array<string, mixed> $attendee */
+function maybeSetAttendeePin(array &$attendee, string $pin): void
+{
+    if ($pin === '' || attendeeHasPin($attendee)) {
+        return;
+    }
+    setAttendeePin($attendee, $pin);
+}
+
+/** @param array<string, mixed> $meet */
+function mergeAttendeeRows(array &$meet, string $keepId, string $removeId): void
+{
+    foreach ($meet['availability'] as $slot => $ids) {
+        $hadRemove = in_array($removeId, $ids, true);
+        $ids = array_values(array_filter($ids, fn ($id) => $id !== $removeId));
+        if ($hadRemove && !in_array($keepId, $ids, true)) {
+            $ids[] = $keepId;
+        }
+        if ($ids === []) {
+            unset($meet['availability'][$slot]);
+        } else {
+            $meet['availability'][$slot] = $ids;
+        }
+    }
+
+    $removePrefs = $meet['location_preferences'][$removeId] ?? [];
+    $keepPrefs = $meet['location_preferences'][$keepId] ?? [];
+    $meet['location_preferences'][$keepId] = array_values(array_unique(array_merge($keepPrefs, $removePrefs)));
+    unset($meet['location_preferences'][$removeId]);
+
+    $meet['attendees'] = array_values(array_filter(
+        $meet['attendees'],
+        fn ($att) => ($att['id'] ?? '') !== $removeId
+    ));
 }
 
 function handleSaveAvailability(MeetStore $store, string $slug, array $input): void
