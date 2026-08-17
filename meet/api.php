@@ -182,7 +182,7 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         $fields = [
             'title', 'notes', 'range_start', 'range_end',
             'duration_minutes', 'slot_granularity_minutes',
-            'day_start', 'day_end',
+            'day_start', 'day_end', 'timezone',
             'organizer_intro', 'page_times_intro', 'page_after_intro',
         ];
         foreach ($fields as $field) {

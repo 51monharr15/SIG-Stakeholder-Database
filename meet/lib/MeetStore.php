@@ -133,6 +133,7 @@ final class MeetStore
             'show_weekends' => (bool) ($meet['show_weekends'] ?? false),
             'day_start' => $meet['day_start'] ?? '08:00',
             'day_end' => $meet['day_end'] ?? '20:00',
+            'timezone' => $meet['timezone'] ?? '',
             'organizer_intro' => $meet['organizer_intro'] ?? '',
             'page_times_intro' => $meet['page_times_intro'] ?? '',
             'page_after_intro' => $meet['page_after_intro'] ?? '',

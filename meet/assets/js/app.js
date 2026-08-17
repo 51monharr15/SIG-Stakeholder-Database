@@ -2,7 +2,7 @@
   'use strict';
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const INTRO_PLACEHOLDER = 'Add a short description for attendees — click the pencil or use Organiser settings.';
+  const INTRO_PLACEHOLDER = 'Add a short description for attendees — click the pencil or use Set meeting options.';
   const page = document.body.dataset.page;
 
   document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
@@ -66,6 +66,47 @@
     return ['calendar', 'times', 'after', 'organiser'].includes(t) ? t : null;
   }
 
+  function meetingTz(m) {
+    return (m.timezone && m.timezone.trim()) ? m.timezone.trim() : tz;
+  }
+
+  /** Wall clock in meeting TZ → UTC ISO (for slot keys). */
+  function wallTimeToUtcIso(y, mo, d, h, mi, timeZone) {
+    let t = Date.UTC(y, mo - 1, d, h, mi);
+    for (let i = 0; i < 4; i++) {
+      const p = Object.fromEntries(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+        }).formatToParts(new Date(t)).map((x) => [x.type, x.value])
+      );
+      t += Date.UTC(y, mo - 1, d, h, mi) - Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
+    }
+    return new Date(t).toISOString();
+  }
+
+  function slotIsoFromMeetingDate(dateStr, hm, timeZone) {
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    return wallTimeToUtcIso(y, mo, d, hm.hour, hm.minute, timeZone);
+  }
+
+  function formatSlotInTz(iso, timeZone) {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone,
+    });
+  }
+
+  function formatDayHeadDateStr(dateStr, timeZone) {
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    return new Date(wallTimeToUtcIso(y, mo, d, 12, 0, timeZone)).toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', timeZone,
+    });
+  }
+
+  function formatWallHour(hm) {
+    return `${String(hm.hour).padStart(2, '0')}:${String(hm.minute).padStart(2, '0')}`;
+  }
+
   function setTab(state, tab) {
     state.activeTab = tab;
     history.replaceState(null, '', meetingUrl(state.slug, tab));
@@ -123,7 +164,8 @@
               ${m.confirmed_slot ? '<span class="badge good">Confirmed</span>' : ''}
             </div>
             ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER)}
-            ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotLocal(m.confirmed_slot))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
+            <p class="meta tz-banner">Not before/after times are in <strong>${escapeHtml(meetingTz(m))}</strong> · You are viewing in <strong>${escapeHtml(tz)}</strong></p>
+            ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${meetingTz(m) !== tz ? ` · Your time: ${escapeHtml(formatSlotLocal(m.confirmed_slot))}` : ''}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
             <div class="share-row row">
               <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
               <button type="button" class="secondary" data-action="copy-link">Copy link</button>
@@ -132,7 +174,7 @@
               ${tabBtn('calendar', 'Calendar', state)}
               ${tabBtn('times', 'Matched times', state)}
               ${tabBtn('after', 'After meeting', state)}
-              ${tabBtn('organiser', 'Organiser', state)}
+              ${tabBtn('organiser', 'Set meeting options', state)}
             </nav>
           </div>
         </div>
@@ -206,18 +248,22 @@
   }
 
   function renderOrganiserTab(m) {
+    const mtz = meetingTz(m);
     return `
       <section class="panel stack">
-        <h2 class="section-title">Organiser settings</h2>
+        <h2 class="section-title">Set meeting options</h2>
         <form class="inline-form organizer-form" data-form="update-settings">
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
+            <label>Meeting timezone <span class="label-hint">(IANA name)</span>
+              <input name="timezone" value="${escapeHtml(m.timezone || mtz)}" placeholder="e.g. America/Sao_Paulo" required>
+            </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
             <label>Range start<input type="date" name="range_start" value="${escapeHtml(m.range_start)}"></label>
             <label>Range end<input type="date" name="range_end" value="${escapeHtml(m.range_end)}"></label>
-            <label>Not before<input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
-            <label>Not after<input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+            <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+            <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
           <label>Meeting text <span class="label-hint">(simple HTML — p, br, strong, em, a, ul, li)</span>
@@ -229,7 +275,7 @@
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
             <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence)}</div>
           </details>
-          <button type="submit">Save organiser settings</button>
+          <button type="submit">Save meeting options</button>
         </form>
       </section>`;
   }
@@ -237,6 +283,7 @@
   function renderCalendarTab(m, state, attendee) {
     const dayCount = visibleDayCount();
     const days = getVisibleDays(state.viewStart, dayCount, m.show_weekends);
+    const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
     const saveRow = attendee ? renderSaveRow(state) : '';
@@ -245,7 +292,7 @@
       <section class="panel stack calendar-panel">
         <div class="row meta-line">
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
-          <span>${escapeHtml(m.range_start)} → ${escapeHtml(m.range_end)} · ${m.duration_minutes} min · ${dayCount}-day view</span>
+          <span>${escapeHtml(m.range_start)} → ${escapeHtml(m.range_end)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
         ${!attendee ? renderJoinForm() : `
           <p class="meta">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
@@ -261,14 +308,14 @@
           <div class="cal-header">
             <div class="time-gutter"></div>
             ${days.map((d) => {
-              const iso = toDateIso(d);
-              return `<div class="day-head${recurringSet.has(iso) ? ' recurring' : ''}">${formatDayHead(d)}${recurringSet.has(iso) ? '<br><small>recurring</small>' : ''}</div>`;
+              const dateStr = toDateIso(d);
+              return `<div class="day-head${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
             ${hours.map((hm) => `
-              <div class="time-label">${formatHour(hm)}</div>
-              ${days.map((day) => renderSlotCell(m, state, day, hm, attendee)).join('')}
+              <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
+              ${days.map((day) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz)).join('')}
             `).join('')}
           </div>
         </div>
@@ -283,14 +330,17 @@
     </div>`;
   }
 
-  function renderSlotCell(m, state, day, hm, attendee) {
-    const slotIso = slotIsoFromLocal(day, hm);
+  function renderSlotCell(m, state, dateStr, hm, attendee, mtz) {
+    const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     const ids = m.availability[slotIso] || [];
     const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
     const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
     const names = ids.map((id) => attendeeName(m, id)).join(', ');
+    const tip = names
+      ? `${formatSlotInTz(slotIso, mtz)}${mtz !== tz ? ' · Your time: ' + formatSlotLocal(slotIso) : ''} · ${names}`
+      : `${formatSlotInTz(slotIso, mtz)}${mtz !== tz ? ' · Your time: ' + formatSlotLocal(slotIso) : ''}`;
     return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}"
-      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(names || 'No one yet')}" ${attendee ? '' : 'disabled'}>
+      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
     </button>`;
@@ -298,6 +348,8 @@
 
   function renderTimesTab(m, state, attendee) {
     const sorted = sortSuggestions(m, state.sortOrder);
+    const mtz = meetingTz(m);
+    const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
     return `
       ${renderPageIntro(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Matched times page.')}
       <section class="panel stack">
@@ -315,7 +367,8 @@
         <div class="suggestions-scroll">
           ${sorted.length ? sorted.map((s) => `
             <div class="suggestion">
-              <strong>${escapeHtml(formatSlotLocal(s.slot))}</strong>
+              <strong>${escapeHtml(formatSlotInTz(s.slot, mtz))}</strong>
+              ${mtz !== tz ? `<span class="meta">Your time: ${escapeHtml(formatSlotLocal(s.slot))}</span>` : ''}
               <span class="meta">${s.count} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
               <div class="row suggestion-actions">
                 <button type="button" data-action="jump-slot" data-slot="${escapeHtml(s.slot)}">Show on calendar</button>
@@ -355,7 +408,10 @@
         </details>
         <details open><summary>Confirm final time &amp; location</summary>
           <form class="inline-form" data-form="confirm" id="confirm-form">
-            <label>Slot<input name="confirmed_slot" value="${escapeHtml(m.confirmed_slot || state.pendingConfirmSlot || '')}"></label>
+            <label>Slot <span class="label-hint">(stored as UTC; shown below in meeting &amp; your time)</span>
+              <input name="confirmed_slot" value="${escapeHtml(slotVal)}">
+            </label>
+            ${slotVal ? `<p class="meta">Meeting time (${escapeHtml(mtz)}): <strong>${escapeHtml(formatSlotInTz(slotVal, mtz))}</strong>${mtz !== tz ? ` · Your time: <strong>${escapeHtml(formatSlotLocal(slotVal))}</strong>` : ''}</p>` : ''}
             <label>Location<select name="confirmed_location"><option value="">—</option>
               ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}
             </select></label>
@@ -429,7 +485,9 @@
         data = await apiPost({ action: 'update_meta', slug: state.slug, title: fd.get('title'),
           range_start: fd.get('range_start'), range_end: fd.get('range_end'),
           duration_minutes: Number(fd.get('duration_minutes')), slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
-          day_start: fd.get('day_start'), day_end: fd.get('day_end'), show_weekends: fd.get('show_weekends') === 'on',
+          day_start: fd.get('day_start'), day_end: fd.get('day_end'),
+          timezone: String(fd.get('timezone') || '').trim() || tz,
+          show_weekends: fd.get('show_weekends') === 'on',
           organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
       } else if (kind === 'update-meta') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });

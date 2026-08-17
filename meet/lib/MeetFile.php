@@ -37,6 +37,7 @@ final class MeetFile
             'show_weekends' => false,
             'day_start' => '08:00',
             'day_end' => '20:00',
+            'timezone' => '',
             'organizer_intro' => '',
             'page_times_intro' => '',
             'page_after_intro' => '',
@@ -101,7 +102,7 @@ final class MeetFile
             'id', 'slug', 'title', 'created', 'updated',
             'duration_minutes', 'slot_granularity_minutes',
             'range_start', 'range_end', 'notes',
-            'show_weekends', 'day_start', 'day_end',
+            'show_weekends', 'day_start', 'day_end', 'timezone',
         ];
         foreach ($header as $key) {
             if (!array_key_exists($key, $meet) || $meet[$key] === null || $meet[$key] === '') {
@@ -350,6 +351,7 @@ final class MeetFile
         $meet['show_weekends'] = (bool) ($meet['show_weekends'] ?? false);
         $meet['day_start'] = $meet['day_start'] ?? '08:00';
         $meet['day_end'] = $meet['day_end'] ?? '20:00';
+        $meet['timezone'] = $meet['timezone'] ?? 'UTC';
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
