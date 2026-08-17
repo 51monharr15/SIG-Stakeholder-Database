@@ -3,6 +3,7 @@
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const INTRO_PLACEHOLDER = 'Add a short description for attendees — click the pencil or use Set meeting options.';
+  const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
   const page = document.body.dataset.page;
 
   document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
@@ -40,6 +41,8 @@
       dragging: false,
       dragSelect: true,
       editingIntro: null,
+      headerExpanded: !isTouchUi,
+      lastDayCount: visibleDayCount(),
     };
 
     try {
@@ -58,7 +61,23 @@
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
     root.addEventListener('pointerover', (e) => handlePointerOver(e, root, state));
     window.addEventListener('pointerup', () => { state.dragging = false; });
-    window.addEventListener('resize', () => { if (state.meet) render(root, state); });
+    window.addEventListener('resize', () => {
+      if (!state.meet) return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
+        return;
+      }
+      const dc = visibleDayCount();
+      if (dc === state.lastDayCount) return;
+      state.lastDayCount = dc;
+      render(root, state);
+    });
+  }
+
+  function visibleDayCount() {
+    if (window.innerWidth >= 1200) return 7;
+    if (window.innerWidth >= 900) return 5;
+    return 3;
   }
 
   function tabFromUrl() {
@@ -144,12 +163,6 @@
     return data;
   }
 
-  function visibleDayCount() {
-    if (window.innerWidth >= 1200) return 7;
-    if (window.innerWidth >= 900) return 5;
-    return 3;
-  }
-
   function render(root, state) {
     const m = state.meet;
     const attendee = m.attendees.find((a) => a.id === state.attendeeId);
@@ -161,14 +174,20 @@
           <div class="sticky-top-inner">
             <div class="sticky-head row">
               <h1 class="meet-title">${escapeHtml(m.title)}</h1>
-              ${m.confirmed_slot ? '<span class="badge good">Confirmed</span>' : ''}
+              <div class="row">
+                ${m.confirmed_slot ? '<span class="badge good">Confirmed</span>' : ''}
+                ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : ''}
+                <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy</button>
+              </div>
             </div>
-            ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER)}
-            <p class="meta tz-banner">Not before/after times are in <strong>${escapeHtml(meetingTz(m))}</strong> · You are viewing in <strong>${escapeHtml(tz)}</strong></p>
-            ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${meetingTz(m) !== tz ? ` · Your time: ${escapeHtml(formatSlotLocal(m.confirmed_slot))}` : ''}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
-            <div class="share-row row">
-              <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
-              <button type="button" class="secondary" data-action="copy-link">Copy link</button>
+            <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
+              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER)}
+              <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
+              ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
+              <div class="share-row row desktop-share">
+                <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
+                <button type="button" class="secondary" data-action="copy-link">Copy link</button>
+              </div>
             </div>
             <nav class="tab-nav" role="tablist">
               ${tabBtn('calendar', 'Calendar', state)}
@@ -324,9 +343,12 @@
   }
 
   function renderSaveRow(state) {
+    const hint = isTouchUi
+      ? 'tap slots to select'
+      : 'drag across slots to select a range';
     return `<div class="row save-row">
       <button type="button" data-action="save-availability">Save my availability</button>
-      <span class="meta">${state.selectedSlots.size} slot(s) · drag to select a range</span>
+      <span class="meta">${state.selectedSlots.size} slot(s) · ${hint}</span>
     </div>`;
   }
 
@@ -519,10 +541,16 @@
     if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); return; }
     if (action === 'copy-link') {
       const input = document.getElementById('share-url-input');
+      const link = input?.value || shareUrl(state.slug);
       try {
-        await navigator.clipboard.writeText(input?.value || shareUrl(state.slug));
+        await navigator.clipboard.writeText(link);
         toast('Link copied');
-      } catch (_) { input?.select(); document.execCommand('copy'); toast('Link copied'); }
+      } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); toast('Link copied'); }
+      return;
+    }
+    if (action === 'toggle-header') {
+      state.headerExpanded = !state.headerExpanded;
+      render(root, state);
       return;
     }
     if (action === 'edit-intro') { state.editingIntro = btn.dataset.field; render(root, state); return; }
@@ -619,11 +647,14 @@
   }
 
   function handlePointerDown(e, root, state) {
+    if (e.pointerType !== 'mouse') return;
+    if (e.target.closest('input, textarea, select, form')) return;
     const slot = e.target.closest('[data-action="toggle-slot"]');
     if (!slot || !state.attendeeId) return;
     state.dragging = true;
     state.dragSelect = !state.selectedSlots.has(slot.dataset.slot);
-    toggleSlot(state, slot.dataset.slot);
+    if (state.dragSelect) state.selectedSlots.add(slot.dataset.slot);
+    else state.selectedSlots.delete(slot.dataset.slot);
     render(root, state);
   }
 
@@ -686,6 +717,7 @@
     if (type === 'weekly') return `<label>Every N weeks<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label><label>Weekdays (0=Sun…6=Sat)<input name="weekdays" value="${(rec.weekdays || [1]).join(',')}"></label>`;
     if (type === 'monthly_day') return `<label>Day of month<input type="number" name="day" value="${rec.day || 1}" min="1" max="31"></label><label>Every N months<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label>`;
     if (type === 'monthly_nth_weekday') return `<label>Nth<input type="number" name="nth" value="${rec.nth || 3}"></label><label>Weekday<input type="number" name="weekday" value="${rec.weekday ?? 1}" min="0" max="6"></label><label>Every N months<input type="number" name="interval" value="${rec.interval || 1}" min="1"></label>`;
+    if (type === 'friday_13th') return '<p class="meta">Highlights every calendar date that is both the <strong>13th</strong> of the month and a <strong>Friday</strong> (e.g. for folklore/joke meetings). Rare — usually leave as One-off.</p>';
     return '<p class="meta">No extra fields.</p>';
   }
 

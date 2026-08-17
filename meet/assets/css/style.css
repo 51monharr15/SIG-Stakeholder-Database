@@ -108,6 +108,27 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 0.45rem 0.6rem;
 }
 
+.compact-btn { padding: 0.35rem 0.65rem; font-size: 0.82rem; }
+
+.sticky-extras { display: block; }
+.sticky-extras:not(.is-open) { display: none; }
+
+@media (min-width: 701px) {
+  .sticky-extras { display: block !important; }
+  .sticky-extras:not(.is-open) { display: block !important; }
+  .compact-btn[data-action="toggle-header"] { display: none; }
+  .sticky-head .compact-btn[data-action="copy-link"] { display: none; }
+}
+
+@media (max-width: 700px) {
+  .sticky-top-inner { padding: 0.5rem 0.65rem; }
+  .meet-title { font-size: 1.05rem; }
+  .tab { padding: 0.32rem 0.55rem; font-size: 0.78rem; }
+  .desktop-share { display: none; }
+  .sticky-head { gap: 0.35rem; }
+  .site-footer { padding: 0.4rem 0; font-size: 0.8rem; }
+}
+
 .meet-intro { align-items: flex-start; gap: 0.5rem; margin: 0.5rem 0; display: flex; }
 .tz-banner { margin: 0.25rem 0 0.5rem; font-size: 0.88rem; }
 .meet-intro-body { flex: 1; font-size: 0.95rem; }
