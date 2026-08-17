@@ -38,9 +38,13 @@ These are **only on your PC**. They are not uploaded unless you copy them to the
 
 ## Testing after an update
 
-1. Stop the server (Ctrl+C).
-2. Replace app files (keep your local `data\` if you want to keep test meetings).
-3. Start `php -S localhost:8080` again.
+1. Stop the server (Ctrl+C) in the Command Prompt window.
+2. Get new files: in Git Bash run `cd ~/SIG-Stakeholder-Database` then `git pull`.
+3. Start the server again:
+   ```bat
+   cd C:\Users\Nomis\SIG-Stakeholder-Database\meet
+   C:\php\php.exe -S localhost:8080
+   ```
 4. Hard-refresh the browser (Ctrl+F5).
 
 ## PHP not found?

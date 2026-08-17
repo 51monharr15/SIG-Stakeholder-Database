@@ -4,10 +4,6 @@ require __DIR__ . '/lib/autoload.php';
 
 use Meet\MeetFile;
 
-/**
- * Resolve meeting slug from URL.
- * Supports: /meet/?team-standup  or  /meet/?m=team-standup  or  /meet/team-standup (via rewrite)
- */
 function meet_resolve_slug(): ?string
 {
     if (!empty($_GET['m'])) {
@@ -16,7 +12,11 @@ function meet_resolve_slug(): ?string
 
     $qs = $_SERVER['QUERY_STRING'] ?? '';
     if ($qs !== '' && !str_contains($qs, '=')) {
-        return MeetFile::slugify(urldecode($qs));
+        return MeetFile::slugify(urldecode(explode('&', $qs, 2)[0]));
+    }
+
+    if (preg_match('/^=([^&]+)/', $qs, $m)) {
+        return MeetFile::slugify(urldecode($m[1]));
     }
 
     if (!empty($_GET['slug'])) {
@@ -40,20 +40,19 @@ $title = $slug ? MeetFile::titleFromSlug($slug) : 'Meet Scheduler';
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>"
       data-slug="<?= htmlspecialchars($slug ?? '', ENT_QUOTES, 'UTF-8') ?>">
+  <?php if ($page === 'home'): ?>
   <header class="site-header">
     <div class="wrap">
       <a class="brand" href="./">Meet Scheduler</a>
-      <?php if ($slug): ?>
-        <span class="meet-slug"><?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?></span>
-      <?php endif; ?>
     </div>
   </header>
+  <?php endif; ?>
 
-  <main class="wrap">
+  <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : '' ?>">
     <?php if ($page === 'home'): ?>
       <section class="panel hero">
         <h1>Find a time everyone can make</h1>
-        <p class="lede">Propose availability, compare overlaps, and agree on a place to meet — stored as plain text files, no database required.</p>
+        <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
         <form id="create-form" class="create-form">
           <label>
             Meeting link name
@@ -67,19 +66,6 @@ $title = $slug ? MeetFile::titleFromSlug($slug) : 'Meet Scheduler';
         </form>
         <p class="hint">Or open an existing link: <code>meet/?your-meeting-name</code></p>
       </section>
-
-      <section class="panel">
-        <h2>Facilities</h2>
-        <ul class="feature-list">
-          <li>Calendar grid with local timezone display</li>
-          <li>Suggested slots based on who has already responded</li>
-          <li>Propose physical or video locations; vote by preference</li>
-          <li>Agenda items and decisions to be made</li>
-          <li>Attach AI summaries, transcripts, or recording URLs</li>
-          <li>Repeating patterns: weekly, monthly day, 3rd Monday, every other month, Friday 13th</li>
-          <li>Stable internal ID mapped from your chosen link name</li>
-        </ul>
-      </section>
     <?php else: ?>
       <div id="app" class="app-loading">Loading meeting…</div>
     <?php endif; ?>
@@ -87,7 +73,7 @@ $title = $slug ? MeetFile::titleFromSlug($slug) : 'Meet Scheduler';
 
   <footer class="site-footer">
     <div class="wrap">
-      <small>Plain-text meeting files · local times · no shared database</small>
+      <small>Local times · <span id="footer-tz">…</span></small>
     </div>
   </footer>
 
