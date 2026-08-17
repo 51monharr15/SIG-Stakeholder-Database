@@ -172,7 +172,7 @@
             </div>
             <nav class="tab-nav" role="tablist">
               ${tabBtn('calendar', 'Calendar', state)}
-              ${tabBtn('times', 'Matched times', state)}
+              ${tabBtn('times', 'Meeting details', state)}
               ${tabBtn('after', 'After meeting', state)}
               ${tabBtn('organiser', 'Set meeting options', state)}
             </nav>
@@ -351,10 +351,10 @@
     const mtz = meetingTz(m);
     const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
     return `
-      ${renderPageIntro(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Matched times page.')}
+      ${renderPageIntro(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.')}
       <section class="panel stack">
         <div class="row" style="justify-content:space-between">
-          <h2 class="section-title" style="margin:0">Matched times</h2>
+          <h2 class="section-title" style="margin:0">Meeting details</h2>
           <label class="sort-label">Sort
             <select data-action="sort-order">
               <option value="date"${state.sortOrder === 'date' ? ' selected' : ''}>Soonest first</option>
