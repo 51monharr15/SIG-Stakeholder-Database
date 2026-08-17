@@ -269,11 +269,15 @@ function handleMergeAttendees(MeetStore $store, string $slug, array $input): voi
     if ($keepId === '' || $removeId === '' || $keepId === $removeId) {
         Response::error('keep_id and remove_id required and must differ');
     }
-    if ($actingId === '' || !in_array($actingId, array_column($m['attendees'], 'id'), true)) {
+    if ($actingId === '') {
         Response::error('acting_attendee_id required');
     }
 
     $meet = $store->loadBySlug($slug);
+    if (!in_array($actingId, array_column($meet['attendees'], 'id'), true)) {
+        Response::error('acting_attendee_id not found');
+    }
+
     $meet = $store->update($meet['id'], function (array $m) use ($keepId, $removeId, $actingId, $pin) {
         $keepIdx = attendeeIndexById($m['attendees'], $keepId);
         $removeIdx = attendeeIndexById($m['attendees'], $removeId);
