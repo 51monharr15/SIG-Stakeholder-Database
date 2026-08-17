@@ -30,16 +30,22 @@ $slug = meet_resolve_slug();
 $page = $slug ? 'scheduler' : 'home';
 $title = $slug ? MeetFile::titleFromSlug($slug) : 'Meet Scheduler';
 
+$versionFile = __DIR__ . '/VERSION';
+$appVersion = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'dev';
+$cssVer = is_readable(__DIR__ . '/assets/css/style.css') ? filemtime(__DIR__ . '/assets/css/style.css') : time();
+$jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/assets/js/app.js') : time();
+
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></title>
-  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css?v=<?= (int) $cssVer ?>">
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>"
-      data-slug="<?= htmlspecialchars($slug ?? '', ENT_QUOTES, 'UTF-8') ?>">
+      data-slug="<?= htmlspecialchars($slug ?? '', ENT_QUOTES, 'UTF-8') ?>"
+      data-build="<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>">
   <?php if ($page === 'home'): ?>
   <header class="site-header">
     <div class="wrap">
@@ -73,10 +79,10 @@ $title = $slug ? MeetFile::titleFromSlug($slug) : 'Meet Scheduler';
 
   <footer class="site-footer">
     <div class="wrap">
-      <small>Local times · <span id="footer-tz">…</span></small>
+      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span></small>
     </div>
   </footer>
 
-  <script src="assets/js/app.js" defer></script>
+  <script src="assets/js/app.js?v=<?= (int) $jsVer ?>" defer></script>
 </body>
 </html>
