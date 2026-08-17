@@ -318,6 +318,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .attendee-table tr.is-selectable:hover { background: #f3f4f6; }
 .attendee-actions { white-space: nowrap; }
 .claim-form, .register-block { margin-top: 0.75rem; }
+.register-block summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
 .merge-organiser-panel { margin-top: 0.75rem; }
 .merge-organiser-panel summary { cursor: pointer; font-weight: 600; }
 
