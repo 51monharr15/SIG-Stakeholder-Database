@@ -64,10 +64,10 @@ final class Recurrence
             'none' => 'One-off (no recurrence)',
             'daily' => 'Every ' . max(1, (int) ($recurrence['interval'] ?? 1)) . ' day(s)',
             'weekly' => self::describeWeekly($recurrence, $weekdayNames),
-            'monthly_day' => 'Day ' . ($recurrence['day'] ?? 1) . ' of every ' . max(1, (int) ($recurrence['interval'] ?? 1)) . ' month(s)',
+            'monthly_day' => 'The ' . self::ordinalDay((int) ($recurrence['day'] ?? 1)) . ' of ' . self::monthsLabel((int) ($recurrence['interval'] ?? 1)),
             'monthly_nth_weekday' => self::nthLabel((int) ($recurrence['nth'] ?? 1)) . ' '
                 . ($weekdayNames[(int) ($recurrence['weekday'] ?? 1)] ?? 'weekday')
-                . ' every ' . max(1, (int) ($recurrence['interval'] ?? 1)) . ' month(s)',
+                . ' of ' . self::monthsLabel((int) ($recurrence['interval'] ?? 1)),
             'friday_13th' => 'Every Friday the 13th',
             'custom_dates' => 'Specific dates (' . count($recurrence['dates'] ?? []) . ')',
             default => 'Custom recurrence',
@@ -206,8 +206,24 @@ final class Recurrence
             3 => '3rd',
             4 => '4th',
             5 => '5th',
-            -1 => 'Last',
+            -1 => 'last',
             default => $nth . 'th',
         };
+    }
+
+    private static function ordinalDay(int $day): string
+    {
+        return match ($day) {
+            1, 21, 31 => $day . 'st',
+            2, 22 => $day . 'nd',
+            3, 23 => $day . 'rd',
+            default => $day . 'th',
+        };
+    }
+
+    private static function monthsLabel(int $interval): string
+    {
+        $n = max(1, $interval);
+        return $n === 1 ? 'every month' : "every {$n} months";
     }
 }

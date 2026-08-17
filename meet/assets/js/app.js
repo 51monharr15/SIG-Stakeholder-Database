@@ -708,7 +708,7 @@
   }
 
   function recurrenceOptions(current) {
-    return [['none', 'One-off'], ['weekly', 'Weekly'], ['monthly_day', 'Day of month'], ['monthly_nth_weekday', 'Nth weekday'], ['friday_13th', 'Friday 13th']]
+    return [['none', 'One-off'], ['weekly', 'Weekly'], ['monthly_day', 'Day of month'], ['monthly_nth_weekday', 'Nth weekday'], ['friday_13th', 'Friday 13th only (rare)']]
       .map(([v, l]) => `<option value="${v}"${v === current ? ' selected' : ''}>${l}</option>`).join('');
   }
 
