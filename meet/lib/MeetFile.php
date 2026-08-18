@@ -372,7 +372,7 @@ final class MeetFile
         $meet['show_weekends'] = (bool) ($meet['show_weekends'] ?? false);
         $meet['day_start'] = $meet['day_start'] ?? '08:00';
         $meet['day_end'] = $meet['day_end'] ?? '20:00';
-        $meet['timezone'] = $meet['timezone'] ?? '';
+        $meet['timezone'] = Timezone::normalize((string) ($meet['timezone'] ?? ''));
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';

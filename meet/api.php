@@ -5,6 +5,7 @@ require __DIR__ . '/lib/autoload.php';
 use Meet\MeetFile;
 use Meet\MeetStore;
 use Meet\Response;
+use Meet\Timezone;
 
 header('X-Content-Type-Options: nosniff');
 
@@ -100,6 +101,10 @@ function handleCreate(MeetStore $store, array $input): void
     if (!empty($input['recurrence']) && is_array($input['recurrence'])) {
         $meet['recurrence'] = $input['recurrence'];
     }
+    $clientTz = trim((string) ($input['timezone'] ?? ($input['client_timezone'] ?? '')));
+    if ($clientTz !== '') {
+        $meet['timezone'] = Timezone::normalize($clientTz);
+    }
     $store->save($meet);
     Response::json(['ok' => true, 'slug' => $meet['slug'], 'meet' => $store->publicView($meet)]);
 }
@@ -130,7 +135,8 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
     $pin = trim((string) ($input['pin'] ?? ''));
 
     $resolvedId = null;
-    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials, $pin, &$resolvedId) {
+    $clientTz = trim((string) ($input['client_timezone'] ?? ($input['timezone'] ?? '')));
+    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $attendeeId, $alias, $initials, $pin, $clientTz, &$resolvedId) {
         $idx = attendeeIndexById($m['attendees'], $attendeeId);
         if ($idx !== null) {
             applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
@@ -162,6 +168,9 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         ];
         maybeSetAttendeePin($newAttendee, $pin);
         $m['attendees'][] = $newAttendee;
+        if ($isFirst || !Timezone::isValid((string) ($m['timezone'] ?? ''))) {
+            $m['timezone'] = Timezone::normalize((string) ($m['timezone'] ?? ''), $clientTz !== '' ? $clientTz : 'UTC');
+        }
         return $m;
     });
 
@@ -513,6 +522,9 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
             if (array_key_exists($field, $input)) {
                 $m[$field] = $input[$field];
             }
+        }
+        if (array_key_exists('timezone', $input)) {
+            $m['timezone'] = Timezone::normalize((string) $input['timezone']);
         }
         if (array_key_exists('show_weekends', $input)) {
             $m['show_weekends'] = (bool) $input['show_weekends'];

@@ -2,6 +2,20 @@
   'use strict';
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const TZ_ALIASES = {
+    EDT: 'America/New_York', EST: 'America/New_York',
+    CDT: 'America/Chicago', CST: 'America/Chicago',
+    MDT: 'America/Denver', MST: 'America/Denver',
+    PDT: 'America/Los_Angeles', PST: 'America/Los_Angeles',
+    BST: 'Europe/London', GMT: 'UTC',
+  };
+  const COMMON_TIMEZONES = [
+    'UTC',
+    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    'America/Toronto', 'America/Sao_Paulo',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+    'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney',
+  ];
   const INTRO_PLACEHOLDER = 'Add a short description for attendees — use Set meeting options.';
   const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
   const page = document.body.dataset.page;
@@ -19,7 +33,7 @@
       e.preventDefault();
       const data = new FormData(e.target);
       try {
-        const res = await apiPost({ action: 'create', title: String(data.get('title') || '').trim() });
+        const res = await apiPost({ action: 'create', title: String(data.get('title') || '').trim(), timezone: tz });
         window.location.href = meetingUrl(res.slug);
       } catch (err) {
         alert(err.message);
@@ -91,6 +105,7 @@
       if (activeTab === 'calendar') state.scrollCalendarOnRender = true;
       restoreAttendeeSelections(state);
       state.viewStart = calendarMinStart(state.meet);
+      await repairMeetingTimezone(state);
       render(root, state);
     } catch (err) {
       root.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
@@ -126,8 +141,61 @@
     return ['calendar', 'times', 'after', 'organiser'].includes(t) ? t : null;
   }
 
+  function isValidIanaTimezone(id) {
+    if (!id) return false;
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: id });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function normalizeTimezone(raw, fallback = tz) {
+    const s = String(raw || '').trim();
+    if (!s) return isValidIanaTimezone(fallback) ? fallback : 'UTC';
+    const alias = TZ_ALIASES[s.toUpperCase()];
+    if (alias) return alias;
+    if (isValidIanaTimezone(s)) return s;
+    return isValidIanaTimezone(fallback) ? fallback : 'UTC';
+  }
+
+  function timezoneLabel(id) {
+    try {
+      const short = new Intl.DateTimeFormat('en', { timeZone: id, timeZoneName: 'short' })
+        .formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
+      return short ? `${id} (${short})` : id;
+    } catch (_) {
+      return id;
+    }
+  }
+
+  function timezoneOptions(selected) {
+    const current = normalizeTimezone(selected);
+    const all = typeof Intl.supportedValuesOf === 'function'
+      ? Intl.supportedValuesOf('timeZone')
+      : COMMON_TIMEZONES;
+    const ids = [...new Set([current, tz, ...COMMON_TIMEZONES, ...all])].sort();
+    return ids.map((id) => `<option value="${escapeHtml(id)}"${id === current ? ' selected' : ''}>${escapeHtml(timezoneLabel(id))}</option>`).join('');
+  }
+
+  async function repairMeetingTimezone(state) {
+    if (!state.meet.timezone_needs_save) return;
+    const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+    if (!me?.is_organizer) return;
+    try {
+      const data = await apiPost({
+        action: 'update_meta',
+        slug: state.slug,
+        acting_attendee_id: state.attendeeId,
+        timezone: normalizeTimezone(state.meet.timezone),
+      });
+      state.meet = data.meet;
+    } catch (_) { /* display still uses normalized tz */ }
+  }
+
   function meetingTz(m) {
-    return (m.timezone && m.timezone.trim()) ? m.timezone.trim() : tz;
+    return normalizeTimezone(m.timezone);
   }
 
   /** Wall clock in meeting TZ → UTC ISO (for slot keys). */
@@ -303,29 +371,28 @@
 
   function tabNavItems(m, attendee) {
     const showOrg = canShowOrganiserTab(m, attendee);
-    const numbered = !m.attendees.length;
     const items = [];
     if (showOrg) {
       items.push({
         id: 'organiser',
-        label: numbered ? '1. Set meeting options' : 'Meeting options',
+        label: '1. Set meeting options',
         tip: TAB_TIPS.organiser,
       });
     }
     items.push(
       {
         id: 'calendar',
-        label: numbered ? '2. Choose calendar times' : 'Choose calendar times',
+        label: '2. Choose calendar times',
         tip: TAB_TIPS.calendar,
       },
       {
         id: 'times',
-        label: numbered ? '3. Availability, location & agenda' : 'Availability, location & agenda',
+        label: '3. Availability, location & agenda',
         tip: TAB_TIPS.times,
       },
       {
         id: 'after',
-        label: numbered ? '4. After meeting' : 'After meeting',
+        label: '4. After meeting',
         tip: TAB_TIPS.after,
       },
     );
@@ -420,13 +487,10 @@
     return `
       <section class="panel stack">
         <h2 class="section-title">Set meeting options</h2>
-        ${!m.attendees.length ? '<p class="meta">Step 1: save options below. Step 2: add attendees (at the bottom of this page or on <strong>Choose calendar times</strong>).</p>' : ''}
+        ${!m.attendees.length ? '<p class="meta">Step 1: save options below. Step 2: add attendees (at the bottom of this page or on <strong>2. Choose calendar times</strong>).</p>' : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
-            <label>Meeting timezone <span class="label-hint">(IANA name)</span>
-              <input name="timezone" value="${escapeHtml(m.timezone || mtz)}" placeholder="e.g. America/Sao_Paulo" required>
-            </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots on the calendar.">Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
             ${helpToggle('calendar times', 'Set the <strong>meeting length</strong> and <strong>grid step</strong> (how finely people mark availability). On the calendar, attendees tap every slot when they are free — if someone is only free for part of a meeting window, they should mark just those slots.')}
@@ -434,6 +498,13 @@
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
+          <details class="timezone-block">
+            <summary>Calendar hours timezone <span class="label-hint">(defaults to yours: ${escapeHtml(tz)})</span></summary>
+            <p class="meta">Availability is stored in UTC. The grid &ldquo;not before/after&rdquo; hours use this timezone so everyone marks the same slots. Each person also sees times in their own local timezone.</p>
+            <label>Timezone
+              <select name="timezone">${timezoneOptions(m.timezone)}</select>
+            </label>
+          </details>
           <label>Add a short description for attendees <span class="label-hint">(simple HTML)</span>
             ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
             <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
@@ -472,11 +543,6 @@
           <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
         ${renderAttendeesSection(m, state, attendee)}
-        ${attendee ? `
-          <p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-            ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : ''}
-            <button type="button" class="secondary compact-btn" data-action="switch-user">Switch / add attendee</button>
-          </p>` : ''}
         ${saveRow}
         <div class="calendar-toolbar">
           <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
@@ -790,7 +856,7 @@
       </section>`;
   }
 
-  function renderAddAttendeeForm(signedIn) {
+  function renderAddAttendeeForm(signedIn, attendee) {
     const modeRow = signedIn ? '' : `
         <fieldset class="add-mode-row">
           <legend class="label-hint">Adding</legend>
@@ -805,10 +871,13 @@
           </label>`;
     const extras = signedIn ? '' : `
         <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link. They claim their row with <strong>This is me</strong>.</p>`;
+    const intro = signedIn
+      ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser. Use this form to add <strong>someone else</strong> — you are already listed above.</p>`
+      : '<p class="meta">Add yourself as an attendee, or propose someone else as a potential attendee.</p>';
     return `
         <div class="add-attendee-block">
           <h3 class="section-title">Add new attendee</h3>
-          <p class="meta">Add yourself as an attendee, or propose someone else as a potential attendee.</p>
+          ${intro}
           <form class="inline-form add-attendee-form" data-form="add-attendee">
             ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
             ${modeRow}
@@ -844,6 +913,10 @@
     return `
       <div class="attendee-block stack">
         <h2 class="section-title">Registered attendees</h2>
+        ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser
+          ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : '<span class="badge" title="PIN set">PIN</span>'}
+          <button type="button" class="secondary compact-btn" data-action="switch-user">Switch user</button>
+        </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
           <table class="data-table attendee-table">
@@ -855,7 +928,7 @@
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${renderAddAttendeeForm(signedIn)}
+        ${renderAddAttendeeForm(signedIn, attendee)}
         ${renderContinueToCalendar(state)}
       </div>`;
   }
@@ -978,6 +1051,10 @@
     const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
+    if (isSelf && !a.has_pin) {
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>`);
+    }
+
     if (!signedIn) {
       if (!current || isSelf) {
         actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
@@ -1044,6 +1121,7 @@
           action: 'join', slug: state.slug,
           display_name: fd.get('display_name'), contact: fd.get('contact'),
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
+          client_timezone: tz,
         };
         if (mode === 'self') {
           payload.pin = fd.get('pin') || undefined;
@@ -1063,7 +1141,7 @@
         data = await apiPost({ action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId, title: fd.get('title'),
           duration_minutes: Number(fd.get('duration_minutes')), slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
           day_start: fd.get('day_start'), day_end: fd.get('day_end'),
-          timezone: String(fd.get('timezone') || '').trim() || tz,
+          timezone: normalizeTimezone(fd.get('timezone')),
           show_weekends: fd.get('show_weekends') === 'on',
           organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
       } else if (kind === 'update-meta') {
@@ -1546,7 +1624,11 @@
   function startOfDay(date) { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
   function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
   function meetingTodayStr(m) {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: meetingTz(m) }).format(new Date());
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: meetingTz(m) }).format(new Date());
+    } catch (_) {
+      return new Intl.DateTimeFormat('en-CA').format(new Date());
+    }
   }
   function parseDateIsoLocal(iso) {
     const [y, mo, d] = iso.split('-').map(Number);

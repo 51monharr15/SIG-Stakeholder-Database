@@ -568,6 +568,20 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   cursor: not-allowed;
 }
 
+.timezone-block {
+  margin-top: 0.25rem;
+}
+
+.timezone-block summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.form-grid .timezone-block,
+.organizer-form .timezone-block {
+  grid-column: 1 / -1;
+}
+
 .setup-next-step {
   margin-top: 1rem;
   padding-top: 0.75rem;
