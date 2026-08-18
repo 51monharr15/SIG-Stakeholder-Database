@@ -35,6 +35,9 @@ try {
             case 'create':
                 handleCreate($store, $input);
                 break;
+            case 'list_meetings':
+                handleListMeetings($store, $input);
+                break;
             case 'join':
                 handleJoin($store, $slug, $input);
                 break;
@@ -93,6 +96,18 @@ function handleCreate(MeetStore $store, array $input): void
     }
     $store->save($meet);
     Response::json(['ok' => true, 'slug' => $meet['slug'], 'meet' => $store->publicView($meet)]);
+}
+
+function handleListMeetings(MeetStore $store, array $input): void
+{
+    $displayName = trim((string) ($input['display_name'] ?? ''));
+    $pin = trim((string) ($input['pin'] ?? ''));
+    if ($displayName === '' || $pin === '') {
+        Response::error('Name and PIN are required');
+    }
+
+    $meetings = $store->listMeetingsForOrganizer($displayName, $pin);
+    Response::json(['ok' => true, 'meetings' => $meetings]);
 }
 
 function handleJoin(MeetStore $store, string $slug, array $input): void

@@ -48,6 +48,15 @@ body {
 .lede { color: var(--muted); }
 
 .create-form { display: grid; gap: 0.75rem; max-width: 420px; margin-top: 1rem; }
+.hero-divider { margin: 1.25rem 0; border: none; border-top: 1px solid var(--line); }
+.list-meetings-result { margin-top: 0.75rem; max-width: 420px; }
+.list-meetings-result ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
+.fmt-help { margin: 0.35rem 0; font-size: 0.88rem; }
+.fmt-help summary { cursor: pointer; display: inline-block; font-weight: 600; }
+.field-help { margin: 0.25rem 0 0.5rem; font-size: 0.88rem; }
+.weekday-checks { display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; margin: 0.35rem 0; }
+.weekday-checks label { font-size: 0.9rem; }
+.suggestion.partial { border-left: 3px solid #f59e0b; padding-left: 0.65rem; }
 .create-form label { display: grid; gap: 0.35rem; font-size: 0.9rem; }
 
 input, textarea, select, button { font: inherit; }

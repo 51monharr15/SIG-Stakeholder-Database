@@ -25,6 +25,33 @@
         alert(err.message);
       }
     });
+
+    document.getElementById('list-meetings-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const box = document.getElementById('list-meetings-result');
+      try {
+        const res = await apiPost({
+          action: 'list_meetings',
+          display_name: data.get('display_name'),
+          pin: data.get('pin'),
+        });
+        if (!box) return;
+        box.hidden = false;
+        if (!res.meetings?.length) {
+          box.innerHTML = '<p class="meta">No meetings found for that name and PIN. Check spelling, PIN, and that you joined as organiser with a PIN set.</p>';
+          return;
+        }
+        box.innerHTML = `<p class="meta">${res.meetings.length} meeting(s):</p><ul>${
+          res.meetings.map((m) => `<li><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a> <span class="meta">(${escapeHtml(m.slug)})</span></li>`).join('')
+        }</ul>`;
+      } catch (err) {
+        if (box) {
+          box.hidden = false;
+          box.innerHTML = `<p class="meta">${escapeHtml(err.message)}</p>`;
+        }
+      }
+    });
   }
 
   async function initScheduler(slug) {
@@ -252,12 +279,22 @@
       </div>`;
   }
 
+  function textEntryHelp() {
+    return `
+      <details class="fmt-help">
+        <summary>Help — meeting text</summary>
+        <p class="meta">Enter plain text here. Line breaks in the box will show as breaks on the page. Use the buttons to insert formatting: highlighted text is wrapped when you click Bold, Italic, Paragraph, or Line break. Allowed tags: paragraph, line break, bold, italic, links, and lists. Other HTML is removed for safety.</p>
+      </details>`;
+  }
+
   function formatToolbar(field) {
     return `
+      ${textEntryHelp()}
       <div class="fmt-toolbar" data-field="${field}">
-        <button type="button" class="secondary fmt-btn" data-fmt="strong" title="Strong"><b>B</b></button>
-        <button type="button" class="secondary fmt-btn" data-fmt="em" title="Emphasis"><i>I</i></button>
-        <button type="button" class="secondary fmt-btn" data-fmt="br" title="Line break">BR</button>
+        <button type="button" class="secondary fmt-btn" data-fmt="strong" title="Bold">Bold</button>
+        <button type="button" class="secondary fmt-btn" data-fmt="em" title="Italic">Italic</button>
+        <button type="button" class="secondary fmt-btn" data-fmt="p" title="Paragraph">Paragraph</button>
+        <button type="button" class="secondary fmt-btn" data-fmt="br" title="Line break">Line break</button>
         <button type="button" class="secondary fmt-btn" data-fmt="a" title="Link">Link</button>
         <button type="button" class="secondary fmt-btn" data-fmt="ul" title="Bullet list">List</button>
       </div>`;
@@ -276,19 +313,21 @@
             </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
+            <details class="field-help"><summary>Help — calendar times</summary>
+              <p class="meta">Attendees select time in <strong>grid step</strong> chunks (e.g. every 15 minutes). A full meeting needs enough consecutive chunks to cover <strong>meeting length</strong> (e.g. four 15-minute chunks for one hour). Someone can mark only part of that window — partial availability is shown on the Meeting details tab.</p>
+            </details>
             <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
-          <label>Meeting text <span class="label-hint">(simple HTML — see note below)</span>
+          <label>Meeting text <span class="label-hint">(simple HTML)</span>
             ${formatToolbar('organizer_intro')}
             <textarea name="organizer_intro" rows="4">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
-          <p class="meta">Allowed tags: <code>p</code>, <code>br</code>, <code>strong</code>, <code>em</code>, <code>a</code>, <code>ul</code>, <code>ol</code>, <code>li</code> (and <code>b</code>/<code>i</code>). Inline CSS and other tags are stripped for safety — use plain formatting only.</p>
           <details>
             <summary>Recurrence</summary>
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
-            <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence)}</div>
+            <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
           </details>
           <button type="submit">Save meeting options</button>
         </form>
@@ -358,8 +397,8 @@
     const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
     const names = ids.map((id) => attendeeName(m, id)).join(', ');
     const tip = names
-      ? `${formatSlotInTz(slotIso, mtz)}${mtz !== tz ? ' · Your time: ' + formatSlotLocal(slotIso) : ''} · ${names}`
-      : `${formatSlotInTz(slotIso, mtz)}${mtz !== tz ? ' · Your time: ' + formatSlotLocal(slotIso) : ''}`;
+      ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
+      : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
     return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}"
       data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
@@ -367,8 +406,41 @@
     </button>`;
   }
 
+  function renderFullSuggestion(m, s, mtz) {
+    return `
+      <div class="suggestion">
+        <strong>${escapeHtml(formatSlotInTz(s.slot, mtz))}</strong>
+        <span class="meta">${escapeHtml(formatSlotLocal(s.slot))} · ${escapeHtml(formatSlotUtc(s.slot))}</span>
+        <span class="meta">${s.count} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
+        <div class="row suggestion-actions">
+          <button type="button" data-action="jump-slot" data-slot="${escapeHtml(s.slot)}">Show on calendar</button>
+          <button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(s.slot)}">Use as confirmed time</button>
+        </div>
+      </div>`;
+  }
+
+  function renderPartialSuggestion(m, p, mtz) {
+    const lines = [];
+    if (p.attendees_full?.length) {
+      lines.push(`Full for whole meeting: ${p.attendees_full.map((id) => attendeeLabelById(m, id)).join(', ')}`);
+    }
+    (p.attendees_partial || []).forEach((a) => {
+      lines.push(`${attendeeLabelById(m, a.id)}: ${a.slots_marked} of ${a.slots_needed} time chunks`);
+    });
+    return `
+      <div class="suggestion partial">
+        <strong>${escapeHtml(formatSlotInTz(p.slot, mtz))}</strong>
+        <span class="meta">${escapeHtml(formatSlotLocal(p.slot))} · ${escapeHtml(formatSlotUtc(p.slot))}</span>
+        <span class="meta">${escapeHtml(lines.join(' · '))}</span>
+        <div class="row suggestion-actions">
+          <button type="button" data-action="jump-slot" data-slot="${escapeHtml(p.slot)}">Show on calendar</button>
+        </div>
+      </div>`;
+  }
+
   function renderTimesTab(m, state, attendee) {
     const sorted = sortSuggestions(m, state.sortOrder);
+    const partial = sortPartialSuggestions(m, state.sortOrder);
     const mtz = meetingTz(m);
     const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
     return `
@@ -383,18 +455,14 @@
             </select>
           </label>
         </div>
-        <p class="meta">Overlaps so far. You can still pick any slot on the <button type="button" class="linkish" data-action="tab" data-tab="calendar">calendar</button>.</p>
+        <p class="meta">Full overlaps need everyone free for the whole meeting length. Partial overlaps are noted below.</p>
+        <h3 class="section-title">Everyone free (full meeting)</h3>
         <div class="suggestions-scroll">
-          ${sorted.length ? sorted.map((s) => `
-            <div class="suggestion">
-              <strong>${escapeHtml(formatSlotInTz(s.slot, mtz))}</strong>
-              ${mtz !== tz ? `<span class="meta">Your time: ${escapeHtml(formatSlotLocal(s.slot))}</span>` : ''}
-              <span class="meta">${s.count} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
-              <div class="row suggestion-actions">
-                <button type="button" data-action="jump-slot" data-slot="${escapeHtml(s.slot)}">Show on calendar</button>
-                <button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(s.slot)}">Use as confirmed time</button>
-              </div>
-            </div>`).join('') : '<p class="meta">No matches yet.</p>'}
+          ${sorted.length ? sorted.map((s) => renderFullSuggestion(m, s, mtz)).join('') : '<p class="meta">No full overlaps yet.</p>'}
+        </div>
+        <h3 class="section-title">Partial availability</h3>
+        <div class="suggestions-scroll">
+          ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
       ${renderAttendeesSection(m, state, attendee, { mode: 'details' })}
@@ -464,9 +532,10 @@
         <label>Your name<input name="display_name" required></label>
         <label>Initials (optional)<input name="initials" maxlength="4"></label>
         <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
-        <label>PIN (optional) <span class="label-hint">(numbers only — secures your row on other devices)</span>
+        <label>PIN (optional) <span class="label-hint">(numbers only)</span>
           <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="Optional">
         </label>
+        <p class="meta">If you may need to recover this meeting from the home page later, <strong>set a PIN now</strong>. You will need this <strong>name and PIN</strong> on the home page under List my meetings if you lose the link. No PIN means link-only access.</p>
       </div>
       <button type="submit">Register as new attendee</button>
     </form>`;
@@ -774,6 +843,7 @@
     const sel = ta.value.slice(start, end);
     let insert = sel;
     if (fmt === 'br') insert = '<br>';
+    else if (fmt === 'p') insert = `<p>${sel || 'text'}</p>`;
     else if (fmt === 'strong') insert = `<strong>${sel || 'text'}</strong>`;
     else if (fmt === 'em') insert = `<em>${sel || 'text'}</em>`;
     else if (fmt === 'a') {
@@ -789,7 +859,19 @@
     if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
     if (e.target.name === 'recurrence_type') {
       const extra = root.querySelector('#recurrence-extra');
-      if (extra) extra.innerHTML = recurrenceExtraFields({ type: e.target.value });
+      const showWeekends = root.querySelector('[name="show_weekends"]')?.checked ?? false;
+      if (extra) extra.innerHTML = recurrenceExtraFields({ type: e.target.value }, showWeekends);
+      return;
+    }
+    if (e.target.name === 'show_weekends') {
+      root.querySelectorAll('#weekday-checks input[type="checkbox"]').forEach((cb) => {
+        const v = Number(cb.value);
+        const weekend = v === 0 || v === 6;
+        if (weekend) {
+          cb.disabled = !e.target.checked;
+          if (!e.target.checked) cb.checked = false;
+        }
+      });
       return;
     }
     if (e.target.matches('[data-action="toggle-organizer"]')) {
@@ -832,6 +914,13 @@
 
   function toggleSlot(state, slot) {
     state.selectedSlots.has(slot) ? state.selectedSlots.delete(slot) : state.selectedSlots.add(slot);
+  }
+
+  function sortPartialSuggestions(m, order) {
+    const list = (m.suggestions?.partial_slots || []).map((s) => ({ ...s }));
+    if (order === 'names') list.sort((a, b) => attendeeName(m, (a.attendees_full || [])[0] || '').localeCompare(attendeeName(m, (b.attendees_full || [])[0] || '')) || a.slot.localeCompare(b.slot));
+    else list.sort((a, b) => a.slot.localeCompare(b.slot));
+    return list;
   }
 
   function sortSuggestions(m, order) {
@@ -892,15 +981,12 @@
     ].map(([v, l]) => `<option value="${v}"${v === current ? ' selected' : ''}>${l}</option>`).join('');
   }
 
-  function recurrenceExtraFields(rec) {
+  function recurrenceExtraFields(rec, showWeekends = false) {
     const type = rec.type || 'none';
     if (type === 'weekly') {
       return `
         <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="52"> week(s)</label>
-        <label>On these days <span class="label-hint">(comma-separated day names)</span>
-          <input name="weekdays" value="${weekdaysToNames(rec.weekdays || [1])}">
-        </label>
-        <p class="meta">Use day names (<strong>Monday</strong>, <strong>Tuesday</strong>, …) separated by commas. If you use numbers instead: <strong>Sunday&nbsp;=&nbsp;0</strong>, Monday&nbsp;=&nbsp;1, … Saturday&nbsp;=&nbsp;6 — Monday is <em>not</em> 0. Example: <code>Monday, Wednesday</code> for every Mon and Wed in the pattern.</p>`;
+        ${weekdayCheckboxes(rec, showWeekends)}`;
     }
     if (type === 'monthly_day') {
       return `
@@ -921,18 +1007,30 @@
     return '<p class="meta">Pick a time everyone can make, then confirm it. Recurrence marks similar future dates on the calendar.</p>';
   }
 
-  function weekdaysToNames(nums) {
-    return (nums || [1]).map((n) => WEEKDAYS[Number(n)] || n).join(', ');
+  function weekdayCheckboxes(rec, showWeekends) {
+    const selected = new Set(rec.weekdays || [1]);
+    return `
+      <label>On these days</label>
+      <div class="weekday-checks" id="weekday-checks">
+        ${WEEKDAYS.map((d, i) => {
+          const weekend = i === 0 || i === 6;
+          const disabled = !showWeekends && weekend;
+          return `<label><input type="checkbox" name="weekday_${i}" value="${i}"${selected.has(i) ? ' checked' : ''}${disabled ? ' disabled' : ''}> ${d}</label>`;
+        }).join('')}
+      </div>
+      ${!showWeekends ? '<p class="meta">To include Saturday or Sunday, turn on <strong>Include weekends</strong> above.</p>' : ''}`;
   }
 
-  function weekdaysFromNames(str) {
-    const parts = String(str).split(',').map((s) => s.trim()).filter(Boolean);
-    return parts.map((p) => {
-      const i = WEEKDAYS.findIndex((d) => d.toLowerCase() === p.toLowerCase());
-      if (i >= 0) return i;
-      const n = Number(p);
-      return Number.isNaN(n) ? 1 : n;
-    });
+  function weekdaysFromForm(fd) {
+    const weekdays = [];
+    for (let i = 0; i < 7; i++) {
+      if (fd.get(`weekday_${i}`) !== null) weekdays.push(i);
+    }
+    return weekdays;
+  }
+
+  function weekdaysToNames(nums) {
+    return (nums || [1]).map((n) => WEEKDAYS[Number(n)] || n).join(', ');
   }
 
   function buildRecurrenceFromForm(fd) {
@@ -940,7 +1038,8 @@
     const base = { type };
     if (type === 'weekly') {
       base.interval = Math.max(1, Math.min(52, Number(fd.get('interval') || 1)));
-      base.weekdays = weekdaysFromNames(fd.get('weekdays'));
+      const weekdays = weekdaysFromForm(fd);
+      base.weekdays = weekdays.length ? weekdays : [1];
     } else if (type === 'monthly_day') {
       base.day = Math.max(1, Math.min(31, Number(fd.get('day') || 1)));
       base.interval = Math.max(1, Math.min(24, Number(fd.get('interval') || 1)));
@@ -994,9 +1093,15 @@
   function shareUrl(slug) { return meetingUrl(slug); }
   function slugify(v) { return String(v).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'meet'; }
 
+  function formatSlotUtc(iso) {
+    const d = new Date(iso);
+    return d.toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC');
+  }
+
   function sanitizeHtml(html) {
+    const withBreaks = String(html).replace(/\r\n/g, '\n').replace(/\n/g, '<br>');
     const allowed = new Set(['P', 'BR', 'STRONG', 'EM', 'B', 'I', 'UL', 'OL', 'LI', 'A', 'SPAN', 'DIV']);
-    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
+    const doc = new DOMParser().parseFromString(`<div>${withBreaks}</div>`, 'text/html');
     doc.body.querySelectorAll('*').forEach((el) => {
       if (!allowed.has(el.tagName)) el.replaceWith(...el.childNodes);
       else if (el.tagName === 'A') {

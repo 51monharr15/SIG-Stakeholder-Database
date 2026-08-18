@@ -113,7 +113,7 @@ final class MeetStore
 
     public function publicView(array $meet): array
     {
-        $suggestions = $this->buildSuggestions($meet);
+        $suggestions = Availability::buildSuggestions($meet);
         $today = gmdate('Y-m-d');
         $rangeStart = max($meet['range_start'], $today);
         $rangeEnd = gmdate('Y-m-d', strtotime('+2 years'));
@@ -165,41 +165,51 @@ final class MeetStore
         ];
     }
 
-    private function buildSuggestions(array $meet): array
+    public function listMeetingsForOrganizer(string $displayName, string $pin): array
     {
-        $slotCounts = [];
-        foreach ($meet['availability'] as $slot => $attendeeIds) {
-            $slotCounts[$slot] = count($attendeeIds);
+        $nameKey = strtolower(trim($displayName));
+        $pin = preg_replace('/\D/', '', $pin) ?? '';
+        if ($nameKey === '' || $pin === '') {
+            return [];
         }
-        arsort($slotCounts);
 
-        $locationCounts = [];
-        foreach ($meet['location_preferences'] as $attendeeId => $locationIds) {
-            foreach ($locationIds as $locId) {
-                $locationCounts[$locId] = ($locationCounts[$locId] ?? 0) + 1;
+        $dir = $this->dataDir . '/meets';
+        if (!is_dir($dir)) {
+            return [];
+        }
+
+        $results = [];
+        foreach (glob($dir . '/*.meet') ?: [] as $path) {
+            $content = file_get_contents($path);
+            if ($content === false) {
+                continue;
+            }
+            try {
+                $meet = MeetFile::parse($content);
+            } catch (\Throwable) {
+                continue;
+            }
+            foreach ($meet['attendees'] as $att) {
+                if (empty($att['organizer'])) {
+                    continue;
+                }
+                if (strtolower(trim((string) ($att['display_name'] ?? ''))) !== $nameKey) {
+                    continue;
+                }
+                if ((string) ($att['pin'] ?? '') !== $pin) {
+                    continue;
+                }
+                $results[] = [
+                    'title' => $meet['title'],
+                    'slug' => $meet['slug'],
+                ];
+                break;
             }
         }
-        arsort($locationCounts);
 
-        $bestSlots = [];
-        foreach (array_slice($slotCounts, 0, 10, true) as $slot => $count) {
-            $bestSlots[] = ['slot' => $slot, 'count' => $count, 'attendees' => $meet['availability'][$slot] ?? []];
-        }
+        usort($results, fn ($a, $b) => strcmp($a['title'], $b['title']));
 
-        $bestLocations = [];
-        foreach (array_slice($locationCounts, 0, 5, true) as $locId => $count) {
-            $loc = $this->findLocation($meet, $locId);
-            $bestLocations[] = [
-                'id' => $locId,
-                'label' => $loc['label'] ?? $locId,
-                'count' => $count,
-            ];
-        }
-
-        return [
-            'slots' => $bestSlots,
-            'locations' => $bestLocations,
-        ];
+        return $results;
     }
 
     private function findLocation(array $meet, string $id): array

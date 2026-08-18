@@ -66,7 +66,16 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
           </label>
           <button type="submit">Create meeting</button>
         </form>
-        <p class="hint">You will get a private link with a random code (e.g. <code>meet/?=a7f3b2c91d04</code>). Save it — that link is the only way in.</p>
+        <p class="hint">You get a private link with a random code. Save it — or use <strong>List my meetings</strong> below if you set a PIN when you joined as organiser.</p>
+        <hr class="hero-divider">
+        <h2 class="section-title">List my meetings</h2>
+        <p class="meta">Enter the <strong>name</strong> and <strong>PIN</strong> you used when you registered as organiser (first person to join, with a PIN set).</p>
+        <form id="list-meetings-form" class="create-form">
+          <label>Your name <input type="text" name="display_name" required autocomplete="name"></label>
+          <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
+          <button type="submit">List my meetings</button>
+        </form>
+        <div id="list-meetings-result" class="list-meetings-result" hidden></div>
       </section>
     <?php else: ?>
       <div id="app" class="app-loading">Loading meeting…</div>

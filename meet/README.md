@@ -50,10 +50,11 @@ Files live at `data/meets/{id}.meet`. Alias mapping at `data/aliases/{slug}.alia
 
 | Action | Purpose |
 |--------|---------|
-| `create` | Create meeting with slug, title, recurrence |
-| `join` | Register attendee name/id (optional PIN) |
-| `claim` | Sign in as an existing attendee row (PIN if set) |
-| `merge_attendees` | Combine duplicate rows (PIN for secured row) |
+| `create` | Create meeting (title only; random slug returned) |
+| `join` | Register attendee (optional numeric PIN) |
+| `claim` | Sign in as an existing row (PIN if set) |
+| `merge_attendees` | Combine rows (organiser: any two; others: duplicates) |
+| `list_meetings` | Find meetings by organiser name + PIN |
 | `save_availability` | Save selected ISO slot times |
 | `add_location` | Propose a location |
 | `save_location_prefs` | Attendee location preferences |
