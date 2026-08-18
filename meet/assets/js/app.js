@@ -760,30 +760,30 @@
   }
 
   function renderAddAttendeeForm(signedIn) {
-    const modeField = signedIn
-      ? `<input type="hidden" name="add_mode" value="propose">
-         <p class="meta span-full">Adds someone to the list. Share the meeting link with them — no email is sent.</p>`
-      : `<fieldset class="add-mode-fieldset">
-          <legend class="label-hint">Who are you adding?</legend>
-          <label class="radio-label"><input type="radio" name="add_mode" value="self" checked> This is me — I will mark my availability</label>
-          <label class="radio-label"><input type="radio" name="add_mode" value="propose"> Someone else — propose them for this meeting</label>
-        </fieldset>`;
+    const modeToggle = signedIn ? '' : `
+      <span class="add-mode-toggle" title="Me: you will mark availability. Other: add them to the list only.">
+        <label class="mode-opt"><input type="radio" name="add_mode" value="self" checked><span>Me</span></label>
+        <label class="mode-opt"><input type="radio" name="add_mode" value="propose"><span>Other</span></label>
+      </span>`;
     const extras = signedIn ? '' : `
         <div class="pin-fields" data-show-when="self">
-          <label>PIN (optional) <span class="label-hint">(numbers only)</span>
-            <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="For Find my meetings on the home page">
+          <label>PIN <span class="label-hint">(optional, for Find my meetings)</span>
+            <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
           </label>
         </div>
-        <p class="meta span-full propose-hint" data-show-when="propose" hidden>They are not notified — share the meeting link. They use <strong>This is me</strong> on their row to claim it.</p>`;
+        <p class="meta span-full propose-hint" data-show-when="propose" hidden>Share the meeting link with them — they use <strong>This is me</strong> on their row.</p>`;
     return `
       <details class="register-block"${signedIn ? '' : ' open'}>
         <summary>Add attendee</summary>
         <form class="inline-form add-attendee-form" data-form="add-attendee">
-          ${modeField}
-          <div class="form-grid">
-            <label>Display name<input name="display_name" required placeholder="Name as shown in the list"></label>
-            <label>Initials (optional)<input name="initials" maxlength="4"></label>
-            <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
+          ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
+          <div class="form-grid add-attendee-grid">
+            <label class="name-with-mode">
+              <span class="label-row">Display name ${modeToggle}</span>
+              <input name="display_name" required placeholder="Name as shown in the list">
+            </label>
+            <label>Initials <span class="label-hint">(optional)</span><input name="initials" maxlength="4"></label>
+            <label>Contact <span class="label-hint">(optional)</span><input name="contact" placeholder="email or phone"></label>
           </div>
           ${extras}
           <button type="submit">Add attendee</button>
@@ -795,7 +795,7 @@
     const signedIn = !!attendee;
     let hint = '';
     if (!signedIn) {
-      hint = 'If your name is already listed, click <strong>This is me</strong> on that row. Otherwise use <strong>Add attendee</strong> below.';
+      hint = 'Click <strong>This is me</strong> on your row if already listed, or add yourself below.';
     } else if (attendee.is_organizer) {
       hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below.';
     } else {
@@ -813,7 +813,7 @@
           <table class="data-table attendee-table">
             <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No attendees yet — add one below.</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
           </table>
         </div>
