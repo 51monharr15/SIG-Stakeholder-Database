@@ -68,7 +68,7 @@
       dragging: false,
       dragSelect: true,
       editingIntro: null,
-      headerExpanded: !isTouchUi,
+      headerExpanded: false,
       claimingId: null,
       lastDayCount: visibleDayCount(),
     };
@@ -220,11 +220,14 @@
             <div class="sticky-head row">
               <h1 class="meet-title">${escapeHtml(m.title)}</h1>
               <div class="row">
-                ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : ''}
+                ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'More ▼'}</button>`}
                 <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
             ${renderMeetingStatus(m)}
+            <nav class="tab-nav tab-nav-primary" role="tablist">
+              ${renderTabNav(m, state, attendee)}
+            </nav>
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
               ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Add a short description for attendees', { withTextHelp: true })}
               ${tabPageIntro(m, state)}
@@ -234,9 +237,6 @@
                 <button type="button" class="secondary" data-action="copy-link">Copy meeting link</button>
               </div>
             </div>
-            <nav class="tab-nav" role="tablist">
-              ${renderTabNav(m, state, attendee)}
-            </nav>
           </div>
         </div>
         <div class="meet-content">
