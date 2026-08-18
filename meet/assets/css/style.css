@@ -200,6 +200,18 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.form-grid .help-toggle,
+.form-grid .span-full,
+.join-form .span-full,
+.add-attendee-form .span-full { grid-column: 1 / -1; }
+
+.signed-in-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .checkbox-label {
   display: flex !important;
   align-items: center;

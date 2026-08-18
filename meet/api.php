@@ -68,6 +68,9 @@ try {
             case 'confirm':
                 handleConfirm($store, $slug, $input);
                 break;
+            case 'add_attendee':
+                handleAddAttendee($store, $slug, $input);
+                break;
             default:
                 Response::error('Unknown action', 400);
         }
@@ -480,6 +483,22 @@ function handleSaveAvailability(MeetStore $store, string $slug, array $input): v
 function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
 {
     $meet = $store->loadBySlug($slug);
+    $organizerFields = [
+        'title', 'duration_minutes', 'slot_granularity_minutes', 'day_start', 'day_end',
+        'timezone', 'show_weekends', 'organizer_intro', 'page_times_intro', 'page_after_intro',
+        'range_start', 'range_end', 'recurrence',
+    ];
+    $needsOrganizer = false;
+    foreach ($organizerFields as $field) {
+        if (array_key_exists($field, $input)) {
+            $needsOrganizer = true;
+            break;
+        }
+    }
+    if ($needsOrganizer && count($meet['attendees']) > 0) {
+        requireActingOrganizer($meet, trim((string) ($input['acting_attendee_id'] ?? '')));
+    }
+
     $meet = $store->update($meet['id'], function (array $m) use ($input) {
         $fields = [
             'title', 'notes', 'range_start', 'range_end',
@@ -581,6 +600,9 @@ function handleAddAttachment(MeetStore $store, string $slug, array $input): void
 function handleConfirm(MeetStore $store, string $slug, array $input): void
 {
     $meet = $store->loadBySlug($slug);
+    if (count($meet['attendees']) > 0) {
+        requireActingOrganizer($meet, trim((string) ($input['acting_attendee_id'] ?? '')));
+    }
     $meet = $store->update($meet['id'], function (array $m) use ($input) {
         if (!empty($input['confirmed_slot'])) {
             $m['confirmed_slot'] = trim((string) $input['confirmed_slot']);
@@ -592,4 +614,49 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
     });
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
+function handleAddAttendee(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $displayName = trim((string) ($input['display_name'] ?? ''));
+    if ($displayName === '') {
+        Response::error('Display name is required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    requireActingOrganizer($meet, $actingId);
+
+    $contact = trim((string) ($input['contact'] ?? ''));
+    $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
+    $newId = MeetFile::generateId('usr');
+
+    $meet = $store->update($meet['id'], function (array $m) use ($displayName, $contact, $initials, $newId) {
+        $m['attendees'][] = [
+            'id' => $newId,
+            'display_name' => $displayName,
+            'contact' => $contact,
+            'initials' => $initials,
+            'pin' => '',
+            'organizer' => false,
+        ];
+        return $m;
+    });
+
+    Response::json([
+        'ok' => true,
+        'attendee_id' => $newId,
+        'meet' => $store->publicView($meet),
+    ]);
+}
+
+/** @param array<string, mixed> $meet */
+function requireActingOrganizer(array $meet, string $actingId): void
+{
+    if ($actingId === '') {
+        throw new \RuntimeException('acting_attendee_id required', 403);
+    }
+    if (!attendeeIsOrganizer($meet['attendees'], $actingId)) {
+        throw new \RuntimeException('Only a meeting organiser can do this', 403);
+    }
 }

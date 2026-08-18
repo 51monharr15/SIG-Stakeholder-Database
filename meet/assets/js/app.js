@@ -80,7 +80,12 @@
         localStorage.removeItem(attendeeKey(slug));
       }
       const explicit = tabFromUrl();
-      state.activeTab = explicit || (state.meet.attendees.length ? 'calendar' : 'organiser');
+      let activeTab = explicit || (state.meet.attendees.length ? 'calendar' : 'organiser');
+      const signedIn = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (activeTab === 'organiser' && state.meet.attendees.length && !signedIn?.is_organizer) {
+        activeTab = 'calendar';
+      }
+      state.activeTab = activeTab;
       restoreAttendeeSelections(state);
       state.viewStart = calendarMinStart(state.meet);
       render(root, state);
@@ -160,6 +165,11 @@
   }
 
   function setTab(state, tab) {
+    const signedIn = state.meet?.attendees.find((a) => a.id === state.attendeeId);
+    if (tab === 'organiser' && state.meet?.attendees.length && !signedIn?.is_organizer) {
+      toast('Only meeting organisers can change meeting options', true);
+      tab = 'calendar';
+    }
     state.activeTab = tab;
     history.replaceState(null, '', meetingUrl(state.slug, tab));
   }
@@ -227,7 +237,7 @@
               ${tabBtn('calendar', 'Calendar', state)}
               ${tabBtn('times', 'Meeting details', state)}
               ${tabBtn('after', 'After meeting', state)}
-              ${tabBtn('organiser', 'Set meeting options', state)}
+              ${(!m.attendees.length || attendee?.is_organizer) ? tabBtn('organiser', 'Set meeting options', state) : ''}
             </nav>
           </div>
         </div>
@@ -268,8 +278,8 @@
     strong: 'Wrap selected text in bold tags, or insert bold tags at the cursor',
     em: 'Wrap selected text in italic tags, or insert italic tags at the cursor',
     p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
-    br: 'Insert a line break (&lt;br&gt;) at the cursor',
-    a: 'Wrap selected text as a link, or insert a link and enter the URL',
+    br: 'Insert a line break (<br>) at the cursor',
+    a: 'Wrap selected text as a link (opens in a new tab), or insert a link and enter the URL. target="_blank" is added automatically — do not type it in the editor',
     ul: 'Wrap selected text in a bullet list, or insert a one-item list',
   };
 
@@ -328,7 +338,7 @@
             </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            ${helpToggle('calendar times', 'Attendees select time in <strong>grid step</strong> chunks (e.g. every 15 minutes). A full meeting needs enough consecutive chunks to cover <strong>meeting length</strong> (e.g. four 15-minute chunks for one hour). Partial availability is shown on the <strong>Meeting details</strong> tab.')}
+            ${helpToggle('calendar times', 'Set the <strong>meeting length</strong> and <strong>grid step</strong> (availability slot size). Attendees who mark only some slots appear under <strong>Partial availability</strong> on the Meeting details tab.')}
             <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
@@ -365,8 +375,9 @@
         </div>
         ${renderAttendeesSection(m, state, attendee)}
         ${attendee ? `
-          <p class="meta">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-            <button type="button" class="secondary" data-action="switch-user">Switch</button>
+          <p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
+            ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : ''}
+            <button type="button" class="secondary compact-btn" data-action="switch-user">Switch / add attendee</button>
           </p>` : ''}
         ${saveRow}
         <div class="calendar-toolbar">
@@ -548,7 +559,7 @@
         <label>PIN (optional) <span class="label-hint">(numbers only)</span>
           <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="Optional">
         </label>
-        <p class="meta">If you may need to recover this meeting from the home page later, <strong>set a PIN now</strong>. You will need this <strong>name and PIN</strong> on the home page under List my meetings if you lose the link. No PIN means link-only access.</p>
+        <p class="meta span-full pin-hint">If you may need to recover this meeting from the home page later, <strong>set a PIN now</strong>. You will need this <strong>name and PIN</strong> on the home page under List my meetings if you lose the link. No PIN means link-only access. You can also set a PIN later after signing in.</p>
       </div>
       <button type="submit">Register as new attendee</button>
     </form>`;
@@ -561,9 +572,9 @@
     if (!signedIn) {
       hint = 'Click your name if you are already listed, or register below. To merge duplicates or set organiser flags, sign in first — the same controls appear here once you are signed in.';
     } else if (attendee.is_organizer) {
-      hint = 'Merge duplicates, grant organiser to others, or use Merge any two attendees below.';
+      hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below for other combinations. You can also add people without a PIN.';
     } else {
-      hint = 'If you appear more than once, use Merge into me on the duplicate row.';
+      hint = 'If you appear more than once, use Remove duplicate (keep me) on the extra row — your row is kept and the duplicate is deleted.';
     }
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
@@ -583,12 +594,29 @@
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
+        ${signedIn && attendee.is_organizer ? renderAddAttendeeForm() : ''}
         ${!signedIn ? `
           <details class="register-block" open>
             <summary>Register as new attendee</summary>
             ${renderJoinForm()}
           </details>` : ''}
       </section>`;
+  }
+
+  function renderAddAttendeeForm() {
+    return `
+      <details class="register-block">
+        <summary>Add attendee (organiser)</summary>
+        <form class="inline-form add-attendee-form" data-form="add-attendee">
+          <div class="form-grid">
+            <label>Name<input name="display_name" required></label>
+            <label>Initials (optional)<input name="initials" maxlength="4"></label>
+            <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
+          </div>
+          <p class="meta span-full">Adds a row without a PIN. They can claim it later with &ldquo;This is me&rdquo;, or you can set a PIN on your own row any time with Set PIN.</p>
+          <button type="submit">Add attendee</button>
+        </form>
+      </details>`;
   }
 
   function renderOrganiserMergePanel(m) {
@@ -617,8 +645,8 @@
       if (!current || isSelf) {
         actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
       }
-    } else if (current && a.id !== current.id && (dupOfSelf || current.is_organizer)) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Merge into me</button>`);
+    } else if (current && a.id !== current.id && dupOfSelf) {
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Remove duplicate (keep me)</button>`);
     }
 
     const organiserCell = showOrganiserCol
@@ -676,12 +704,18 @@
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
         state.claimingId = null;
       } else if (kind === 'update-settings') {
-        data = await apiPost({ action: 'update_meta', slug: state.slug, title: fd.get('title'),
+        data = await apiPost({ action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId, title: fd.get('title'),
           duration_minutes: Number(fd.get('duration_minutes')), slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
           day_start: fd.get('day_start'), day_end: fd.get('day_end'),
           timezone: String(fd.get('timezone') || '').trim() || tz,
           show_weekends: fd.get('show_weekends') === 'on',
           organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
+      } else if (kind === 'add-attendee') {
+        data = await apiPost({
+          action: 'add_attendee', slug: state.slug, acting_attendee_id: state.attendeeId,
+          display_name: fd.get('display_name'), contact: fd.get('contact'),
+          initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
+        });
       } else if (kind === 'update-meta') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
       } else if (kind === 'add-location') {
@@ -689,7 +723,7 @@
       } else if (kind === 'add-attachment') {
         data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type: fd.get('type'), url: fd.get('url'), body: fd.get('body') });
       } else if (kind === 'confirm') {
-        data = await apiPost({ action: 'confirm', slug: state.slug, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
+        data = await apiPost({ action: 'confirm', slug: state.slug, acting_attendee_id: state.attendeeId, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
         state.pendingConfirmSlot = null;
       } else if (kind === 'merge-organiser') {
         const keepId = fd.get('keep_id');
@@ -741,7 +775,7 @@
     if (action === 'save-intro') {
       const field = btn.dataset.field;
       const val = document.getElementById(`intro-edit-${field}`)?.value ?? '';
-      const payload = { action: 'update_meta', slug: state.slug };
+      const payload = { action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId };
       payload[field] = val;
       try {
         const data = await apiPost(payload);
@@ -806,12 +840,15 @@
     }
     if (action === 'merge-into-me') {
       const removeId = btn.dataset.removeId;
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
       const target = state.meet.attendees.find((a) => a.id === removeId);
+      if (!me || !target) return;
       let pin = '';
-      if (target?.has_pin) {
-        pin = window.prompt('Enter the PIN for the duplicate row you are merging away:') || '';
+      const confirmMsg = `Keep your row (${attendeeLabel(me)}) and delete the duplicate (${attendeeLabel(target)})?\n\nAvailability from the removed row will be combined into yours. Your attendee ID stays the same.`;
+      if (target.has_pin) {
+        pin = window.prompt('Enter the PIN for the duplicate row you are removing:') || '';
         if (!pin) return;
-      } else if (!window.confirm('Merge this duplicate row into your attendee record? Their availability will be combined.')) {
+      } else if (!window.confirm(confirmMsg)) {
         return;
       }
       try {
@@ -824,7 +861,18 @@
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
         restoreAttendeeSelections(state);
         render(root, state);
-        toast('Duplicate merged');
+        toast('Duplicate removed — your row was kept');
+      } catch (err) { toast(err.message, true); }
+      return;
+    }
+    if (action === 'set-pin') {
+      const pin = window.prompt('Choose a numeric PIN (for List my meetings on the home page):');
+      if (!pin) return;
+      try {
+        const data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: state.attendeeId, pin });
+        state.meet = data.meet;
+        render(root, state);
+        toast('PIN saved');
       } catch (err) { toast(err.message, true); }
       return;
     }
@@ -862,7 +910,7 @@
     else if (fmt === 'a') {
       const href = prompt('Link URL:', 'https://');
       if (!href) return;
-      insert = `<a href="${href}">${sel || 'link text'}</a>`;
+      insert = `<a href="${href}" target="_blank" rel="noopener noreferrer">${sel || 'link text'}</a>`;
     } else if (fmt === 'ul') insert = `<ul>\n<li>${sel || 'item'}</li>\n</ul>`;
     ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
     ta.focus();
