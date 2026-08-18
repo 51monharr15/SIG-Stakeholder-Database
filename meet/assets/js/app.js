@@ -243,7 +243,7 @@
           ${state.activeTab === 'calendar' ? renderCalendarTab(m, state, attendee) : ''}
           ${state.activeTab === 'times' ? renderTimesTab(m, state, attendee) : ''}
           ${state.activeTab === 'after' ? renderAfterTab(m, state) : ''}
-          ${state.activeTab === 'organiser' ? renderOrganiserTab(m, state) : ''}
+          ${state.activeTab === 'organiser' ? renderOrganiserTab(m, state, attendee) : ''}
         </div>
       </div>
       <div class="toast" id="toast"></div>
@@ -378,11 +378,12 @@
       </div>`;
   }
 
-  function renderOrganiserTab(m) {
+  function renderOrganiserTab(m, state, attendee) {
     const mtz = meetingTz(m);
     return `
       <section class="panel stack">
         <h2 class="section-title">Set meeting options</h2>
+        ${!m.attendees.length ? '<p class="meta">Step 1: save options below. Step 2: add attendees (at the bottom of this page or on <strong>Choose calendar times</strong>).</p>' : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
@@ -412,6 +413,13 @@
           <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
           ${renderAddLocationForm()}
         </details>
+        ${!m.attendees.length ? `
+        <div class="setup-next-step stack">
+          <h3 class="section-title">Next: add attendees</h3>
+          <p class="meta">Add yourself (or others) before marking availability on the calendar.</p>
+          <button type="button" data-action="tab" data-tab="calendar">Open calendar tab →</button>
+          ${renderAttendeesSection(m, state, attendee)}
+        </div>` : ''}
       </section>`;
   }
 
@@ -700,7 +708,7 @@
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
-      <p class="meta attendee-tab-hint">Manage attendees on <strong>Choose calendar times</strong> — registered list and <strong>Add attendee</strong> are there only.</p>
+      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : '<p class="meta attendee-tab-hint">Manage attendees on <strong>Choose calendar times</strong>.</p>'}
       <section class="panel stack">
         <h2 class="section-title">Locations &amp; final time</h2>
         <details class="propose-location-block" open><summary>Propose a location</summary>
