@@ -80,11 +80,13 @@
         localStorage.removeItem(attendeeKey(slug));
       }
       const explicit = tabFromUrl();
-      let activeTab = explicit || (state.meet.attendees.length ? 'calendar' : 'organiser');
       const signedIn = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      let activeTab = explicit || localStorage.getItem(tabKey(slug)) || 'organiser';
       if (activeTab === 'organiser' && state.meet.attendees.length && !signedIn?.is_organizer) {
         activeTab = 'calendar';
       }
+      const validTabs = tabNavItems(state.meet, signedIn).map((t) => t.id);
+      if (!validTabs.includes(activeTab)) activeTab = validTabs[0] || 'calendar';
       state.activeTab = activeTab;
       if (activeTab === 'calendar') state.scrollCalendarOnRender = true;
       restoreAttendeeSelections(state);
@@ -173,6 +175,7 @@
     }
     state.activeTab = tab;
     if (tab === 'calendar') state.scrollCalendarOnRender = true;
+    localStorage.setItem(tabKey(state.slug), tab);
     history.replaceState(null, '', meetingUrl(state.slug, tab));
   }
 
@@ -184,6 +187,7 @@
 
   function attendeeKey(slug) { return `meet_attendee_${slug}`; }
   function slotsKey(slug, id) { return `meet_slots_${slug}_${id}`; }
+  function tabKey(slug) { return `meet_tab_${slug}`; }
 
   function restoreAttendeeSelections(state) {
     if (!state.attendeeId) return;
@@ -212,6 +216,9 @@
     const m = state.meet;
     const attendee = m.attendees.find((a) => a.id === state.attendeeId);
     const url = shareUrl(state.slug);
+    const scrollY = window.scrollY;
+    const scrollTarget = state.scrollAfterRender || null;
+    state.scrollAfterRender = null;
 
     root.innerHTML = `
       <div class="meet-shell">
@@ -248,6 +255,13 @@
       </div>
       <div class="toast" id="toast"></div>
     `;
+    if (scrollTarget) {
+      requestAnimationFrame(() => {
+        root.querySelector(`.${scrollTarget}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } else {
+      window.scrollTo(0, scrollY);
+    }
     afterRenderScroll(root, state);
   }
 
@@ -258,7 +272,7 @@
       const signedIn = state.meet.attendees.some((a) => a.id === state.attendeeId);
       const target = signedIn
         ? root.querySelector('.calendar-save-row')
-        : root.querySelector('.attendee-section');
+        : root.querySelector('.attendee-block');
       target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -325,10 +339,10 @@
   function renderContinueToCalendar(state) {
     const ready = calendarReady(state);
     return `<div class="calendar-continue-row">
-      <button type="button" data-action="tab" data-tab="calendar"${ready ? '' : ' disabled'}>Continue to calendar →</button>
+      <button type="button" data-action="tab" data-tab="calendar">Continue to calendar →</button>
       <p class="meta">${ready
-        ? 'You can add more attendees first, then mark your availability on the calendar.'
-        : 'Add yourself below, or click <strong>This is me</strong> on your row, before opening the calendar.'}</p>
+        ? 'Add more attendees here if needed, then open <strong>Choose calendar times</strong> to mark when you are free.'
+        : 'Add yourself below, or click <strong>This is me</strong> on your row, then open <strong>Choose calendar times</strong>.'}</p>
     </div>`;
   }
 
@@ -1082,6 +1096,7 @@
       state.meet = data.meet;
       if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
+      if (kind === 'add-attendee' || kind === 'claim') state.scrollAfterRender = 'attendee-block';
       render(root, state);
       if (kind === 'add-location') toast('Location added — finalise it on Availability, location & agenda');
       else if (kind === 'add-attendee') {
