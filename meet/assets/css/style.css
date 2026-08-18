@@ -463,25 +463,64 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   scroll-margin-top: 11rem;
 }
 
-.add-mode-fieldset {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.65rem 0.85rem;
-  margin: 0.35rem 0 0.65rem;
+.add-mode-fieldset,
+.radio-label { display: none; }
+
+.add-attendee-grid .name-with-mode { grid-column: 1 / -1; }
+
+.label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.25rem;
 }
 
-.add-mode-fieldset legend { padding: 0 0.25rem; }
+.add-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
 
-.radio-label {
+.add-mode-toggle .mode-opt {
   display: flex;
-  align-items: flex-start;
-  gap: 0.45rem;
-  margin: 0.35rem 0;
-  font-size: 0.92rem;
+  align-items: center;
+  margin: 0;
   cursor: pointer;
 }
 
-.radio-label input { margin-top: 0.2rem; flex-shrink: 0; }
+.add-mode-toggle .mode-opt input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.add-mode-toggle .mode-opt span {
+  display: block;
+  padding: 0.2rem 0.55rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.add-mode-toggle .mode-opt:has(input:checked) span {
+  background: var(--accent);
+  color: #fff;
+}
+
+.add-mode-toggle .mode-opt:not(:has(input:checked)) span:hover {
+  background: #f3f4f6;
+}
+
+.attendee-section .register-block .add-attendee-form {
+  max-width: 36rem;
+}
 
 .attendee-tab-hint { margin: 0 0 0.75rem; }
 
