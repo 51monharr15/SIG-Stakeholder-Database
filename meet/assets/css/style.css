@@ -320,10 +320,35 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 0.25rem 0.6rem;
   font-size: 0.85rem;
   background: #fff;
+  color: var(--text);
   cursor: pointer;
 }
 
-.chip.active { border-color: var(--accent); background: var(--accent-soft); }
+.chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+.meeting-status {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.suggestion-time { margin: 0 0 0.25rem; }
+
+.confirmed-time-display {
+  margin: 0.35rem 0;
+  padding: 0.45rem 0.55rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.confirmed-summary { margin-top: 0.35rem; }
+
+.loc-fields[hidden] { display: none !important; }
+
+.add-location-form .span-full { grid-column: 1 / -1; }
 
 .table-wrap { overflow-x: auto; }
 

@@ -53,6 +53,13 @@ final class Availability
                 }
             }
 
+            $absent = [];
+            foreach ($coverage as $aid => $n) {
+                if ($n === 0) {
+                    $absent[] = $aid;
+                }
+            }
+
             if ($total > 0 && count($fullAttendees) === $total) {
                 $full[] = [
                     'slot' => $startIso,
@@ -65,6 +72,7 @@ final class Availability
                     'slot' => $startIso,
                     'attendees_full' => $fullAttendees,
                     'attendees_partial' => $partialAttendees,
+                    'attendees_absent' => $absent,
                     'slots_needed' => $windowLen,
                     'kind' => 'partial',
                 ];

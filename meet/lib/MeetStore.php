@@ -167,6 +167,11 @@ final class MeetStore
 
     public function listMeetingsForOrganizer(string $displayName, string $pin): array
     {
+        return $this->listMeetingsForPerson($displayName, $pin);
+    }
+
+    public function listMeetingsForPerson(string $displayName, string $pin): array
+    {
         $nameKey = strtolower(trim($displayName));
         $pin = preg_replace('/\D/', '', $pin) ?? '';
         if ($nameKey === '' || $pin === '') {
@@ -190,9 +195,6 @@ final class MeetStore
                 continue;
             }
             foreach ($meet['attendees'] as $att) {
-                if (empty($att['organizer'])) {
-                    continue;
-                }
                 if (strtolower(trim((string) ($att['display_name'] ?? ''))) !== $nameKey) {
                     continue;
                 }

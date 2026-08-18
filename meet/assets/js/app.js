@@ -39,7 +39,7 @@
         if (!box) return;
         box.hidden = false;
         if (!res.meetings?.length) {
-          box.innerHTML = '<p class="meta">No meetings found for that name and PIN. Check spelling, PIN, and that you joined as organiser with a PIN set.</p>';
+          box.innerHTML = '<p class="meta">No meetings found for that name and PIN. Check spelling and that you set a PIN when you registered.</p>';
           return;
         }
         box.innerHTML = `<p class="meta">${res.meetings.length} meeting(s):</p><ul>${
@@ -218,16 +218,17 @@
             <div class="sticky-head row">
               <h1 class="meet-title">${escapeHtml(m.title)}</h1>
               <div class="row">
-                ${m.confirmed_slot ? '<span class="badge good">Confirmed</span>' : ''}
+                ${m.confirmed_slot ? '<span class="badge good">Finalised</span>' : '<span class="badge">Scheduling</span>'}
                 ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : ''}
                 <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
+            ${renderMeetingStatus(m)}
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
               ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Meeting text', { withTextHelp: true })}
               ${tabPageIntro(m, state)}
               <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
-              ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
+              ${m.confirmed_slot ? `<div class="confirmed compact">See finalised time below the title.</div>` : ''}
               <div class="share-row row desktop-share">
                 <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
                 <button type="button" class="secondary" data-action="copy-link">Copy meeting link</button>
@@ -280,7 +281,7 @@
     p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
     br: 'Insert a line break (<br>) at the cursor',
     a: 'Wrap selected text as a link (opens in a new tab), or insert a link and enter the URL. target="_blank" is added automatically — do not type it in the editor',
-    ul: 'Wrap selected text in a bullet list, or insert a one-item list',
+    ul: 'Wrap selected text in one bullet item, or insert a one-item list (line breaks stay inside the same bullet)',
   };
 
   function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text', { withTextHelp = false } = {}) {
@@ -430,15 +431,54 @@
     </button>`;
   }
 
+  function formatTimePair(iso) {
+    return `<strong>${escapeHtml(formatSlotLocal(iso))}</strong> / ${escapeHtml(formatSlotUtc(iso))}`;
+  }
+
+  function bestProposedSlot(m) {
+    const orgIds = new Set(m.attendees.filter((a) => a.is_organizer).map((a) => a.id));
+    for (const s of m.suggestions?.slots || []) {
+      const hasOrg = s.attendees.some((id) => orgIds.has(id));
+      const hasOther = s.attendees.some((id) => !orgIds.has(id));
+      if (hasOrg && hasOther) return s;
+    }
+    return m.suggestions?.slots?.[0] || null;
+  }
+
+  function renderMeetingStatus(m) {
+    const mtz = meetingTz(m);
+    if (m.confirmed_slot) {
+      const loc = m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}${locationDetailSuffix(m, m.confirmed_location)}` : '';
+      return `<div class="meeting-status meta">Finalised: ${formatTimePair(m.confirmed_slot)}${loc}</div>`;
+    }
+    const proposed = bestProposedSlot(m);
+    if (proposed) {
+      return `<div class="meeting-status meta">Earliest where organiser and another attendee overlap: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length} free)</span></div>`;
+    }
+    return `<div class="meeting-status meta">No agreed time yet — mark availability on the Calendar tab.</div>`;
+  }
+
+  function locationDetailSuffix(m, id) {
+    const loc = m.locations.find((l) => l.id === id);
+    if (!loc?.detail) return '';
+    const short = String(loc.detail).length > 48 ? `${String(loc.detail).slice(0, 45)}…` : loc.detail;
+    return ` (${escapeHtml(short)})`;
+  }
+
+  function locationChipLabel(loc) {
+    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
+    const detail = loc.detail ? ` — ${loc.detail}` : '';
+    return `${loc.label} (${kind})${detail}`;
+  }
+
   function renderFullSuggestion(m, s, mtz) {
     return `
       <div class="suggestion">
-        <strong>${escapeHtml(formatSlotInTz(s.slot, mtz))}</strong>
-        <span class="meta">${escapeHtml(formatSlotLocal(s.slot))} · ${escapeHtml(formatSlotUtc(s.slot))}</span>
-        <span class="meta">${s.count} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
+        <p class="suggestion-time">${formatTimePair(s.slot)}</p>
+        <span class="meta">${s.count} of ${m.attendees.length} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
         <div class="row suggestion-actions">
           <button type="button" data-action="jump-slot" data-slot="${escapeHtml(s.slot)}">Show on calendar</button>
-          <button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(s.slot)}">Use as confirmed time</button>
+          <button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(s.slot)}">Use as meeting start</button>
         </div>
       </div>`;
   }
@@ -446,18 +486,21 @@
   function renderPartialSuggestion(m, p, mtz) {
     const lines = [];
     if (p.attendees_full?.length) {
-      lines.push(`Full for whole meeting: ${p.attendees_full.map((id) => attendeeLabelById(m, id)).join(', ')}`);
+      lines.push(`Free for whole ${m.duration_minutes}-minute meeting: ${p.attendees_full.map((id) => attendeeLabelById(m, id)).join(', ')}`);
     }
     (p.attendees_partial || []).forEach((a) => {
-      lines.push(`${attendeeLabelById(m, a.id)}: ${a.slots_marked} of ${a.slots_needed} time chunks`);
+      lines.push(`${attendeeLabelById(m, a.id)} marked only ${a.slots_marked} of ${a.slots_needed} grid steps needed for this start time`);
     });
+    if (p.attendees_absent?.length) {
+      lines.push(`No slots marked yet: ${p.attendees_absent.map((id) => attendeeLabelById(m, id)).join(', ')}`);
+    }
     return `
       <div class="suggestion partial">
-        <strong>${escapeHtml(formatSlotInTz(p.slot, mtz))}</strong>
-        <span class="meta">${escapeHtml(formatSlotLocal(p.slot))} · ${escapeHtml(formatSlotUtc(p.slot))}</span>
+        <p class="suggestion-time">${formatTimePair(p.slot)}</p>
         <span class="meta">${escapeHtml(lines.join(' · '))}</span>
         <div class="row suggestion-actions">
           <button type="button" data-action="jump-slot" data-slot="${escapeHtml(p.slot)}">Show on calendar</button>
+          ${p.attendees_full?.length ? `<button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(p.slot)}">Use as meeting start</button>` : ''}
         </div>
       </div>`;
   }
@@ -479,42 +522,41 @@
             </select>
           </label>
         </div>
-        <p class="meta">Full overlaps need everyone free for the whole meeting length. Partial overlaps are noted below.</p>
-        <h3 class="section-title">Everyone free (full meeting)</h3>
+        <p class="meta">Everyone available lists start times where <strong>every attendee</strong> marked enough consecutive grid steps for the full <strong>${m.duration_minutes}-minute</strong> meeting. Times shown as <strong>${escapeHtml(tz)}</strong> / UTC.</p>
+        <h3 class="section-title">Everyone available (full meeting)</h3>
         <div class="suggestions-scroll">
-          ${sorted.length ? sorted.map((s) => renderFullSuggestion(m, s, mtz)).join('') : '<p class="meta">No full overlaps yet.</p>'}
+          ${sorted.length ? sorted.map((s) => renderFullSuggestion(m, s, mtz)).join('') : '<p class="meta">No times where everyone is free for the whole meeting yet.</p>'}
         </div>
-        <h3 class="section-title">Partial availability</h3>
+        <h3 class="section-title">Not everyone available</h3>
+        <p class="meta">Each row is a possible <strong>meeting start</strong> (not a single grid cell). Someone may be free for the whole meeting, have marked only part of the window, or not have responded yet.</p>
         <div class="suggestions-scroll">
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
       ${renderAttendeesSection(m, state, attendee)}
       <section class="panel stack">
-        <h2 class="section-title">Locations</h2>
+        <h2 class="section-title">Locations &amp; final time</h2>
+        <p class="meta">Proposed locations accumulate in the list below. Click a lozenge to mark <strong>your</strong> preference, then Save. Organisers can set the final time here (you can change it later).</p>
         <div class="chip-list">${m.locations.map((loc) => `
-          <button type="button" class="chip${state.selectedLocations.has(loc.id) ? ' active' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}">
-            ${escapeHtml(loc.label)} <small>(${escapeHtml(loc.kind)})</small>
-          </button>`).join('') || '<p class="meta">No locations yet.</p>'}</div>
-        ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : ''}
+          <button type="button" class="chip${state.selectedLocations.has(loc.id) ? ' active' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
+            title="Mark whether this location works for you, then press Save location preferences">
+            ${escapeHtml(locationChipLabel(loc))}
+          </button>`).join('') || '<p class="meta">No locations proposed yet.</p>'}</div>
+        ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : '<p class="meta">Sign in to mark location preferences.</p>'}
         <details><summary>Propose a location</summary>
-          <form class="inline-form" data-form="add-location">
-            <input name="label" placeholder="e.g. Zoom" required>
-            <select name="kind"><option value="video">Video</option><option value="physical">Physical</option><option value="phone">Phone</option><option value="other">Other</option></select>
-            <input name="detail" placeholder="URL or address">
-            <button type="submit">Add</button>
-          </form>
+          ${renderAddLocationForm()}
         </details>
-        <details open><summary>Confirm final time &amp; location</summary>
+        <details open><summary>Set or change final time &amp; location (organiser)</summary>
           <form class="inline-form" data-form="confirm" id="confirm-form">
-            <label>Slot <span class="label-hint">(stored as UTC; shown below in meeting &amp; your time)</span>
-              <input name="confirmed_slot" value="${escapeHtml(slotVal)}">
+            <label>Meeting start time
+              ${slotVal ? `<p class="confirmed-time-display">${formatTimePair(slotVal)}</p>` : '<p class="meta">Choose a time from the lists above or the calendar, or enter UTC ISO below.</p>'}
+              <input name="confirmed_slot" value="${escapeHtml(slotVal)}" placeholder="UTC ISO, e.g. 2026-08-18T13:00:00.000Z">
             </label>
-            ${slotVal ? `<p class="meta">Meeting time (${escapeHtml(mtz)}): <strong>${escapeHtml(formatSlotInTz(slotVal, mtz))}</strong>${mtz !== tz ? ` · Your time: <strong>${escapeHtml(formatSlotLocal(slotVal))}</strong>` : ''}</p>` : ''}
             <label>Location<select name="confirmed_location"><option value="">—</option>
-              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(l.label)}</option>`).join('')}
+              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
             </select></label>
-            <button type="submit">Confirm meeting</button>
+            ${m.confirmed_slot ? `<p class="meta confirmed-summary">Currently finalised: ${formatTimePair(m.confirmed_slot)}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</p>` : ''}
+            <button type="submit">${m.confirmed_slot ? 'Update final time / location' : 'Finalise meeting'}</button>
           </form>
         </details>
       </section>
@@ -601,6 +643,78 @@
             ${renderJoinForm()}
           </details>` : ''}
       </section>`;
+  }
+
+  function renderAddLocationForm() {
+    return `
+      <form class="inline-form add-location-form" data-form="add-location">
+        <label>Type
+          <select name="location_mode">
+            <option value="online">Online</option>
+            <option value="physical">Physical</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="phone">Phone / dial-in</option>
+          </select>
+        </label>
+        <div data-loc-fields="online" class="loc-fields">
+          <label>Service
+            <select name="online_service">
+              <option value="Zoom">Zoom</option>
+              <option value="Microsoft Teams">Microsoft Teams</option>
+              <option value="Google Meet">Google Meet</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+          <label>Meeting link <input name="online_url" placeholder="https://..."></label>
+        </div>
+        <div data-loc-fields="physical" class="loc-fields" hidden>
+          <label>Name <input name="physical_label" placeholder="e.g. Main office"></label>
+          <label>Address <input name="physical_address" placeholder="Street, city"></label>
+        </div>
+        <div data-loc-fields="hybrid" class="loc-fields" hidden>
+          <label>Name <input name="hybrid_label" placeholder="e.g. Office + Zoom"></label>
+          <label>Online link <input name="hybrid_url" placeholder="https://..."></label>
+          <label>Address <input name="hybrid_address" placeholder="Street, city"></label>
+        </div>
+        <div data-loc-fields="phone" class="loc-fields" hidden>
+          <label>Label <input name="phone_label" placeholder="e.g. Conference line"></label>
+          <label>Dial-in <input name="phone_detail" placeholder="Phone number or instructions"></label>
+        </div>
+        <p class="meta span-full">Save adds another option to the list above — you can propose several.</p>
+        <button type="submit">Save location</button>
+      </form>`;
+  }
+
+  function buildLocationPayload(fd) {
+    const mode = fd.get('location_mode') || 'online';
+    if (mode === 'physical') {
+      return {
+        label: String(fd.get('physical_label') || 'Physical location').trim() || 'Physical location',
+        kind: 'physical',
+        detail: String(fd.get('physical_address') || '').trim(),
+      };
+    }
+    if (mode === 'hybrid') {
+      const url = String(fd.get('hybrid_url') || '').trim();
+      const addr = String(fd.get('hybrid_address') || '').trim();
+      return {
+        label: String(fd.get('hybrid_label') || 'Hybrid').trim() || 'Hybrid',
+        kind: 'hybrid',
+        detail: [url, addr].filter(Boolean).join(' · '),
+      };
+    }
+    if (mode === 'phone') {
+      return {
+        label: String(fd.get('phone_label') || 'Phone').trim() || 'Phone',
+        kind: 'phone',
+        detail: String(fd.get('phone_detail') || '').trim(),
+      };
+    }
+    return {
+      label: String(fd.get('online_service') || 'Online').trim() || 'Online',
+      kind: 'video',
+      detail: String(fd.get('online_url') || '').trim(),
+    };
   }
 
   function renderAddAttendeeForm() {
@@ -719,7 +833,10 @@
       } else if (kind === 'update-meta') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
       } else if (kind === 'add-location') {
-        data = await apiPost({ action: 'add_location', slug: state.slug, label: fd.get('label'), kind: fd.get('kind'), detail: fd.get('detail') });
+        const built = buildLocationPayload(fd);
+        if (!built.label) throw new Error('Location label required');
+        data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
+        form.reset();
       } else if (kind === 'add-attachment') {
         data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type: fd.get('type'), url: fd.get('url'), body: fd.get('body') });
       } else if (kind === 'confirm') {
@@ -741,7 +858,9 @@
       state.meet = data.meet;
       if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
       render(root, state);
-      toast('Saved');
+      if (kind === 'add-location') toast('Location added to list');
+      else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
+      else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
 
@@ -831,6 +950,7 @@
       }
       state.claimingId = btn.dataset.attendeeId;
       render(root, state);
+      requestAnimationFrame(() => root.querySelector('.claim-form input[name="pin"]')?.focus());
       return;
     }
     if (action === 'cancel-claim') {
@@ -917,6 +1037,15 @@
   }
 
   function handleChange(e, root, state) {
+    if (e.target.name === 'location_mode') {
+      const form = e.target.closest('form');
+      if (form) {
+        form.querySelectorAll('[data-loc-fields]').forEach((el) => {
+          el.hidden = el.dataset.locFields !== e.target.value;
+        });
+      }
+      return;
+    }
     if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
     if (e.target.name === 'recurrence_type') {
       const extra = root.querySelector('#recurrence-extra');
