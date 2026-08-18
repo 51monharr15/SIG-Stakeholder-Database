@@ -94,7 +94,7 @@ HTML in notes and meeting intros is displayed through a sanitiser in the browser
 | One-line hints | Grey `meta` paragraphs under headings |
 | Expandable help | `? Help for …` toggles (meeting text, calendar times) |
 | Tooltips | Hover on badges, format toolbar, location lozenges |
-| This guide | `meet/docs/OPERATIONS.md` |
+| This guide | `meet/docs/OPERATIONS.md` — also open in the browser as **Operations guide** in the footer (`meet/operations.php`) |
 | Technical reference | `meet/README.md`, `lib/MeetFile.php` |
 
 When you ask a question in testing and we agree wording, it should go **on screen** first (prompt or tooltip), then **here** if it is workflow or policy, not only in chat.
@@ -111,3 +111,12 @@ Common layout in Git repositories:
 | `CHANGELOG.md` | Version history (optional; we use `VERSION` + commits) |
 
 This project keeps meet-specific docs under `meet/` because the repo also contains other SIG material.
+
+## Data folders (`meet/data/`)
+
+| Folder | Purpose |
+|--------|---------|
+| `meets/` | One `.meet` file per meeting (the real data) |
+| `aliases/` | Maps the random link code (slug) to the meeting file ID — **still required** |
+
+The link you share (e.g. `?abc123def456`) is looked up via `data/aliases/{slug}.alias`, which points to `data/meets/{id}.meet`. This is not an old “meeting name alias” feature; do not delete the `aliases` folder while meetings exist.
