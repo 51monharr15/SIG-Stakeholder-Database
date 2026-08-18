@@ -50,7 +50,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
   <?php if ($page === 'home'): ?>
   <header class="site-header">
     <div class="wrap">
-      <a class="brand" href="./">Meet Scheduler</a>
+      <a class="brand" href="./">Simon's Meeting Scheduler</a>
     </div>
   </header>
   <?php endif; ?>
@@ -58,7 +58,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
   <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : '' ?>">
     <?php if ($page === 'home'): ?>
       <section class="panel hero">
-        <h1>Find a time everyone can make</h1>
+        <h1>Find a meeting time everyone can make</h1>
         <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
         <p class="hint">Places can be online (URL), physical, or hybrid. Times are shown in your local timezone and UTC.</p>
         <form id="create-form" class="create-form">
@@ -68,13 +68,13 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
           </label>
           <button type="submit">Create meeting</button>
         </form>
-        <p class="hint">You get a private link with a random code. Save it — or expand <strong>Find my meetings</strong> below if you set a PIN when you joined.</p>
+        <p class="hint">Create meeting generates a private link with a random code. <strong>Save it.</strong><br>Or click/tap <strong>Find my meetings</strong> below to search by Attendee's registered<br>ID AND PIN (Requires you have joined and set a personal pin when you joining).</p>
         <details class="help-toggle home-collapse">
           <summary>Find my meetings</summary>
           <div class="help-body">
-            <p class="meta">Enter the <strong>registered identity</strong> (display name exactly as when you joined) and <strong>PIN</strong> for a meeting.</p>
+            <p class="meta">Enter the <strong>registered identity</strong> (Identity exactly as when you joined) and <strong>personal PIN</strong> for a list of matching meetings.</p>
             <form id="list-meetings-form" class="create-form">
-              <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Simon at Logical Model"></label>
+              <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
               <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
               <button type="submit">List my meetings</button>
             </form>
