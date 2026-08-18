@@ -463,66 +463,94 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   scroll-margin-top: 11rem;
 }
 
-.add-mode-fieldset,
-.radio-label { display: none; }
+.tab.tab-disabled,
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
-.add-attendee-grid .name-with-mode { grid-column: 1 / -1; }
+.attendee-section-compact {
+  max-width: 42rem;
+}
 
-.label-row {
+.table-wrap-compact { max-width: 100%; }
+
+.add-attendee-block {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.add-attendee-form {
+  max-width: 100%;
+}
+
+.add-attendee-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: flex-end;
+}
+
+.add-attendee-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.input-compact { width: 100%; box-sizing: border-box; }
+.input-name, .input-contact { max-width: 50ch; }
+.input-pin { max-width: 10ch; }
+.input-initials { max-width: 5ch; }
+
+.add-mode-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem 0.75rem;
-  margin-bottom: 0.25rem;
+  gap: 0.5rem 1rem;
+  border: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
 }
 
-.add-mode-toggle {
+.add-mode-row legend {
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.add-mode-row .mode-opt {
   display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  overflow: hidden;
-  font-size: 0.8rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.add-mode-toggle .mode-opt {
-  display: flex;
   align-items: center;
+  gap: 0.35rem;
   margin: 0;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 
-.add-mode-toggle .mode-opt input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+.add-mode-row .mode-opt input {
   margin: 0;
+  flex-shrink: 0;
 }
 
-.add-mode-toggle .mode-opt span {
-  display: block;
-  padding: 0.2rem 0.55rem;
-  line-height: 1.3;
-  white-space: nowrap;
-}
-
-.add-mode-toggle .mode-opt:has(input:checked) span {
-  background: var(--accent);
-  color: #fff;
-}
-
-.add-mode-toggle .mode-opt:not(:has(input:checked)) span:hover {
-  background: #f3f4f6;
-}
-
-.attendee-section .register-block .add-attendee-form {
+.calendar-continue-row {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
   max-width: 36rem;
 }
 
-.attendee-tab-hint { margin: 0 0 0.75rem; }
+.calendar-continue-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-next-step {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
 
 .site-footer a { color: var(--accent); }
 

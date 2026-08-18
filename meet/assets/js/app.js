@@ -263,9 +263,14 @@
     });
   }
 
-  function tabBtn(id, label, state, tip = '') {
+  function calendarReady(state) {
+    return !!state.attendeeId;
+  }
+
+  function tabBtn(id, label, state, tip = '', { disabled = false } = {}) {
     const title = tip ? ` title="${escapeHtml(tip)}"` : '';
-    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}"${title}>${label}</button>`;
+    const dis = disabled ? ' disabled' : '';
+    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}${disabled ? ' tab-disabled' : ''}" data-action="tab" data-tab="${id}"${title}${dis}>${label}</button>`;
   }
 
   const TAB_TIPS = {
@@ -306,7 +311,22 @@
   }
 
   function renderTabNav(m, state, attendee) {
-    return tabNavItems(m, attendee).map(({ id, label, tip }) => tabBtn(id, label, state, tip)).join('');
+    const calLocked = !calendarReady(state);
+    return tabNavItems(m, attendee).map(({ id, label, tip }) => {
+      const disabled = id === 'calendar' && calLocked;
+      const calTip = disabled ? 'Add yourself or click This is me on your row first' : tip;
+      return tabBtn(id, label, state, calTip, { disabled });
+    }).join('');
+  }
+
+  function renderContinueToCalendar(state) {
+    const ready = calendarReady(state);
+    return `<div class="calendar-continue-row">
+      <button type="button" data-action="tab" data-tab="calendar"${ready ? '' : ' disabled'}>Continue to calendar →</button>
+      <p class="meta">${ready
+        ? 'You can add more attendees first, then mark your availability on the calendar.'
+        : 'Add yourself below, or click <strong>This is me</strong> on your row, before opening the calendar.'}</p>
+    </div>`;
   }
 
   function tabPageIntro(m, state) {
@@ -413,13 +433,7 @@
           <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
           ${renderAddLocationForm()}
         </details>
-        ${!m.attendees.length ? `
-        <div class="setup-next-step stack">
-          <h3 class="section-title">Next: add attendees</h3>
-          <p class="meta">Add yourself (or others) before marking availability on the calendar.</p>
-          <button type="button" data-action="tab" data-tab="calendar">Open calendar tab →</button>
-          ${renderAttendeesSection(m, state, attendee)}
-        </div>` : ''}
+        ${!attendee ? renderAttendeesSection(m, state, attendee) : ''}
       </section>`;
   }
 
@@ -760,56 +774,59 @@
   }
 
   function renderAddAttendeeForm(signedIn) {
-    const modeToggle = signedIn ? '' : `
-      <span class="add-mode-toggle" title="Me: you will mark availability. Other: add them to the list only.">
-        <label class="mode-opt"><input type="radio" name="add_mode" value="self" checked><span>Me</span></label>
-        <label class="mode-opt"><input type="radio" name="add_mode" value="propose"><span>Other</span></label>
-      </span>`;
+    const modeRow = signedIn ? '' : `
+        <fieldset class="add-mode-row">
+          <legend class="label-hint">Adding</legend>
+          <label class="mode-opt"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
+          <label class="mode-opt"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
+        </fieldset>`;
     const extras = signedIn ? '' : `
         <div class="pin-fields" data-show-when="self">
-          <label>PIN <span class="label-hint">(optional, for Find my meetings)</span>
-            <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
+          <label>PIN <span class="label-hint">(optional)</span>
+            <input class="input-compact input-pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
           </label>
         </div>
-        <p class="meta span-full propose-hint" data-show-when="propose" hidden>Share the meeting link with them — they use <strong>This is me</strong> on their row.</p>`;
+        <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link. They claim their row with <strong>This is me</strong>.</p>`;
     return `
-      <details class="register-block"${signedIn ? '' : ' open'}>
-        <summary>Add attendee</summary>
-        <form class="inline-form add-attendee-form" data-form="add-attendee">
-          ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
-          <div class="form-grid add-attendee-grid">
-            <label class="name-with-mode">
-              <span class="label-row">Display name ${modeToggle}</span>
-              <input name="display_name" required placeholder="Name as shown in the list">
-            </label>
-            <label>Initials <span class="label-hint">(optional)</span><input name="initials" maxlength="4"></label>
-            <label>Contact <span class="label-hint">(optional)</span><input name="contact" placeholder="email or phone"></label>
-          </div>
-          ${extras}
-          <button type="submit">Add attendee</button>
-        </form>
-      </details>`;
+        <div class="add-attendee-block">
+          <h3 class="section-title">Add new attendee</h3>
+          <p class="meta">Add yourself as an attendee, or propose someone else as a potential attendee.</p>
+          <form class="inline-form add-attendee-form" data-form="add-attendee">
+            ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
+            ${modeRow}
+            <div class="add-attendee-fields">
+              <label>Display name
+                <input class="input-compact input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
+              </label>
+              <label>Initials <span class="label-hint">(opt.)</span>
+                <input class="input-compact input-initials" name="initials" maxlength="4">
+              </label>
+              <label>Contact <span class="label-hint">(opt.)</span>
+                <input class="input-compact input-contact" name="contact" maxlength="80" placeholder="email or phone">
+              </label>
+            </div>
+            ${extras}
+            <button type="submit">Add attendee</button>
+          </form>
+        </div>`;
   }
 
   function renderAttendeesSection(m, state, attendee) {
     const signedIn = !!attendee;
-    let hint = '';
-    if (!signedIn) {
-      hint = 'Click <strong>This is me</strong> on your row if already listed, or add yourself below.';
-    } else if (attendee.is_organizer) {
-      hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below.';
-    } else {
-      hint = 'If you appear more than once, use Remove duplicate (keep me) on the extra row.';
-    }
+    const listHint = signedIn
+      ? (attendee.is_organizer
+        ? 'Remove duplicate rows or merge attendees below if needed.'
+        : 'Use Remove duplicate (keep me) if you appear more than once.')
+      : 'Click <strong>This is me</strong> on your row if you are already listed.';
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
     const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
     return `
-      <section class="panel stack attendee-section">
+      <section class="panel stack attendee-section attendee-section-compact">
         <h2 class="section-title">Registered attendees</h2>
-        ${hint ? `<p class="meta">${hint}</p>` : ''}
-        <div class="table-wrap">
+        ${listHint ? `<p class="meta">${listHint}</p>` : ''}
+        <div class="table-wrap table-wrap-compact">
           <table class="data-table attendee-table">
             <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
@@ -820,6 +837,7 @@
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
         ${renderAddAttendeeForm(signedIn)}
+        ${renderContinueToCalendar(state)}
       </section>`;
   }
 
@@ -1081,7 +1099,15 @@
     }
 
     const action = btn.dataset.action;
-    if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); return; }
+    if (action === 'tab') {
+      if (btn.disabled) {
+        toast('Add yourself or click This is me on your row first', true);
+        return;
+      }
+      setTab(state, btn.dataset.tab);
+      render(root, state);
+      return;
+    }
     if (action === 'copy-link') {
       const input = document.getElementById('share-url-input');
       const link = input?.value || shareUrl(state.slug);
