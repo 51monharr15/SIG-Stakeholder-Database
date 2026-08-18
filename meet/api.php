@@ -59,6 +59,9 @@ try {
             case 'add_location':
                 handleAddLocation($store, $slug, $input);
                 break;
+            case 'remove_location':
+                handleRemoveLocation($store, $slug, $input);
+                break;
             case 'save_location_prefs':
                 handleSaveLocationPrefs($store, $slug, $input);
                 break;
@@ -550,6 +553,37 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
     });
 
     Response::json(['ok' => true, 'location' => $location, 'meet' => $store->publicView($meet)]);
+}
+
+function handleRemoveLocation(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $locationId = trim((string) ($input['location_id'] ?? ''));
+    if ($locationId === '') {
+        Response::error('location_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    requireActingOrganizer($meet, $actingId);
+
+    $meet = $store->update($meet['id'], function (array $m) use ($locationId) {
+        $m['locations'] = array_values(array_filter(
+            $m['locations'],
+            fn ($loc) => ($loc['id'] ?? '') !== $locationId
+        ));
+        foreach ($m['location_preferences'] as $attendeeId => $ids) {
+            $m['location_preferences'][$attendeeId] = array_values(array_filter(
+                $ids,
+                fn ($id) => $id !== $locationId
+            ));
+        }
+        if (($m['confirmed_location'] ?? '') === $locationId) {
+            $m['confirmed_location'] = '';
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }
 
 function handleSaveLocationPrefs(MeetStore $store, string $slug, array $input): void

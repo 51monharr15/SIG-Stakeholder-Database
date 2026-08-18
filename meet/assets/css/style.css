@@ -328,11 +328,24 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .meeting-status {
   margin: 0.35rem 0 0.5rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.45rem 0.55rem;
   background: #f8fafc;
   border-radius: 8px;
   border: 1px solid var(--line);
 }
+
+.status-head { margin: 0 0 0.25rem; }
+.status-label { font-weight: 600; margin-right: 0.35rem; }
+
+.location-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.technical-slot-details { margin-top: 0.35rem; font-size: 0.88rem; }
+.technical-slot-details input.mono { font-family: ui-monospace, monospace; font-size: 0.85rem; }
 
 .suggestion-time { margin: 0 0 0.25rem; }
 

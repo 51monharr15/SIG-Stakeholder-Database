@@ -69,7 +69,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
         <p class="hint">You get a private link with a random code. Save it — or use <strong>List my meetings</strong> below if you set a PIN when you joined.</p>
         <hr class="hero-divider">
         <h2 class="section-title">List my meetings</h2>
-        <p class="meta">Enter the <strong>name</strong> and <strong>PIN</strong> you used when you registered for a meeting. Works for any attendee with a PIN set — not only organisers.</p>
+        <p class="meta">Enter the <strong>name</strong> and <strong>PIN</strong> you used when you registered for a meeting. Works for any attendee and PIN combination that matches.</p>
         <form id="list-meetings-form" class="create-form">
           <label>Your name <input type="text" name="display_name" required autocomplete="name"></label>
           <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
