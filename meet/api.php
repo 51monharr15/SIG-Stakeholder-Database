@@ -75,6 +75,9 @@ try {
             case 'add_attendee':
                 handleAddAttendee($store, $slug, $input);
                 break;
+            case 'update_attendee':
+                handleUpdateAttendee($store, $slug, $input);
+                break;
             default:
                 Response::error('Unknown action', 400);
         }
@@ -130,7 +133,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
 
     $meet = $store->loadBySlug($slug);
     $attendeeId = trim((string) ($input['attendee_id'] ?? ''));
-    $alias = trim((string) ($input['contact'] ?? ($input['alias'] ?? '')));
+    $alias = validateContactField(trim((string) ($input['contact'] ?? ($input['alias'] ?? ''))));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
     $pin = trim((string) ($input['pin'] ?? ''));
 
@@ -732,7 +735,7 @@ function handleAddAttendee(MeetStore $store, string $slug, array $input): void
     $meet = $store->loadBySlug($slug);
     requireActingOrganizer($meet, $actingId);
 
-    $contact = trim((string) ($input['contact'] ?? ''));
+    $contact = validateContactField(trim((string) ($input['contact'] ?? '')));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
     $newId = MeetFile::generateId('usr');
 
@@ -753,6 +756,64 @@ function handleAddAttendee(MeetStore $store, string $slug, array $input): void
         'attendee_id' => $newId,
         'meet' => $store->publicView($meet),
     ]);
+}
+
+function handleUpdateAttendee(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $targetId = trim((string) ($input['attendee_id'] ?? $actingId));
+    if ($actingId === '') {
+        Response::error('acting_attendee_id required', 403);
+    }
+
+    $displayName = trim((string) ($input['display_name'] ?? ''));
+    if ($displayName === '') {
+        Response::error('Display name is required');
+    }
+
+    $contact = validateContactField(trim((string) ($input['contact'] ?? '')));
+    $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
+
+    $meet = $store->loadBySlug($slug);
+    if ($targetId !== $actingId) {
+        requireActingOrganizer($meet, $actingId);
+    }
+
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials) {
+        $idx = attendeeIndexById($m['attendees'], $targetId);
+        if ($idx === null) {
+            throw new \RuntimeException('Attendee not found', 404);
+        }
+        $m['attendees'][$idx]['display_name'] = $displayName;
+        $m['attendees'][$idx]['contact'] = $contact;
+        $m['attendees'][$idx]['initials'] = $initials !== '' ? $initials : attendeeInitialsFromName($displayName);
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
+function validateContactField(string $contact): string
+{
+    if ($contact === '') {
+        return '';
+    }
+    if (str_contains($contact, '@') && filter_var($contact, FILTER_VALIDATE_EMAIL) === false) {
+        Response::error('Contact must be a valid email (e.g. name@example.com) or a phone number without @');
+    }
+    return $contact;
+}
+
+function attendeeInitialsFromName(string $name): string
+{
+    $parts = preg_split('/\s+/', trim($name)) ?: [];
+    $initials = '';
+    foreach ($parts as $part) {
+        if ($part !== '') {
+            $initials .= strtoupper($part[0]);
+        }
+    }
+    return substr($initials, 0, 3);
 }
 
 /** @param array<string, mixed> $meet */

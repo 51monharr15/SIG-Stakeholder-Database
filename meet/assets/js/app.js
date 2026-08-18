@@ -84,6 +84,8 @@
       editingIntro: null,
       headerExpanded: false,
       claimingId: null,
+      editingAttendeeId: null,
+      attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
     };
 
@@ -95,7 +97,8 @@
       }
       const explicit = tabFromUrl();
       const signedIn = state.meet.attendees.find((a) => a.id === state.attendeeId);
-      let activeTab = explicit || localStorage.getItem(tabKey(slug)) || 'organiser';
+      let activeTab = explicit || localStorage.getItem(tabKey(slug))
+        || (state.meet.attendees.length ? 'calendar' : 'organiser');
       if (activeTab === 'organiser' && state.meet.attendees.length && !signedIn?.is_organizer) {
         activeTab = 'calendar';
       }
@@ -371,31 +374,35 @@
 
   function tabNavItems(m, attendee) {
     const showOrg = canShowOrganiserTab(m, attendee);
-    const items = [];
-    if (showOrg) {
-      items.push({
-        id: 'organiser',
-        label: '1. Set meeting options',
-        tip: TAB_TIPS.organiser,
-      });
+    const established = meetingEstablished(m);
+    const organiser = {
+      id: 'organiser',
+      label: established ? '4. Meeting options' : '1. Set meeting options',
+      tip: TAB_TIPS.organiser,
+    };
+    const calendar = {
+      id: 'calendar',
+      label: established ? '1. Choose calendar times' : '2. Choose calendar times',
+      tip: TAB_TIPS.calendar,
+    };
+    const times = {
+      id: 'times',
+      label: established ? '2. Availability, location & agenda' : '3. Availability, location & agenda',
+      tip: TAB_TIPS.times,
+    };
+    const after = {
+      id: 'after',
+      label: established ? '3. After meeting' : '4. After meeting',
+      tip: TAB_TIPS.after,
+    };
+    if (established) {
+      const items = [calendar, times, after];
+      if (showOrg) items.push(organiser);
+      return items;
     }
-    items.push(
-      {
-        id: 'calendar',
-        label: '2. Choose calendar times',
-        tip: TAB_TIPS.calendar,
-      },
-      {
-        id: 'times',
-        label: '3. Availability, location & agenda',
-        tip: TAB_TIPS.times,
-      },
-      {
-        id: 'after',
-        label: '4. After meeting',
-        tip: TAB_TIPS.after,
-      },
-    );
+    const items = [];
+    if (showOrg) items.push(organiser);
+    items.push(calendar, times, after);
     return items;
   }
 
@@ -521,7 +528,9 @@
           <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
           ${renderAddLocationForm()}
         </details>
-        ${renderAttendeesSection(m, state, attendee)}
+        ${!meetingEstablished(m)
+          ? renderAttendeesSection(m, state, attendee, { showContinue: true })
+          : '<p class="meta attendee-tab-hint">Add or manage attendees on <strong>1. Choose calendar times</strong> (expand the panel there).</p>'}
       </section>`;
   }
 
@@ -805,7 +814,7 @@
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
-      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : '<p class="meta attendee-tab-hint">Manage attendees on <strong>Choose calendar times</strong>.</p>'}
+      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : '<p class="meta attendee-tab-hint">Manage attendees on <strong>1. Choose calendar times</strong>.</p>'}
       <section class="panel stack">
         <h2 class="section-title">Locations &amp; final time</h2>
         <details class="propose-location-block" open><summary>Propose a location</summary>
@@ -889,7 +898,7 @@
                 <input class="input-initials" name="initials" maxlength="4">
               </label>
               <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-                <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone">
+                <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" inputmode="email" autocomplete="email">
               </label>
               ${pinRow}
             </div>
@@ -899,8 +908,41 @@
         </div>`;
   }
 
-  function renderAttendeesSection(m, state, attendee) {
+  function renderEditAttendeeForm(a) {
+    return `
+        <form class="inline-form edit-attendee-form" data-form="edit-attendee">
+          <h3 class="section-title">Edit my details</h3>
+          <input type="hidden" name="attendee_id" value="${escapeHtml(a.id)}">
+          <div class="add-attendee-fields">
+            <label class="field-name">Display name
+              <input class="input-name" name="display_name" required maxlength="80" value="${escapeHtml(a.display_name)}">
+            </label>
+            <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
+              <input class="input-initials" name="initials" maxlength="4" value="${escapeHtml(a.initials || '')}">
+            </label>
+            <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
+              <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" value="${escapeHtml(a.contact || '')}">
+            </label>
+          </div>
+          <div class="row">
+            <button type="submit">Save my details</button>
+            <button type="button" class="secondary" data-action="cancel-edit-attendee">Cancel</button>
+          </div>
+        </form>`;
+  }
+
+  function attendeePanelIsOpen(state, m, attendee) {
+    if (state.attendeePanelOpen !== undefined) return state.attendeePanelOpen;
+    return !meetingEstablished(m) || !attendee;
+  }
+
+  function renderAttendeesSection(m, state, attendee, { showContinue = false } = {}) {
     const signedIn = !!attendee;
+    const established = meetingEstablished(m);
+    const panelOpen = attendeePanelIsOpen(state, m, attendee);
+    const summaryLabel = established && signedIn
+      ? `Registered attendees (${m.attendees.length}) — click to expand`
+      : `Registered attendees (${m.attendees.length || 'none yet'})`;
     const listHint = signedIn
       ? (attendee.is_organizer
         ? 'Remove duplicate rows or merge attendees below if needed.'
@@ -911,11 +953,13 @@
     const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
     return `
-      <div class="attendee-block stack">
-        <h2 class="section-title">Registered attendees</h2>
+      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
+        <summary class="attendee-block-summary">${summaryLabel}</summary>
+        <div class="attendee-block-body stack">
         ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser
           ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : '<span class="badge" title="PIN set">PIN</span>'}
           <button type="button" class="secondary compact-btn" data-action="switch-user">Switch user</button>
+          <button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit my details</button>
         </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
@@ -927,10 +971,12 @@
           </table>
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
+        ${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
         ${renderAddAttendeeForm(signedIn, attendee)}
-        ${renderContinueToCalendar(state)}
-      </div>`;
+        ${showContinue ? renderContinueToCalendar(state) : ''}
+        </div>
+      </details>`;
   }
 
   function renderLocationItem(m, state, attendee, loc) {
@@ -1051,6 +1097,10 @@
     const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
+    if (isSelf && signedIn) {
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit</button>`);
+    }
+
     if (isSelf && !a.has_pin) {
       actions.push(`<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>`);
     }
@@ -1070,7 +1120,7 @@
     return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
       <td>${escapeHtml(a.display_name)} ${pinBadge} ${orgBadge}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
-      <td>${a.contact ? `<a href="${contactHref(a.contact)}">${escapeHtml(a.contact)}</a>` : '—'}</td>
+      <td>${renderContactCell(a)}</td>
       <td>${countSlotsFor(m, a.id)}</td>
       ${organiserCell}
       <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
@@ -1117,9 +1167,10 @@
       let data;
       if (kind === 'add-attendee') {
         const mode = fd.get('add_mode') || 'self';
+        const contact = validateContact(fd.get('contact'));
         const payload = {
           action: 'join', slug: state.slug,
-          display_name: fd.get('display_name'), contact: fd.get('contact'),
+          display_name: fd.get('display_name'), contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
           client_timezone: tz,
         };
@@ -1170,6 +1221,20 @@
           state.attendeeId = keepId;
           localStorage.setItem(attendeeKey(state.slug), keepId);
         }
+      } else if (kind === 'edit-attendee') {
+        const contact = validateContact(fd.get('contact'));
+        data = await apiPost({
+          action: 'update_attendee',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          attendee_id: fd.get('attendee_id'),
+          display_name: fd.get('display_name'),
+          contact,
+          initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
+        });
+        state.editingAttendeeId = null;
+        state.attendeePanelOpen = true;
+        state.scrollAfterRender = 'attendee-block';
       } else return;
       state.meet = data.meet;
       if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
@@ -1181,6 +1246,7 @@
         const mode = fd.get('add_mode') || 'self';
         toast(mode === 'self' ? 'You are signed in — mark your availability on the calendar' : 'Attendee added — share the meeting link with them');
       }
+      else if (kind === 'edit-attendee') toast('Your details were updated');
       else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
       else if (kind === 'update-settings') toast('Meeting options saved');
       else toast('Saved');
@@ -1291,6 +1357,18 @@
       requestAnimationFrame(() => root.querySelector('.claim-form input[name="pin"]')?.focus());
       return;
     }
+    if (action === 'edit-attendee') {
+      state.editingAttendeeId = state.attendeeId;
+      state.attendeePanelOpen = true;
+      render(root, state);
+      requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="display_name"]')?.focus());
+      return;
+    }
+    if (action === 'cancel-edit-attendee') {
+      state.editingAttendeeId = null;
+      render(root, state);
+      return;
+    }
     if (action === 'cancel-claim') {
       state.claimingId = null;
       render(root, state);
@@ -1375,6 +1453,10 @@
   }
 
   function handleChange(e, root, state) {
+    if (e.target.matches('details.attendee-block')) {
+      state.attendeePanelOpen = e.target.open;
+      return;
+    }
     if (e.target.matches('[data-action="edit-confirmed-slot"]')) {
       const hidden = document.getElementById('confirmed-slot-hidden');
       if (hidden) hidden.value = e.target.value;
@@ -1656,7 +1738,38 @@
   function deriveInitials(name) { return String(name).trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3).toUpperCase(); }
   function countSlotsFor(m, id) { return Object.values(m.availability).filter((ids) => ids.includes(id)).length; }
   function locationLabel(m, id) { return m.locations.find((l) => l.id === id)?.label || id; }
-  function contactHref(c) { return String(c).includes('@') ? `mailto:${c}` : `tel:${c}`; }
+  function isWellFormedEmail(s) {
+    const v = String(s || '').trim();
+    if (!v) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+  }
+
+  function validateContact(raw) {
+    const v = String(raw || '').trim();
+    if (!v) return '';
+    if (v.includes('@') && !isWellFormedEmail(v)) {
+      throw new Error('Contact must be a valid email (e.g. name@example.com) or a phone number without @');
+    }
+    return v;
+  }
+
+  function contactHref(c) {
+    const v = String(c || '').trim();
+    if (!v) return '#';
+    if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : '#';
+    return `tel:${v}`;
+  }
+
+  function renderContactCell(a) {
+    if (!a.contact) return '—';
+    if (a.contact.includes('@') && !isWellFormedEmail(a.contact)) {
+      return `${escapeHtml(a.contact)} <span class="badge warn" title="Not a valid email — use Edit to fix">check</span>`;
+    }
+    const href = contactHref(a.contact);
+    if (href === '#') return escapeHtml(a.contact);
+    return `<a href="${escapeHtml(href)}">${escapeHtml(a.contact)}</a>`;
+  }
+
   function lines(v) { return String(v || '').split('\n').map((s) => s.trim()).filter(Boolean); }
   function shareUrl(slug) { return meetingUrl(slug); }
   function slugify(v) { return String(v).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'meet'; }
