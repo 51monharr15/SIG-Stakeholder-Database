@@ -200,6 +200,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.home-collapse { max-width: 420px; margin-top: 1rem; }
+.home-collapse .create-form { margin-top: 0.5rem; }
+.propose-location-block { margin-bottom: 0.75rem; }
+.notes-display { margin: 0.5rem 0; }
+
 .form-grid .help-toggle,
 .form-grid .span-full,
 .join-form .span-full,

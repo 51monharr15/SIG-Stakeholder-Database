@@ -617,7 +617,7 @@ function handleAddAttachment(MeetStore $store, string $slug, array $input): void
         'label' => $label,
     ];
     if ($type === 'url') {
-        $attachment['url'] = trim((string) ($input['url'] ?? ''));
+        $attachment['url'] = normalizeAttachmentUrl(trim((string) ($input['url'] ?? '')));
     } else {
         $attachment['body'] = (string) ($input['body'] ?? '');
     }
@@ -629,6 +629,21 @@ function handleAddAttachment(MeetStore $store, string $slug, array $input): void
     });
 
     Response::json(['ok' => true, 'attachment' => $attachment, 'meet' => $store->publicView($meet)]);
+}
+
+function normalizeAttachmentUrl(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+    if (preg_match('#^https?://#i', $url)) {
+        return $url;
+    }
+    if (str_starts_with($url, '//')) {
+        return 'https:' . $url;
+    }
+    return 'https://' . ltrim($url, '/');
 }
 
 function handleConfirm(MeetStore $store, string $slug, array $input): void

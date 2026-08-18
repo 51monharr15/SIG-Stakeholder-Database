@@ -233,10 +233,7 @@
               </div>
             </div>
             <nav class="tab-nav" role="tablist">
-              ${tabBtn('calendar', 'Calendar', state)}
-              ${tabBtn('times', 'Meeting details', state)}
-              ${tabBtn('after', 'After meeting', state)}
-              ${(!m.attendees.length || attendee?.is_organizer) ? tabBtn('organiser', 'Set meeting options', state) : ''}
+              ${renderTabNav(m, state, attendee)}
             </nav>
           </div>
         </div>
@@ -255,9 +252,43 @@
     return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}">${label}</button>`;
   }
 
+  function meetingEstablished(m) {
+    return (m.attendees?.length || 0) > 0;
+  }
+
+  function canShowOrganiserTab(m, attendee) {
+    return !m.attendees.length || !!attendee?.is_organizer;
+  }
+
+  function tabNavItems(m, attendee) {
+    const established = meetingEstablished(m);
+    const showOrg = canShowOrganiserTab(m, attendee);
+    if (!established) {
+      const items = [];
+      if (showOrg) items.push({ id: 'organiser', label: '1. Set meeting options' });
+      items.push(
+        { id: 'calendar', label: '2. Choose calendar times' },
+        { id: 'times', label: '3. Meeting availability & confirm' },
+        { id: 'after', label: '4. After meeting' },
+      );
+      return items;
+    }
+    const items = [
+      { id: 'calendar', label: '1. Add users & choose times' },
+      { id: 'times', label: '2. Meeting availability & confirm' },
+      { id: 'after', label: '3. After meeting' },
+    ];
+    if (showOrg) items.push({ id: 'organiser', label: 'Reset meeting options' });
+    return items;
+  }
+
+  function renderTabNav(m, state, attendee) {
+    return tabNavItems(m, attendee).map(({ id, label }) => tabBtn(id, label, state)).join('');
+  }
+
   function tabPageIntro(m, state) {
     if (state.activeTab === 'times') {
-      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.', 'Page intro', { withTextHelp: false });
+      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting availability page.', 'Page intro', { withTextHelp: false });
     }
     if (state.activeTab === 'after') {
       return renderIntroBlock(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for recordings and summaries.', 'Page intro', { withTextHelp: false });
@@ -368,6 +399,7 @@
 
     return `
       <section class="panel stack calendar-panel">
+        <p class="meta">Mark when <strong>you</strong> are free. This saves <strong>your availability</strong> only — it does not set the final meeting time. Organisers set the final time on <strong>Meeting availability &amp; confirm</strong> using &ldquo;Use as meeting start&rdquo; on a row in the availability pane.</p>
         <div class="row meta-line">
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
           <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
@@ -467,15 +499,16 @@
   }
 
   function renderMeetingStatus(m) {
+    const finalisedTip = 'To change the final time or location: open Meeting availability & confirm and use Update final meeting time / location (organiser only).';
     if (m.confirmed_slot) {
       return `<div class="meeting-status">
-        <p class="status-head"><span class="status-label">Current status:</span> <span class="badge good">Finalised</span></p>
+        <p class="status-head"><span class="status-label">Current status:</span> <span class="badge good" title="${escapeHtml(finalisedTip)}">Finalised</span></p>
         <p class="meta">Time: ${formatTimePair(m.confirmed_slot)}</p>
         <p class="meta">Location: ${confirmedLocationText(m)}</p>
       </div>`;
     }
     const proposed = bestProposedSlot(m);
-    let hint = 'No agreed time yet — mark availability on the Calendar tab.';
+    let hint = 'No agreed time yet — mark availability on <strong>Choose calendar times</strong>.';
     if (proposed?.kind === 'everyone') {
       hint = `Earliest where <strong>everyone</strong> is available: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length})</span>`;
     } else if (proposed?.kind === 'organiser_plus_one') {
@@ -534,15 +567,52 @@
       </div>`;
   }
 
+  function renderProposedStartBlock(m, slotVal) {
+    if (m.confirmed_slot) {
+      return `<p class="confirmed-time-display"><span class="label-hint">Currently selected as final meeting time:</span> ${formatTimePair(m.confirmed_slot)}</p>`;
+    }
+    if (slotVal) {
+      return `<p class="confirmed-time-display"><span class="label-hint">Proposed (not yet final):</span> ${formatTimePair(slotVal)}</p>`;
+    }
+    return '<p class="meta">Choose a time from the <strong>Meeting availability</strong> pane above using &ldquo;Use as meeting start&rdquo;.</p>';
+  }
+
+  function renderFinaliseSection(m, state, attendee, slotVal) {
+    if (!attendee?.is_organizer) {
+      return `<p class="meta">Only <strong>organisers</strong> can lock in the final meeting time and location. Choose a location in the dropdown below when you are an organiser, or ask the organiser to finalise. Anyone can propose locations above.</p>`;
+    }
+    return `
+      <details open><summary>Finalise meeting time &amp; location (organiser only)</summary>
+        <p class="meta">Pick the <strong>final location</strong> from the dropdown, then press the button below. You can change these later.</p>
+        <form class="inline-form" data-form="confirm" id="confirm-form">
+          <label>Currently proposed meeting start time
+            ${renderProposedStartBlock(m, slotVal)}
+            <input type="hidden" name="confirmed_slot" id="confirmed-slot-hidden" value="${escapeHtml(slotVal)}">
+            <details class="technical-slot-details">
+              <summary>Technical UTC format (optional)</summary>
+              <p class="meta">Stored as one UTC instant. <strong>T</strong> separates date and time; <strong>Z</strong> means UTC.</p>
+              <input class="mono" data-action="edit-confirmed-slot" value="${escapeHtml(slotVal)}" placeholder="2026-08-18T13:00:00.000Z">
+            </details>
+          </label>
+          <label>Final location <span class="label-hint">(organiser chooses)</span>
+            <select name="confirmed_location"><option value="">— none —</option>
+              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
+            </select>
+          </label>
+          <button type="submit">${m.confirmed_slot ? 'Update final meeting time / location' : 'Finalise meeting time & location'}</button>
+        </form>
+      </details>`;
+  }
+
   function renderTimesTab(m, state, attendee) {
     const sorted = sortSuggestions(m, state.sortOrder);
     const partial = sortPartialSuggestions(m, state.sortOrder);
     const mtz = meetingTz(m);
     const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
     return `
-      <section class="panel stack">
+      <section class="panel stack" id="meeting-availability-pane">
         <div class="row" style="justify-content:space-between">
-          <h2 class="section-title" style="margin:0">Meeting details</h2>
+          <h2 class="section-title" style="margin:0">Meeting availability</h2>
           <label class="sort-label">Sort
             <select data-action="sort-order">
               <option value="date"${state.sortOrder === 'date' ? ' selected' : ''}>Soonest first</option>
@@ -551,7 +621,7 @@
             </select>
           </label>
         </div>
-        <p class="meta">Everyone available lists start times where <strong>every attendee</strong> marked enough consecutive grid steps for the full <strong>${m.duration_minutes}-minute</strong> meeting. Times shown as <strong>${escapeHtml(tz)}</strong> / UTC.</p>
+        <p class="meta">Everyone available lists start times where <strong>every attendee</strong> marked enough consecutive grid steps for the full <strong>${m.duration_minutes}-minute</strong> meeting. Times shown as <strong>${escapeHtml(tz)}</strong> / UTC. Organisers: use <strong>Use as meeting start</strong> then finalise below.</p>
         <h3 class="section-title">Everyone available (full meeting)</h3>
         <div class="suggestions-scroll">
           ${sorted.length ? sorted.map((s) => renderFullSuggestion(m, s, mtz)).join('') : '<p class="meta">No times where everyone is free for the whole meeting yet.</p>'}
@@ -565,39 +635,30 @@
       ${renderAttendeesSection(m, state, attendee)}
       <section class="panel stack">
         <h2 class="section-title">Locations &amp; final time</h2>
-        <p class="meta">Proposed locations appear below. Click lozenges to mark which work for <strong>you</strong> (light blue = selected; click again to deselect), then <strong>Save location preferences</strong>. Organisers can remove proposals or set the final time and location.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet.</p>'}</div>
-        ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : '<p class="meta">Sign in to mark location preferences.</p>'}
-        <details><summary>Propose a location</summary>
+        <details class="propose-location-block" open><summary>Propose a location</summary>
+          <p class="meta">Anyone can propose a location. Add as many options as you need.</p>
           ${renderAddLocationForm()}
         </details>
-        <details open><summary>Set or change final time &amp; location (organiser)</summary>
-          <form class="inline-form" data-form="confirm" id="confirm-form">
-            <label>Meeting start time
-              ${slotVal ? `<p class="confirmed-time-display">${formatTimePair(slotVal)}</p>` : '<p class="meta">Choose a time using &ldquo;Use as meeting start&rdquo; above, or pick slots on the Calendar tab.</p>'}
-              <input type="hidden" name="confirmed_slot" id="confirmed-slot-hidden" value="${escapeHtml(slotVal)}">
-              <details class="technical-slot-details">
-                <summary>Technical UTC format (optional)</summary>
-                <p class="meta">Stored as one UTC instant. In ISO format, <strong>T</strong> separates date and time; <strong>Z</strong> means UTC (Zulu). You normally do not need to edit this.</p>
-                <input class="mono" data-action="edit-confirmed-slot" value="${escapeHtml(slotVal)}" placeholder="2026-08-18T13:00:00.000Z">
-              </details>
-            </label>
-            <label>Final location<select name="confirmed_location"><option value="">— none —</option>
-              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
-            </select></label>
-            <button type="submit">${m.confirmed_slot ? 'Update final time / location' : 'Finalise meeting'}</button>
-          </form>
-        </details>
+        <h3 class="section-title">Proposed locations</h3>
+        <p class="meta">Select/deselect locations that are OK for you by tap or click (light blue = selected), then <strong>Save location preferences</strong>. Propose alternatives above.</p>
+        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location above.</p>'}</div>
+        ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : '<p class="meta">Sign in to mark location preferences.</p>'}
+        ${renderFinaliseSection(m, state, attendee, slotVal)}
       </section>
       <section class="panel stack">
         <h2 class="section-title">Agenda &amp; decisions required</h2>
+        <p class="meta">Agenda and decisions are plain-text lines (one item per line) for simplicity. Notes support simple HTML like meeting intros.</p>
         ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
         ${m.decisions.length ? `<p><strong>Decisions required</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-        <details><summary>Edit agenda / decisions</summary>
+        ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
+        <details><summary>Edit agenda / decisions / notes</summary>
           <form class="inline-form" data-form="update-meta">
-            <label>Agenda <span class="label-hint">(plain text, one item per line)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
-            <label>Decisions required <span class="label-hint">(plain text, one per line)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
-            <label>Notes <span class="label-hint">(plain text)</span><textarea name="notes" rows="2">${escapeHtml(m.notes || '')}</textarea></label>
+            <label>Agenda <span class="label-hint">(one item per line)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
+            <label>Decisions required <span class="label-hint">(one per line)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
+            <label>Notes <span class="label-hint">(simple HTML)</span>
+              ${formatToolbar('notes', { withHelp: false })}
+              <textarea name="notes" rows="3">${escapeHtml(m.notes || '')}</textarea>
+            </label>
             <button type="submit">Save</button>
           </form>
         </details>
@@ -613,7 +674,8 @@
           <form class="inline-form" data-form="add-attachment">
             <input name="label" required placeholder="Label">
             <select name="type"><option value="url">URL</option><option value="text">Text summary</option></select>
-            <input name="url" placeholder="https://...">
+            <input name="url" type="url" placeholder="https://example.com/...">
+            <p class="meta">Use a full web address starting with https:// (not a page on this site).</p>
             <textarea name="body" rows="3" placeholder="Paste summary (plain text)"></textarea>
             <button type="submit">Attach</button>
           </form>
@@ -835,7 +897,16 @@
 
   function renderAttachment(att) {
     if (att.type === 'text') return `<div class="attachment"><strong>${escapeHtml(att.label)}</strong><pre class="attachment-body">${escapeHtml(att.body || '')}</pre></div>`;
-    return `<div class="attachment"><a href="${escapeHtml(att.url || '#')}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a></div>`;
+    const href = normalizeExternalUrl(att.url);
+    return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a></div>`;
+  }
+
+  function normalizeExternalUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '#';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith('//')) return `https:${raw}`;
+    return `https://${raw.replace(/^\/+/, '')}`;
   }
 
   async function handleSubmit(e, root, state) {
@@ -878,7 +949,9 @@
         data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
         form.reset();
       } else if (kind === 'add-attachment') {
-        data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type: fd.get('type'), url: fd.get('url'), body: fd.get('body') });
+        const type = fd.get('type');
+        const url = type === 'url' ? normalizeExternalUrl(fd.get('url')) : undefined;
+        data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type, url, body: fd.get('body') });
       } else if (kind === 'confirm') {
         data = await apiPost({ action: 'confirm', slug: state.slug, acting_attendee_id: state.attendeeId, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
         state.pendingConfirmSlot = null;
