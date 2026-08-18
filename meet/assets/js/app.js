@@ -270,7 +270,7 @@
 
   const TAB_TIPS = {
     organiser: 'Meeting length, grid step, timezone, recurrence, and description for attendees. Optional: add a known location here.',
-    calendar: 'Register attendees and mark when each person is free. Does not set the final meeting time.',
+    calendar: 'Register attendees and mark when each person is free.\nDoes not set the final meeting time.',
     times: 'See overlaps, propose locations, finalise time and location (organiser), agenda and decisions.',
     after: 'Recordings, links, and text summaries after the meeting.',
   };
