@@ -52,8 +52,14 @@ body {
 .list-meetings-result { margin-top: 0.75rem; max-width: 420px; }
 .list-meetings-result ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 .fmt-help { margin: 0.35rem 0; font-size: 0.88rem; }
-.fmt-help summary { cursor: pointer; display: inline-block; font-weight: 600; }
-.field-help { margin: 0.25rem 0 0.5rem; font-size: 0.88rem; }
+.help-toggle { margin: 0.35rem 0 0.5rem; font-size: 0.88rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; background: #f8fafc; }
+.help-toggle > summary { cursor: pointer; font-weight: 600; list-style: none; }
+.help-toggle > summary::-webkit-details-marker { display: none; }
+.help-toggle > summary::before { content: '▸ '; color: var(--muted); }
+.help-toggle[open] > summary::before { content: '▾ '; }
+.help-toggle .help-q { display: inline-block; min-width: 1.1rem; color: #1d4ed8; font-weight: 700; }
+.help-toggle .help-body { margin: 0.45rem 0 0.15rem; }
+.field-label-plain { font-weight: 600; font-size: 0.95rem; margin: 0.25rem 0; }
 .weekday-checks { display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; margin: 0.35rem 0; }
 .weekday-checks label { font-size: 0.9rem; }
 .suggestion.partial { border-left: 3px solid #f59e0b; padding-left: 0.65rem; }

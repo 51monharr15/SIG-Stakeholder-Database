@@ -214,7 +214,7 @@
               </div>
             </div>
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
-              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER)}
+              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Meeting text', { withTextHelp: true })}
               ${tabPageIntro(m, state)}
               <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
               ${m.confirmed_slot ? `<div class="confirmed compact">Confirmed: ${escapeHtml(formatSlotInTz(m.confirmed_slot, meetingTz(m)))}${m.confirmed_location ? ` · ${escapeHtml(locationLabel(m, m.confirmed_location))}` : ''}</div>` : ''}
@@ -248,20 +248,37 @@
 
   function tabPageIntro(m, state) {
     if (state.activeTab === 'times') {
-      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.', 'Page intro');
+      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the Meeting details page.', 'Page intro', { withTextHelp: false });
     }
     if (state.activeTab === 'after') {
-      return renderIntroBlock(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for recordings and summaries.', 'Page intro');
+      return renderIntroBlock(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for recordings and summaries.', 'Page intro', { withTextHelp: false });
     }
     return '';
   }
 
-  function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text') {
+  function helpToggle(topic, bodyHtml) {
+    return `
+      <details class="help-toggle">
+        <summary><span class="help-q">?</span> Help for ${escapeHtml(topic)}</summary>
+        <div class="help-body meta">${bodyHtml}</div>
+      </details>`;
+  }
+
+  const FMT_TITLES = {
+    strong: 'Wrap selected text in bold tags, or insert bold tags at the cursor',
+    em: 'Wrap selected text in italic tags, or insert italic tags at the cursor',
+    p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
+    br: 'Insert a line break (&lt;br&gt;) at the cursor',
+    a: 'Wrap selected text as a link, or insert a link and enter the URL',
+    ul: 'Wrap selected text in a bullet list, or insert a one-item list',
+  };
+
+  function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text', { withTextHelp = false } = {}) {
     if (state.editingIntro === field) {
       return `
         <div class="meet-intro-edit">
-          <label>${escapeHtml(editLabel)} <span class="label-hint">(simple HTML)</span></label>
-          ${formatToolbar(field)}
+          <p class="field-label-plain">${escapeHtml(editLabel)} <span class="label-hint">(simple HTML)</span></p>
+          ${formatToolbar(field, { withHelp: withTextHelp, helpTopic: editLabel.toLowerCase() })}
           <textarea id="intro-edit-${field}" name="${field}" rows="4">${escapeHtml(text || '')}</textarea>
           <div class="row">
             <button type="button" data-action="save-intro" data-field="${field}">Save</button>
@@ -279,24 +296,22 @@
       </div>`;
   }
 
-  function textEntryHelp() {
-    return `
-      <details class="fmt-help">
-        <summary>Help — meeting text</summary>
-        <p class="meta">Enter plain text here. Line breaks in the box will show as breaks on the page. Use the buttons to insert formatting: highlighted text is wrapped when you click Bold, Italic, Paragraph, or Line break. Allowed tags: paragraph, line break, bold, italic, links, and lists. Other HTML is removed for safety.</p>
-      </details>`;
+  function textEntryHelp(topic) {
+    return helpToggle(topic, 'Enter plain text here. Line breaks in the box show as breaks on the page. Use the buttons below: <strong>highlight text first</strong> to wrap it, or click with nothing selected to insert empty tags at the cursor. Allowed: paragraphs, line breaks, bold, italic, links, and lists.');
   }
 
-  function formatToolbar(field) {
+  function formatToolbar(field, { withHelp = true, helpTopic = 'meeting text' } = {}) {
+    const help = withHelp ? textEntryHelp(helpTopic) : '';
+    const btn = (fmt, label) => `<button type="button" class="secondary fmt-btn" data-fmt="${fmt}" title="${escapeHtml(FMT_TITLES[fmt])}">${label}</button>`;
     return `
-      ${textEntryHelp()}
+      ${help}
       <div class="fmt-toolbar" data-field="${field}">
-        <button type="button" class="secondary fmt-btn" data-fmt="strong" title="Bold">Bold</button>
-        <button type="button" class="secondary fmt-btn" data-fmt="em" title="Italic">Italic</button>
-        <button type="button" class="secondary fmt-btn" data-fmt="p" title="Paragraph">Paragraph</button>
-        <button type="button" class="secondary fmt-btn" data-fmt="br" title="Line break">Line break</button>
-        <button type="button" class="secondary fmt-btn" data-fmt="a" title="Link">Link</button>
-        <button type="button" class="secondary fmt-btn" data-fmt="ul" title="Bullet list">List</button>
+        ${btn('strong', 'Bold')}
+        ${btn('em', 'Italic')}
+        ${btn('p', 'Paragraph')}
+        ${btn('br', 'Line break')}
+        ${btn('a', 'Link')}
+        ${btn('ul', 'List')}
       </div>`;
   }
 
@@ -313,15 +328,13 @@
             </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            <details class="field-help"><summary>Help — calendar times</summary>
-              <p class="meta">Attendees select time in <strong>grid step</strong> chunks (e.g. every 15 minutes). A full meeting needs enough consecutive chunks to cover <strong>meeting length</strong> (e.g. four 15-minute chunks for one hour). Someone can mark only part of that window — partial availability is shown on the Meeting details tab.</p>
-            </details>
+            ${helpToggle('calendar times', 'Attendees select time in <strong>grid step</strong> chunks (e.g. every 15 minutes). A full meeting needs enough consecutive chunks to cover <strong>meeting length</strong> (e.g. four 15-minute chunks for one hour). Partial availability is shown on the <strong>Meeting details</strong> tab.')}
             <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
           <label>Meeting text <span class="label-hint">(simple HTML)</span>
-            ${formatToolbar('organizer_intro')}
+            ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting text' })}
             <textarea name="organizer_intro" rows="4">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
           <details>
@@ -350,7 +363,7 @@
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
           <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
-        ${renderAttendeesSection(m, state, attendee, { mode: 'picker' })}
+        ${renderAttendeesSection(m, state, attendee)}
         ${attendee ? `
           <p class="meta">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
             <button type="button" class="secondary" data-action="switch-user">Switch</button>
@@ -465,7 +478,7 @@
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
-      ${renderAttendeesSection(m, state, attendee, { mode: 'details' })}
+      ${renderAttendeesSection(m, state, attendee)}
       <section class="panel stack">
         <h2 class="section-title">Locations</h2>
         <div class="chip-list">${m.locations.map((loc) => `
@@ -541,18 +554,19 @@
     </form>`;
   }
 
-  function renderAttendeesSection(m, state, attendee, { mode = 'details' } = {}) {
-    const isPicker = mode === 'picker';
-    const title = isPicker ? 'Who are you?' : 'Attendees';
-    const hint = isPicker && !attendee
-      ? 'Click your name if you are already listed. Otherwise register as a new attendee below.'
-      : (!isPicker && attendee
-        ? (attendee.is_organizer
-          ? 'As meeting organiser you can merge any two rows or grant organiser to others.'
-          : 'If you appear more than once, sign in on the calendar tab, then merge the duplicate here.')
-        : '');
+  function renderAttendeesSection(m, state, attendee) {
+    const signedIn = !!attendee;
+    const title = signedIn ? 'Attendees' : 'Who are you?';
+    let hint = '';
+    if (!signedIn) {
+      hint = 'Click your name if you are already listed, or register below. To merge duplicates or set organiser flags, sign in first — the same controls appear here once you are signed in.';
+    } else if (attendee.is_organizer) {
+      hint = 'Merge duplicates, grant organiser to others, or use Merge any two attendees below.';
+    } else {
+      hint = 'If you appear more than once, use Merge into me on the duplicate row.';
+    }
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
-    const showOrganiserCol = !isPicker && attendee?.is_organizer;
+    const showOrganiserCol = signedIn && attendee.is_organizer;
     const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
     return `
@@ -563,13 +577,13 @@
           <table class="data-table attendee-table">
             <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { mode, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No one has joined yet.</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No one has joined yet.</td></tr>`}
             </tbody>
           </table>
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
-        ${!isPicker && attendee?.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${isPicker && !attendee ? `
+        ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
+        ${!signedIn ? `
           <details class="register-block" open>
             <summary>Register as new attendee</summary>
             ${renderJoinForm()}
@@ -580,27 +594,26 @@
   function renderOrganiserMergePanel(m) {
     const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
     return `
-      <details class="merge-organiser-panel">
-        <summary>Merge any two attendees (organiser)</summary>
+      <details class="merge-organiser-panel help-toggle">
+        <summary><span class="help-q">?</span> Merge any two attendees (organiser)</summary>
         <form class="inline-form row" data-form="merge-organiser">
-          <label>Keep <select name="keep_id" required>${opts}</select></label>
-          <label>Remove <select name="remove_id" required>${opts}</select></label>
+          <label>Merge into (keep this row) <select name="keep_id" required>${opts}</select></label>
+          <label>Merge from (delete this row) <select name="remove_id" required>${opts}</select></label>
           <button type="submit">Merge</button>
         </form>
-        <p class="meta">Combines availability and removes the second row. You do not need their PIN as organiser.</p>
+        <p class="meta help-body">Availability from the second person is combined into the first; the second row is removed. You do not need their PIN as organiser.</p>
       </details>`;
   }
 
-  function renderAttendeeRow(m, state, current, a, { mode, showOrganiserCol }) {
+  function renderAttendeeRow(m, state, current, a, { signedIn, showOrganiserCol }) {
     const isSelf = current?.id === a.id;
-    const isPicker = mode === 'picker';
     const dupOfSelf = current && a.id !== current.id
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
     const pinBadge = a.has_pin ? '<span class="badge" title="PIN protected">PIN</span>' : '';
     const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
-    if (isPicker) {
+    if (!signedIn) {
       if (!current || isSelf) {
         actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
       }
@@ -612,7 +625,7 @@
       ? `<td><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
       : '';
 
-    return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${isPicker && !current ? ' is-selectable' : ''}">
+    return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
       <td>${escapeHtml(a.display_name)} ${pinBadge} ${orgBadge}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${a.contact ? `<a href="${contactHref(a.contact)}">${escapeHtml(a.contact)}</a>` : '—'}</td>
