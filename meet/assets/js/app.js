@@ -647,7 +647,7 @@
       </section>
       <section class="panel stack">
         <h2 class="section-title">Agenda &amp; decisions required</h2>
-        <p class="meta">Agenda and decisions are plain-text lines (one item per line) for simplicity. Notes support simple HTML like meeting intros.</p>
+        <p class="meta">Agenda and decisions are plain-text lines (one item per line). Notes support simple HTML. Special file markers (<code>@@</code> at the start of a line) are neutralised automatically on save.</p>
         ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
         ${m.decisions.length ? `<p><strong>Decisions required</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
         ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}

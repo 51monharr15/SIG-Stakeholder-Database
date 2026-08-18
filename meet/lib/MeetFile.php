@@ -101,7 +101,7 @@ final class MeetFile
         $header = [
             'id', 'slug', 'title', 'created', 'updated',
             'duration_minutes', 'slot_granularity_minutes',
-            'range_start', 'range_end', 'notes',
+            'range_start', 'range_end',
             'show_weekends', 'day_start', 'day_end', 'timezone',
         ];
         foreach ($header as $key) {
@@ -127,13 +127,21 @@ final class MeetFile
         $out[] = '';
         $out[] = '@@ agenda';
         foreach ($meet['agenda'] as $item) {
-            $out[] = '- ' . $item;
+            $out[] = '- ' . self::sanitizeListItem($item);
         }
 
         $out[] = '';
         $out[] = '@@ decisions';
         foreach ($meet['decisions'] as $item) {
-            $out[] = '- ' . $item;
+            $out[] = '- ' . self::sanitizeListItem($item);
+        }
+
+        $out[] = '';
+        $out[] = '@@ notes';
+        if (($meet['notes'] ?? '') !== '') {
+            foreach (preg_split('/\r\n|\r|\n/', (string) $meet['notes']) as $line) {
+                $out[] = self::sanitizeSectionLine($line);
+            }
         }
 
         $out[] = '';
@@ -141,9 +149,9 @@ final class MeetFile
         foreach ($meet['locations'] as $loc) {
             $out[] = self::pipe([
                 $loc['id'],
-                $loc['label'],
-                $loc['kind'] ?? 'other',
-                $loc['detail'] ?? '',
+                self::sanitizePipeField($loc['label']),
+                self::sanitizePipeField($loc['kind'] ?? 'other'),
+                self::sanitizePipeField($loc['detail'] ?? ''),
             ]);
         }
 
@@ -152,9 +160,9 @@ final class MeetFile
         foreach ($meet['attachments'] as $att) {
             $out[] = self::pipe([
                 $att['id'],
-                $att['type'],
-                $att['label'],
-                $att['type'] === 'text' ? base64_encode($att['body'] ?? '') : ($att['url'] ?? ''),
+                self::sanitizePipeField($att['type']),
+                self::sanitizePipeField($att['label']),
+                $att['type'] === 'text' ? base64_encode($att['body'] ?? '') : self::sanitizePipeField($att['url'] ?? ''),
             ]);
         }
 
@@ -163,10 +171,10 @@ final class MeetFile
         foreach ($meet['attendees'] as $att) {
             $out[] = self::pipe([
                 $att['id'],
-                $att['display_name'],
-                $att['contact'] ?? ($att['alias'] ?? ''),
-                $att['initials'] ?? '',
-                $att['pin'] ?? '',
+                self::sanitizePipeField($att['display_name']),
+                self::sanitizePipeField($att['contact'] ?? ($att['alias'] ?? '')),
+                self::sanitizePipeField($att['initials'] ?? ''),
+                self::sanitizePipeField($att['pin'] ?? ''),
                 !empty($att['organizer']) ? '1' : '0',
             ]);
         }
@@ -174,19 +182,25 @@ final class MeetFile
         $out[] = '';
         $out[] = '@@ organizer_intro';
         if (($meet['organizer_intro'] ?? '') !== '') {
-            $out[] = $meet['organizer_intro'];
+            foreach (preg_split('/\r\n|\r|\n/', (string) $meet['organizer_intro']) as $line) {
+                $out[] = self::sanitizeSectionLine($line);
+            }
         }
 
         $out[] = '';
         $out[] = '@@ page_times_intro';
         if (($meet['page_times_intro'] ?? '') !== '') {
-            $out[] = $meet['page_times_intro'];
+            foreach (preg_split('/\r\n|\r|\n/', (string) $meet['page_times_intro']) as $line) {
+                $out[] = self::sanitizeSectionLine($line);
+            }
         }
 
         $out[] = '';
         $out[] = '@@ page_after_intro';
         if (($meet['page_after_intro'] ?? '') !== '') {
-            $out[] = $meet['page_after_intro'];
+            foreach (preg_split('/\r\n|\r|\n/', (string) $meet['page_after_intro']) as $line) {
+                $out[] = self::sanitizeSectionLine($line);
+            }
         }
 
         $out[] = '';
@@ -219,6 +233,9 @@ final class MeetFile
                 break;
             case 'decisions':
                 $meet['decisions'] = self::parseBullets($buffer);
+                break;
+            case 'notes':
+                $meet['notes'] = implode("\n", $buffer);
                 break;
             case 'locations':
                 $meet['locations'] = array_map(function (string $line) {
@@ -386,6 +403,37 @@ final class MeetFile
         return $value;
     }
 
+    /** Prevent user text from breaking the plain-text file format on save. */
+    public static function sanitizeListItem(string $item): string
+    {
+        return self::sanitizeSectionLine(str_replace(["\r\n", "\r", "\n"], ' ', $item));
+    }
+
+    public static function sanitizeSectionLine(string $line): string
+    {
+        $line = trim($line);
+        if ($line === '') {
+            return '';
+        }
+        if (preg_match('/^@@\s+\w+\s*$/', $line)) {
+            return '# ' . $line;
+        }
+        if (preg_match('/^@meet\s+v\d+\s*$/', $line)) {
+            return '# ' . $line;
+        }
+        return $line;
+    }
+
+    public static function sanitizePipeField(string $value): string
+    {
+        return trim(str_replace('|', '/', (string) $value));
+    }
+
+    public static function sanitizeHeaderValue(string $value): string
+    {
+        return self::sanitizeListItem((string) $value);
+    }
+
     private static function scalarToString(mixed $value): string
     {
         if (is_bool($value)) {
@@ -394,7 +442,7 @@ final class MeetFile
         if (is_array($value)) {
             return implode(',', $value);
         }
-        return (string) $value;
+        return self::sanitizeHeaderValue((string) $value);
     }
 
     private static function headerKey(string $key): string

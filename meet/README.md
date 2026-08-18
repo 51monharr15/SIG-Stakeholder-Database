@@ -14,7 +14,7 @@ This app is intentionally isolated from the SIG stakeholder database (`lusers.ph
 /meet/?=a7f3b2c91d04
 ```
 
-**Docs:** [LOCAL-TEST.md](LOCAL-TEST.md) · [UPDATING.md](UPDATING.md) · [GIT.md](GIT.md)
+**Docs:** [docs/OPERATIONS.md](docs/OPERATIONS.md) (workflow & roles) · [LOCAL-TEST.md](LOCAL-TEST.md) · [UPDATING.md](UPDATING.md) · [GIT.md](GIT.md)
 
 Meetings are not created by visiting a guessed URL. The slug is a random 12-character code. Internally each meeting also has a stable ID (e.g. `meet_a1b2c3d4e5f6`) in `data/aliases/{slug}.alias`.
 
@@ -38,6 +38,8 @@ Meetings use the `@meet v1` plain-text format (see `lib/MeetFile.php`). Example 
 
 Files live at `data/meets/{id}.meet`. Alias mapping at `data/aliases/{slug}.alias`.
 
+User-entered text is sanitised on save so accidental `@@ section` lines or `|` characters in names are unlikely to corrupt the file (see [docs/OPERATIONS.md](docs/OPERATIONS.md)).
+
 ## Apache notes
 
 - `meet/.htaccess` enables pretty URLs and blocks direct access to `data/`
@@ -55,7 +57,7 @@ Files live at `data/meets/{id}.meet`. Alias mapping at `data/aliases/{slug}.alia
 | `claim` | Sign in as an existing row (PIN if set) |
 | `merge_attendees` | Combine rows (organiser: any two; others: duplicates) |
 | `set_organizer` | Toggle organiser flag on an attendee |
-| `list_meetings` | Find meetings by organiser name + PIN |
+| `list_meetings` | Find meetings by attendee name + PIN |
 | `save_availability` | Save selected ISO slot times |
 | `add_location` | Propose a location |
 | `save_location_prefs` | Attendee location preferences |
