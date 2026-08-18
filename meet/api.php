@@ -547,6 +547,10 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
         'detail' => trim((string) ($input['detail'] ?? '')),
     ];
 
+    if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {
+        $location['detail'] = normalizeLocationDetail($location['kind'], $location['detail']);
+    }
+
     $meet = $store->update($meet['id'], function (array $m) use ($location) {
         $m['locations'][] = $location;
         return $m;
@@ -644,6 +648,40 @@ function normalizeAttachmentUrl(string $url): string
         return 'https:' . $url;
     }
     return 'https://' . ltrim($url, '/');
+}
+
+function normalizeLocationDetail(string $kind, string $detail): string
+{
+    $detail = trim($detail);
+    if ($detail === '') {
+        return '';
+    }
+
+    if ($kind === 'video') {
+        $url = normalizeAttachmentUrl($detail);
+        if (!preg_match('#^https?://#i', $url)) {
+            Response::error('Online locations need a well-formed URL (e.g. https://meet.example.com/room).');
+        }
+        return $url;
+    }
+
+    if (!preg_match('#https?://#i', $detail)) {
+        return $detail;
+    }
+
+    if (!preg_match('#(https?://[^\s·]+)#i', $detail, $matches)) {
+        Response::error('Hybrid online link must be a well-formed URL (e.g. https://meet.example.com/room).');
+    }
+
+    $url = normalizeAttachmentUrl($matches[1]);
+    if (!preg_match('#^https?://#i', $url)) {
+        Response::error('Hybrid online link must be a well-formed URL (e.g. https://meet.example.com/room).');
+    }
+
+    $suffix = trim(str_replace($matches[1], '', $detail, 1));
+    $suffix = trim(preg_replace('#^·\s*#', '', $suffix));
+
+    return $suffix !== '' ? $url . ' · ' . $suffix : $url;
 }
 
 function handleConfirm(MeetStore $store, string $slug, array $input): void

@@ -2,7 +2,7 @@
   'use strict';
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const INTRO_PLACEHOLDER = 'Add a short description for attendees — click the pencil or use Set meeting options.';
+  const INTRO_PLACEHOLDER = 'Add a short description for attendees — use Set meeting options.';
   const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
   const page = document.body.dataset.page;
 
@@ -224,7 +224,7 @@
             </div>
             ${renderMeetingStatus(m)}
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
-              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Meeting text', { withTextHelp: true })}
+              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Add a short description for attendees', { withTextHelp: true })}
               ${tabPageIntro(m, state)}
               <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
               <div class="share-row row desktop-share">
@@ -248,9 +248,17 @@
     `;
   }
 
-  function tabBtn(id, label, state) {
-    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}">${label}</button>`;
+  function tabBtn(id, label, state, tip = '') {
+    const title = tip ? ` title="${escapeHtml(tip)}"` : '';
+    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}"${title}>${label}</button>`;
   }
+
+  const TAB_TIPS = {
+    organiser: 'Meeting length, grid step, timezone, recurrence, and description for attendees. Optional: add a known location here.',
+    calendar: 'Register attendees and mark when each person is free. Does not set the final meeting time.',
+    times: 'See overlaps, propose locations, finalise time and location (organiser), agenda and decisions.',
+    after: 'Recordings, links, and text summaries after the meeting.',
+  };
 
   function meetingEstablished(m) {
     return (m.attendees?.length || 0) > 0;
@@ -265,25 +273,25 @@
     const showOrg = canShowOrganiserTab(m, attendee);
     if (!established) {
       const items = [];
-      if (showOrg) items.push({ id: 'organiser', label: '1. Set meeting options' });
+      if (showOrg) items.push({ id: 'organiser', label: '1. Set meeting options', tip: TAB_TIPS.organiser });
       items.push(
-        { id: 'calendar', label: '2. Choose calendar times' },
-        { id: 'times', label: '3. Meeting availability & confirm' },
-        { id: 'after', label: '4. After meeting' },
+        { id: 'calendar', label: '2. Choose calendar times', tip: TAB_TIPS.calendar },
+        { id: 'times', label: '3. Availability, location & agenda', tip: TAB_TIPS.times },
+        { id: 'after', label: '4. After meeting', tip: TAB_TIPS.after },
       );
       return items;
     }
     const items = [
-      { id: 'calendar', label: '1. Add users & choose times' },
-      { id: 'times', label: '2. Meeting availability & confirm' },
-      { id: 'after', label: '3. After meeting' },
+      { id: 'calendar', label: '1. Add users & choose times', tip: TAB_TIPS.calendar },
+      { id: 'times', label: '2. Availability, location & agenda', tip: TAB_TIPS.times },
+      { id: 'after', label: '3. After meeting', tip: TAB_TIPS.after },
     ];
-    if (showOrg) items.push({ id: 'organiser', label: 'Reset meeting options' });
+    if (showOrg) items.push({ id: 'organiser', label: 'Reset meeting options', tip: TAB_TIPS.organiser });
     return items;
   }
 
   function renderTabNav(m, state, attendee) {
-    return tabNavItems(m, attendee).map(({ id, label }) => tabBtn(id, label, state)).join('');
+    return tabNavItems(m, attendee).map(({ id, label, tip }) => tabBtn(id, label, state, tip)).join('');
   }
 
   function tabPageIntro(m, state) {
@@ -332,12 +340,12 @@
     return `
       <div class="meet-intro row">
         <div class="meet-intro-body">${body}</div>
-        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit meeting text">✎</button>
+        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit description for attendees">✎</button>
       </div>`;
   }
 
   function textEntryHelp(topic) {
-    return helpToggle(topic, 'Enter plain text here. Line breaks in the box show as breaks on the page. Use the buttons below: <strong>highlight text first</strong> to wrap it, or click with nothing selected to insert empty tags at the cursor. Allowed: paragraphs, line breaks, bold, italic, links, and lists.');
+    return helpToggle(topic, 'Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Line breaks in the box show as breaks on the page. <strong>Highlight text first</strong> to wrap it with a button, or click with nothing selected to insert empty tags at the cursor. Allowed: paragraphs, line breaks, bold, italic, links, and lists.');
   }
 
   function formatToolbar(field, { withHelp = true, helpTopic = 'meeting text' } = {}) {
@@ -367,18 +375,23 @@
               <input name="timezone" value="${escapeHtml(m.timezone || mtz)}" placeholder="e.g. America/Sao_Paulo" required>
             </label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
-            <label>Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            ${helpToggle('calendar times', 'Set the <strong>meeting length</strong> and <strong>grid step</strong> (availability slot size). Attendees who mark only some slots appear under <strong>Partial availability</strong> on the Meeting details tab.')}
+            <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots on the calendar.">Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
+            ${helpToggle('calendar times', 'Set the <strong>meeting length</strong> and <strong>grid step</strong> (how finely people mark availability). On the calendar, attendees tap every slot when they are free — if someone is only free for part of a meeting window, they should mark just those slots.')}
             <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
-          <label>Meeting text <span class="label-hint">(simple HTML)</span>
-            ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting text' })}
-            <textarea name="organizer_intro" rows="4">${escapeHtml(m.organizer_intro || '')}</textarea>
+          <label>Add a short description for attendees <span class="label-hint">(simple HTML)</span>
+            ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
+            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
+          <details class="propose-location-block" open>
+            <summary>Meeting location (optional)</summary>
+            <p class="meta">If you already know the online link or venue, add it here. More options can be added later on <strong>Availability, location &amp; agenda</strong>.</p>
+            ${renderAddLocationForm()}
+          </details>
           <details>
-            <summary>Recurrence</summary>
+            <summary>Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
             <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
           </details>
@@ -393,13 +406,13 @@
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
-    const saveRow = attendee ? renderSaveRow(state) : '';
+    const saveRow = renderSaveRow(state);
     const todayStr = meetingTodayStr(m);
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
 
     return `
       <section class="panel stack calendar-panel">
-        <p class="meta">Mark when <strong>you</strong> are free. This saves <strong>your availability</strong> only — it does not set the final meeting time. Organisers set the final time on <strong>Meeting availability &amp; confirm</strong> using &ldquo;Use as meeting start&rdquo; on a row in the availability pane.</p>
+        <p class="meta">Mark when <strong>you</strong> are free. This saves <strong>your availability</strong> only — it does not set the final meeting time. Organisers set the final time on <strong>Availability, location &amp; agenda</strong>.</p>
         <div class="row meta-line">
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
           <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
@@ -436,6 +449,12 @@
   }
 
   function renderSaveRow(state) {
+    if (!state.attendeeId) {
+      return `<div class="row save-row">
+        <button type="button" disabled title="Sign in or register first">Save my availability</button>
+        <span class="meta">Add or identify yourself to record availability.</span>
+      </div>`;
+    }
     const hint = isTouchUi
       ? 'tap slots to select'
       : 'drag across slots to select a range';
@@ -490,33 +509,69 @@
     return null;
   }
 
-  function confirmedLocationText(m) {
-    if (!m.confirmed_location) {
-      return '<span class="label-hint">No location selected</span>';
+  function isWellFormedUrl(str) {
+    try {
+      const u = new URL(str);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (_) {
+      return false;
     }
-    const loc = m.locations.find((l) => l.id === m.confirmed_location);
-    return loc ? escapeHtml(locationChipLabel(loc)) : escapeHtml(m.confirmed_location);
+  }
+
+  function extractUrlFromDetail(detail) {
+    const raw = String(detail || '').trim();
+    if (!raw) return '';
+    const match = raw.match(/https?:\/\/[^\s·]+/i);
+    if (match) return match[0];
+    if (isWellFormedUrl(normalizeExternalUrl(raw))) return normalizeExternalUrl(raw);
+    return '';
+  }
+
+  function locationDisplayHtml(m, locationId) {
+    if (!locationId) {
+      return '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>';
+    }
+    const loc = m.locations.find((l) => l.id === locationId);
+    if (!loc) return escapeHtml(locationId);
+    const url = extractUrlFromDetail(loc.detail);
+    let html = escapeHtml(loc.label);
+    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
+    html += ` <span class="label-hint">(${escapeHtml(kind)})</span>`;
+    if (url && isWellFormedUrl(url)) {
+      html += ` — <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+    } else if (loc.detail) {
+      html += ` <span class="label-hint">(${escapeHtml(loc.detail)})</span>`;
+    }
+    return html;
+  }
+
+  function confirmedLocationText(m) {
+    return locationDisplayHtml(m, m.confirmed_location);
   }
 
   function renderMeetingStatus(m) {
-    const finalisedTip = 'To change the final time or location: open Meeting availability & confirm and use Update final meeting time / location (organiser only).';
+    const finalisedTip = 'To change the final time or location: open Availability, location & agenda and use Update final meeting time / location (organiser only).';
     if (m.confirmed_slot) {
       return `<div class="meeting-status">
         <p class="status-head"><span class="status-label">Current status:</span> <span class="badge good" title="${escapeHtml(finalisedTip)}">Finalised</span></p>
         <p class="meta">Time: ${formatTimePair(m.confirmed_slot)}</p>
-        <p class="meta">Location: ${confirmedLocationText(m)}</p>
+        <p class="meta">Location: ${locationDisplayHtml(m, m.confirmed_location)}</p>
       </div>`;
     }
     const proposed = bestProposedSlot(m);
-    let hint = 'No agreed time yet — mark availability on <strong>Choose calendar times</strong>.';
+    let timeHint = 'No agreed time yet — mark availability on <strong>Choose calendar times</strong>.';
     if (proposed?.kind === 'everyone') {
-      hint = `Earliest where <strong>everyone</strong> is available: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length})</span>`;
+      timeHint = `Earliest where <strong>everyone</strong> is available: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length})</span>`;
     } else if (proposed?.kind === 'organiser_plus_one') {
-      hint = `Earliest where <strong>organiser and another attendee</strong> overlap: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length} free for the full meeting)</span>`;
+      timeHint = `Earliest where <strong>organiser and another attendee</strong> overlap: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length} free for the full meeting)</span>`;
     }
+    const locHint = m.confirmed_location
+      ? locationDisplayHtml(m, m.confirmed_location)
+      : '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>';
     return `<div class="meeting-status">
       <p class="status-head"><span class="status-label">Current status:</span> <span class="badge">Scheduling</span></p>
-      <p class="meta">${hint}</p>
+      <p class="meta">Time: ${timeHint}</p>
+      <p class="meta">Location: ${locHint}</p>
     </div>`;
   }
 
@@ -700,7 +755,7 @@
 
   function renderAttendeesSection(m, state, attendee) {
     const signedIn = !!attendee;
-    const title = signedIn ? 'Attendees' : 'Who are you?';
+    const title = signedIn ? 'Currently registered attendees' : 'Who are you?';
     let hint = '';
     if (!signedIn) {
       hint = 'Click your name if you are already listed, or register below. To merge duplicates or set organiser flags, sign in first — the same controls appear here once you are signed in.';
@@ -727,7 +782,7 @@
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${signedIn && attendee.is_organizer ? renderAddAttendeeForm() : ''}
+        ${renderProposeAttendeeForm()}
         ${!signedIn ? `
           <details class="register-block" open>
             <summary>Register as new attendee</summary>
@@ -789,48 +844,52 @@
 
   function buildLocationPayload(fd) {
     const mode = fd.get('location_mode') || 'online';
+    let built;
     if (mode === 'physical') {
-      return {
+      built = {
         label: String(fd.get('physical_label') || 'Physical location').trim() || 'Physical location',
         kind: 'physical',
         detail: String(fd.get('physical_address') || '').trim(),
       };
-    }
-    if (mode === 'hybrid') {
-      const url = String(fd.get('hybrid_url') || '').trim();
+    } else if (mode === 'hybrid') {
+      const url = normalizeExternalUrl(String(fd.get('hybrid_url') || '').trim());
       const addr = String(fd.get('hybrid_address') || '').trim();
-      return {
+      if (url && !isWellFormedUrl(url)) throw new Error('Online link must be a valid URL starting with https://');
+      built = {
         label: String(fd.get('hybrid_label') || 'Hybrid').trim() || 'Hybrid',
         kind: 'hybrid',
         detail: [url, addr].filter(Boolean).join(' · '),
       };
-    }
-    if (mode === 'phone') {
-      return {
+    } else if (mode === 'phone') {
+      built = {
         label: String(fd.get('phone_label') || 'Phone').trim() || 'Phone',
         kind: 'phone',
         detail: String(fd.get('phone_detail') || '').trim(),
       };
+    } else {
+      const url = normalizeExternalUrl(String(fd.get('online_url') || '').trim());
+      if (url && !isWellFormedUrl(url)) throw new Error('Meeting link must be a valid URL starting with https://');
+      built = {
+        label: String(fd.get('online_service') || 'Online').trim() || 'Online',
+        kind: 'video',
+        detail: url,
+      };
     }
-    return {
-      label: String(fd.get('online_service') || 'Online').trim() || 'Online',
-      kind: 'video',
-      detail: String(fd.get('online_url') || '').trim(),
-    };
+    return built;
   }
 
-  function renderAddAttendeeForm() {
+  function renderProposeAttendeeForm() {
     return `
       <details class="register-block">
-        <summary>Add attendee (organiser)</summary>
-        <form class="inline-form add-attendee-form" data-form="add-attendee">
+        <summary>Add yourself or propose another attendee</summary>
+        <form class="inline-form propose-attendee-form" data-form="propose-attendee">
           <div class="form-grid">
-            <label>Name<input name="display_name" required></label>
+            <label>Display name<input name="display_name" required placeholder="Exactly as they should appear in the list"></label>
             <label>Initials (optional)<input name="initials" maxlength="4"></label>
             <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
           </div>
-          <p class="meta span-full">Adds a row without a PIN. They can claim it later with &ldquo;This is me&rdquo;, or you can set a PIN on your own row any time with Set PIN.</p>
-          <button type="submit">Add attendee</button>
+          <p class="meta span-full">Adds a row without a PIN. <strong>No invitation is sent</strong> — share the meeting link with them yourself. They use &ldquo;This is me&rdquo; to claim the row.</p>
+          <button type="submit">Add to attendee list</button>
         </form>
       </details>`;
   }
@@ -935,9 +994,9 @@
           timezone: String(fd.get('timezone') || '').trim() || tz,
           show_weekends: fd.get('show_weekends') === 'on',
           organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
-      } else if (kind === 'add-attendee') {
+      } else if (kind === 'propose-attendee') {
         data = await apiPost({
-          action: 'add_attendee', slug: state.slug, acting_attendee_id: state.attendeeId,
+          action: 'join', slug: state.slug,
           display_name: fd.get('display_name'), contact: fd.get('contact'),
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
         });
@@ -972,6 +1031,7 @@
       if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
       render(root, state);
       if (kind === 'add-location') toast('Location added to list');
+      else if (kind === 'propose-attendee') toast('Attendee added — send them the meeting link (they are not emailed automatically)');
       else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
@@ -1312,17 +1372,36 @@
         ${weekdayCheckboxes(rec, showWeekends)}`;
     }
     if (type === 'monthly_day') {
+      const day = Number(rec.day || 1);
+      const interval = Number(rec.interval || 1);
+      const dayOpts = Array.from({ length: 31 }, (_, i) => {
+        const v = i + 1;
+        return `<option value="${v}"${day === v ? ' selected' : ''}>${v}</option>`;
+      }).join('');
+      const intOpts = Array.from({ length: 24 }, (_, i) => {
+        const v = i + 1;
+        return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`;
+      }).join('');
       return `
-        <label>Date in the month <input type="number" name="day" value="${rec.day || 1}" min="1" max="31" required> (1–31)</label>
-        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="24"> month(s)</label>
-        <p class="meta">Example: the 19th of every month. Shorter months use the last day if needed.</p>`;
+        <p class="meta">Same calendar date each month (e.g. the 19th). Shorter months use the last day if needed.</p>
+        <div class="recurrence-inline">
+          <label>Day <select name="day">${dayOpts}</select></label>
+          <label>every <select name="interval">${intOpts}</select> month(s)</label>
+        </div>`;
     }
     if (type === 'monthly_nth_weekday') {
+      const interval = Number(rec.interval || 1);
+      const intOpts = Array.from({ length: 24 }, (_, i) => {
+        const v = i + 1;
+        return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`;
+      }).join('');
       return `
-        <label>Which in the month? ${nthSelect('nth', rec.nth ?? 3)}</label>
-        <label>Day of the week ${weekdaySelect('weekday', rec.weekday ?? 1)}</label>
-        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="24"> month(s)</label>
-        <p class="meta">Example: 3rd + Monday + every 2 months = every second month’s third Monday. The first slot everyone agrees is the pattern for future meetings.</p>`;
+        <p class="meta">Example: 3rd Monday every 2 months.</p>
+        <div class="recurrence-inline">
+          <label>${nthSelect('nth', rec.nth ?? 3)}</label>
+          <label>${weekdaySelect('weekday', rec.weekday ?? 1)}</label>
+          <label>every <select name="interval">${intOpts}</select> month(s)</label>
+        </div>`;
     }
     if (type === 'friday_13th') {
       return '<p class="meta">Highlights dates that are both the <strong>13th</strong> and a <strong>Friday</strong>. Rare — usually leave as One-off.</p>';

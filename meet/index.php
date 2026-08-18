@@ -41,6 +41,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/css/style.css?v=<?= (int) $cssVer ?>">
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>"
@@ -59,6 +60,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
       <section class="panel hero">
         <h1>Find a time everyone can make</h1>
         <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
+        <p class="hint">Places can be online (URL), physical, or hybrid. Times are shown in your local timezone and UTC.</p>
         <form id="create-form" class="create-form">
           <label>
             Meeting title
@@ -70,9 +72,9 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
         <details class="help-toggle home-collapse">
           <summary>Find my meetings</summary>
           <div class="help-body">
-            <p class="meta">Enter the <strong>name</strong> and <strong>PIN</strong> you used when you registered for a meeting. Works for any attendee and PIN combination that matches.</p>
+            <p class="meta">Enter the <strong>registered identity</strong> (display name exactly as when you joined) and <strong>PIN</strong> for a meeting.</p>
             <form id="list-meetings-form" class="create-form">
-              <label>Your name <input type="text" name="display_name" required autocomplete="name"></label>
+              <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Simon at Logical Model"></label>
               <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
               <button type="submit">List my meetings</button>
             </form>
@@ -87,7 +89,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
 
   <footer class="site-footer">
     <div class="wrap">
-      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span></small>
+      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span> · <a href="operations.php">Operations guide</a></small>
     </div>
   </footer>
 
