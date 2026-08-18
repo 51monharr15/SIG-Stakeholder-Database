@@ -267,10 +267,9 @@
     return !!state.attendeeId;
   }
 
-  function tabBtn(id, label, state, tip = '', { disabled = false } = {}) {
+  function tabBtn(id, label, state, tip = '') {
     const title = tip ? ` title="${escapeHtml(tip)}"` : '';
-    const dis = disabled ? ' disabled' : '';
-    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}${disabled ? ' tab-disabled' : ''}" data-action="tab" data-tab="${id}"${title}${dis}>${label}</button>`;
+    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}"${title}>${label}</button>`;
   }
 
   const TAB_TIPS = {
@@ -289,34 +288,38 @@
   }
 
   function tabNavItems(m, attendee) {
-    const established = meetingEstablished(m);
     const showOrg = canShowOrganiserTab(m, attendee);
-    if (!established) {
-      const items = [];
-      if (showOrg) items.push({ id: 'organiser', label: '1. Set meeting options', tip: TAB_TIPS.organiser });
-      items.push(
-        { id: 'calendar', label: '2. Choose calendar times', tip: TAB_TIPS.calendar },
-        { id: 'times', label: '3. Availability, location & agenda', tip: TAB_TIPS.times },
-        { id: 'after', label: '4. After meeting', tip: TAB_TIPS.after },
-      );
-      return items;
+    const numbered = !m.attendees.length;
+    const items = [];
+    if (showOrg) {
+      items.push({
+        id: 'organiser',
+        label: numbered ? '1. Set meeting options' : 'Meeting options',
+        tip: TAB_TIPS.organiser,
+      });
     }
-    const items = [
-      { id: 'calendar', label: '1. Add users & choose times', tip: TAB_TIPS.calendar },
-      { id: 'times', label: '2. Availability, location & agenda', tip: TAB_TIPS.times },
-      { id: 'after', label: '3. After meeting', tip: TAB_TIPS.after },
-    ];
-    if (showOrg) items.push({ id: 'organiser', label: 'Reset meeting options', tip: TAB_TIPS.organiser });
+    items.push(
+      {
+        id: 'calendar',
+        label: numbered ? '2. Choose calendar times' : 'Choose calendar times',
+        tip: TAB_TIPS.calendar,
+      },
+      {
+        id: 'times',
+        label: numbered ? '3. Availability, location & agenda' : 'Availability, location & agenda',
+        tip: TAB_TIPS.times,
+      },
+      {
+        id: 'after',
+        label: numbered ? '4. After meeting' : 'After meeting',
+        tip: TAB_TIPS.after,
+      },
+    );
     return items;
   }
 
   function renderTabNav(m, state, attendee) {
-    const calLocked = !calendarReady(state);
-    return tabNavItems(m, attendee).map(({ id, label, tip }) => {
-      const disabled = id === 'calendar' && calLocked;
-      const calTip = disabled ? 'Add yourself or click This is me on your row first' : tip;
-      return tabBtn(id, label, state, calTip, { disabled });
-    }).join('');
+    return tabNavItems(m, attendee).map(({ id, label, tip }) => tabBtn(id, label, state, tip)).join('');
   }
 
   function renderContinueToCalendar(state) {
@@ -433,7 +436,7 @@
           <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
           ${renderAddLocationForm()}
         </details>
-        ${!attendee ? renderAttendeesSection(m, state, attendee) : ''}
+        ${renderAttendeesSection(m, state, attendee)}
       </section>`;
   }
 
@@ -777,15 +780,16 @@
     const modeRow = signedIn ? '' : `
         <fieldset class="add-mode-row">
           <legend class="label-hint">Adding</legend>
-          <label class="mode-opt"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
-          <label class="mode-opt"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
+          <div class="mode-options">
+            <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
+            <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
+          </div>
         </fieldset>`;
+    const pinRow = signedIn ? '' : `
+          <label class="field-pin">PIN <span class="label-hint">(optional)</span>
+            <input class="input-pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
+          </label>`;
     const extras = signedIn ? '' : `
-        <div class="pin-fields" data-show-when="self">
-          <label>PIN <span class="label-hint">(optional)</span>
-            <input class="input-compact input-pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
-          </label>
-        </div>
         <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link. They claim their row with <strong>This is me</strong>.</p>`;
     return `
         <div class="add-attendee-block">
@@ -795,15 +799,16 @@
             ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
             ${modeRow}
             <div class="add-attendee-fields">
-              <label>Display name
-                <input class="input-compact input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
+              <label class="field-name">Display name
+                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
               </label>
-              <label>Initials <span class="label-hint">(opt.)</span>
-                <input class="input-compact input-initials" name="initials" maxlength="4">
+              <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
+                <input class="input-initials" name="initials" maxlength="4">
               </label>
-              <label>Contact <span class="label-hint">(opt.)</span>
-                <input class="input-compact input-contact" name="contact" maxlength="80" placeholder="email or phone">
+              <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
+                <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone">
               </label>
+              ${pinRow}
             </div>
             ${extras}
             <button type="submit">Add attendee</button>
@@ -823,7 +828,7 @@
     const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
     return `
-      <section class="panel stack attendee-section attendee-section-compact">
+      <div class="attendee-block stack">
         <h2 class="section-title">Registered attendees</h2>
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
@@ -838,7 +843,7 @@
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
         ${renderAddAttendeeForm(signedIn)}
         ${renderContinueToCalendar(state)}
-      </section>`;
+      </div>`;
   }
 
   function renderLocationItem(m, state, attendee, loc) {
@@ -1099,15 +1104,7 @@
     }
 
     const action = btn.dataset.action;
-    if (action === 'tab') {
-      if (btn.disabled) {
-        toast('Add yourself or click This is me on your row first', true);
-        return;
-      }
-      setTab(state, btn.dataset.tab);
-      render(root, state);
-      return;
-    }
+    if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); return; }
     if (action === 'copy-link') {
       const input = document.getElementById('share-url-input');
       const link = input?.value || shareUrl(state.slug);
@@ -1304,7 +1301,8 @@
       const form = e.target.closest('form');
       if (!form) return;
       const isSelf = e.target.value === 'self';
-      form.querySelector('[data-show-when="self"]')?.toggleAttribute('hidden', !isSelf);
+      const pin = form.querySelector('.field-pin');
+      if (pin) pin.hidden = !isSelf;
       form.querySelector('[data-show-when="propose"]')?.toggleAttribute('hidden', isSelf);
       return;
     }
