@@ -539,12 +539,18 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
         Response::error('Location label required');
     }
 
+    $kind = trim((string) ($input['kind'] ?? 'other'));
+    $detail = trim((string) ($input['detail'] ?? ''));
+    if ($kind === 'video' && $detail === '') {
+        Response::error('Online locations need a meeting link URL.');
+    }
+
     $meet = $store->loadBySlug($slug);
     $location = [
         'id' => MeetFile::generateId('loc'),
         'label' => $label,
-        'kind' => trim((string) ($input['kind'] ?? 'other')),
-        'detail' => trim((string) ($input['detail'] ?? '')),
+        'kind' => $kind,
+        'detail' => $detail,
     ];
 
     if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {

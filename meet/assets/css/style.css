@@ -442,6 +442,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .save-row button:disabled { opacity: 0.55; cursor: not-allowed; }
 
+.attendee-section,
+.calendar-save-row {
+  scroll-margin-top: 11rem;
+}
+
 .site-footer a { color: var(--accent); }
 
 details summary { cursor: pointer; }

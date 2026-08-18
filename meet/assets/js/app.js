@@ -86,6 +86,7 @@
         activeTab = 'calendar';
       }
       state.activeTab = activeTab;
+      if (activeTab === 'calendar') state.scrollCalendarOnRender = true;
       restoreAttendeeSelections(state);
       state.viewStart = calendarMinStart(state.meet);
       render(root, state);
@@ -171,6 +172,7 @@
       tab = 'calendar';
     }
     state.activeTab = tab;
+    if (tab === 'calendar') state.scrollCalendarOnRender = true;
     history.replaceState(null, '', meetingUrl(state.slug, tab));
   }
 
@@ -246,6 +248,19 @@
       </div>
       <div class="toast" id="toast"></div>
     `;
+    afterRenderScroll(root, state);
+  }
+
+  function afterRenderScroll(root, state) {
+    if (!state.scrollCalendarOnRender || state.activeTab !== 'calendar') return;
+    state.scrollCalendarOnRender = false;
+    requestAnimationFrame(() => {
+      const signedIn = state.meet.attendees.some((a) => a.id === state.attendeeId);
+      const target = signedIn
+        ? root.querySelector('.calendar-save-row')
+        : root.querySelector('.attendee-section');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function tabBtn(id, label, state, tip = '') {
@@ -385,18 +400,18 @@
             ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
             <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
-          <details class="propose-location-block" open>
-            <summary>Meeting location (optional)</summary>
-            <p class="meta">If you already know the online link or venue, add it here. More options can be added later on <strong>Availability, location &amp; agenda</strong>.</p>
-            ${renderAddLocationForm()}
-          </details>
           <details>
-            <summary>Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
+            <summary class="recurrence-summary">Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
             <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
           </details>
           <button type="submit">Save meeting options</button>
         </form>
+        <details class="propose-location-block" open>
+          <summary>Meeting location (optional)</summary>
+          <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
+          ${renderAddLocationForm()}
+        </details>
       </section>`;
   }
 
@@ -444,21 +459,17 @@
             `).join('')}
           </div>
         </div>
-        ${saveRow}
       </section>`;
   }
 
   function renderSaveRow(state) {
     if (!state.attendeeId) {
-      return `<div class="row save-row">
-        <button type="button" disabled title="Sign in or register first">Save my availability</button>
-        <span class="meta">Add or identify yourself to record availability.</span>
-      </div>`;
+      return '';
     }
     const hint = isTouchUi
       ? 'tap slots to select'
       : 'drag across slots to select a range';
-    return `<div class="row save-row">
+    return `<div class="row save-row calendar-save-row">
       <button type="button" data-action="save-availability">Save my availability</button>
       <span class="meta">${state.selectedSlots.size} slot(s) · ${hint}</span>
     </div>`;
@@ -567,7 +578,9 @@
     }
     const locHint = m.confirmed_location
       ? locationDisplayHtml(m, m.confirmed_location)
-      : '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>';
+      : (m.locations?.length
+        ? `<span class="label-hint">${m.locations.length} location(s) proposed — not finalised. Agree one on <strong>Availability, location &amp; agenda</strong>.</span>`
+        : '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>');
     return `<div class="meeting-status">
       <p class="status-head"><span class="status-label">Current status:</span> <span class="badge">Scheduling</span></p>
       <p class="meta">Time: ${timeHint}</p>
@@ -758,7 +771,7 @@
     const title = signedIn ? 'Currently registered attendees' : 'Who are you?';
     let hint = '';
     if (!signedIn) {
-      hint = 'Click your name if you are already listed, or register below. To merge duplicates or set organiser flags, sign in first — the same controls appear here once you are signed in.';
+      hint = 'Click your name if you are already listed, or register below. You must register before you can mark availability on the calendar.';
     } else if (attendee.is_organizer) {
       hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below for other combinations. You can also add people without a PIN.';
     } else {
@@ -782,12 +795,19 @@
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${renderProposeAttendeeForm()}
-        ${!signedIn ? `
+        ${signedIn ? `
+          <details class="register-block">
+            <summary>Propose another attendee</summary>
+            ${renderProposeAttendeeFields()}
+          </details>` : `
           <details class="register-block" open>
-            <summary>Register as new attendee</summary>
+            <summary>Register yourself</summary>
             ${renderJoinForm()}
-          </details>` : ''}
+          </details>
+          <details class="register-block">
+            <summary>Propose another attendee (without signing in)</summary>
+            ${renderProposeAttendeeFields()}
+          </details>`}
       </section>`;
   }
 
@@ -846,14 +866,19 @@
     const mode = fd.get('location_mode') || 'online';
     let built;
     if (mode === 'physical') {
+      const label = String(fd.get('physical_label') || '').trim();
+      const addr = String(fd.get('physical_address') || '').trim();
+      if (!label && !addr) throw new Error('Enter a venue name or address before saving');
       built = {
-        label: String(fd.get('physical_label') || 'Physical location').trim() || 'Physical location',
+        label: label || 'Physical location',
         kind: 'physical',
-        detail: String(fd.get('physical_address') || '').trim(),
+        detail: addr,
       };
     } else if (mode === 'hybrid') {
-      const url = normalizeExternalUrl(String(fd.get('hybrid_url') || '').trim());
+      const rawUrl = String(fd.get('hybrid_url') || '').trim();
+      const url = rawUrl ? normalizeExternalUrl(rawUrl) : '';
       const addr = String(fd.get('hybrid_address') || '').trim();
+      if (!url && !addr) throw new Error('Enter an online link and/or a physical address before saving');
       if (url && !isWellFormedUrl(url)) throw new Error('Online link must be a valid URL starting with https://');
       built = {
         label: String(fd.get('hybrid_label') || 'Hybrid').trim() || 'Hybrid',
@@ -861,14 +886,18 @@
         detail: [url, addr].filter(Boolean).join(' · '),
       };
     } else if (mode === 'phone') {
+      const detail = String(fd.get('phone_detail') || '').trim();
+      if (!detail) throw new Error('Enter dial-in details before saving');
       built = {
         label: String(fd.get('phone_label') || 'Phone').trim() || 'Phone',
         kind: 'phone',
-        detail: String(fd.get('phone_detail') || '').trim(),
+        detail,
       };
     } else {
-      const url = normalizeExternalUrl(String(fd.get('online_url') || '').trim());
-      if (url && !isWellFormedUrl(url)) throw new Error('Meeting link must be a valid URL starting with https://');
+      const rawUrl = String(fd.get('online_url') || '').trim();
+      if (!rawUrl) throw new Error('Enter a meeting link URL before saving');
+      const url = normalizeExternalUrl(rawUrl);
+      if (!isWellFormedUrl(url)) throw new Error('Meeting link must be a valid URL starting with https://');
       built = {
         label: String(fd.get('online_service') || 'Online').trim() || 'Online',
         kind: 'video',
@@ -878,10 +907,8 @@
     return built;
   }
 
-  function renderProposeAttendeeForm() {
+  function renderProposeAttendeeFields() {
     return `
-      <details class="register-block">
-        <summary>Add yourself or propose another attendee</summary>
         <form class="inline-form propose-attendee-form" data-form="propose-attendee">
           <div class="form-grid">
             <label>Display name<input name="display_name" required placeholder="Exactly as they should appear in the list"></label>
@@ -890,8 +917,7 @@
           </div>
           <p class="meta span-full">Adds a row without a PIN. <strong>No invitation is sent</strong> — share the meeting link with them yourself. They use &ldquo;This is me&rdquo; to claim the row.</p>
           <button type="submit">Add to attendee list</button>
-        </form>
-      </details>`;
+        </form>`;
   }
 
   function renderOrganiserMergePanel(m) {
@@ -1030,9 +1056,10 @@
       state.meet = data.meet;
       if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
       render(root, state);
-      if (kind === 'add-location') toast('Location added to list');
+      if (kind === 'add-location') toast('Location added — finalise it on Availability, location & agenda');
       else if (kind === 'propose-attendee') toast('Attendee added — send them the meeting link (they are not emailed automatically)');
       else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
+      else if (kind === 'update-settings') toast('Meeting options saved');
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
@@ -1244,6 +1271,9 @@
       const extra = root.querySelector('#recurrence-extra');
       const showWeekends = root.querySelector('[name="show_weekends"]')?.checked ?? false;
       if (extra) extra.innerHTML = recurrenceExtraFields({ type: e.target.value }, showWeekends);
+      const summary = e.target.closest('details')?.querySelector('.recurrence-summary');
+      const label = e.target.options[e.target.selectedIndex]?.text || 'One-off';
+      if (summary) summary.textContent = `Recurrence: ${label}`;
       return;
     }
     if (e.target.name === 'show_weekends') {
