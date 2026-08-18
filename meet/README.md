@@ -54,6 +54,7 @@ Files live at `data/meets/{id}.meet`. Alias mapping at `data/aliases/{slug}.alia
 | `join` | Register attendee (optional numeric PIN) |
 | `claim` | Sign in as an existing row (PIN if set) |
 | `merge_attendees` | Combine rows (organiser: any two; others: duplicates) |
+| `set_organizer` | Toggle organiser flag on an attendee |
 | `list_meetings` | Find meetings by organiser name + PIN |
 | `save_availability` | Save selected ISO slot times |
 | `add_location` | Propose a location |
