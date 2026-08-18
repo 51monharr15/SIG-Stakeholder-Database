@@ -700,7 +700,7 @@
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
-      ${renderAttendeesSection(m, state, attendee)}
+      <p class="meta attendee-tab-hint">Manage attendees on <strong>Choose calendar times</strong> — registered list and <strong>Add attendee</strong> are there only.</p>
       <section class="panel stack">
         <h2 class="section-title">Locations &amp; final time</h2>
         <details class="propose-location-block" open><summary>Propose a location</summary>
@@ -751,31 +751,47 @@
       </section>`;
   }
 
-  function renderJoinForm() {
-    return `<form class="inline-form join-form" data-form="join">
-      <div class="form-grid">
-        <label>Your name<input name="display_name" required></label>
-        <label>Initials (optional)<input name="initials" maxlength="4"></label>
-        <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
-        <label>PIN (optional) <span class="label-hint">(numbers only)</span>
-          <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="Optional">
-        </label>
-        <p class="meta span-full pin-hint">If you may need to recover this meeting from the home page later, <strong>set a PIN now</strong>. You will need this <strong>name and PIN</strong> on the home page under List my meetings if you lose the link. No PIN means link-only access. You can also set a PIN later after signing in.</p>
-      </div>
-      <button type="submit">Register as new attendee</button>
-    </form>`;
+  function renderAddAttendeeForm(signedIn) {
+    const modeField = signedIn
+      ? `<input type="hidden" name="add_mode" value="propose">
+         <p class="meta span-full">Adds someone to the list. Share the meeting link with them — no email is sent.</p>`
+      : `<fieldset class="add-mode-fieldset">
+          <legend class="label-hint">Who are you adding?</legend>
+          <label class="radio-label"><input type="radio" name="add_mode" value="self" checked> This is me — I will mark my availability</label>
+          <label class="radio-label"><input type="radio" name="add_mode" value="propose"> Someone else — propose them for this meeting</label>
+        </fieldset>`;
+    const extras = signedIn ? '' : `
+        <div class="pin-fields" data-show-when="self">
+          <label>PIN (optional) <span class="label-hint">(numbers only)</span>
+            <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12" placeholder="For Find my meetings on the home page">
+          </label>
+        </div>
+        <p class="meta span-full propose-hint" data-show-when="propose" hidden>They are not notified — share the meeting link. They use <strong>This is me</strong> on their row to claim it.</p>`;
+    return `
+      <details class="register-block"${signedIn ? '' : ' open'}>
+        <summary>Add attendee</summary>
+        <form class="inline-form add-attendee-form" data-form="add-attendee">
+          ${modeField}
+          <div class="form-grid">
+            <label>Display name<input name="display_name" required placeholder="Name as shown in the list"></label>
+            <label>Initials (optional)<input name="initials" maxlength="4"></label>
+            <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
+          </div>
+          ${extras}
+          <button type="submit">Add attendee</button>
+        </form>
+      </details>`;
   }
 
   function renderAttendeesSection(m, state, attendee) {
     const signedIn = !!attendee;
-    const title = signedIn ? 'Currently registered attendees' : 'Who are you?';
     let hint = '';
     if (!signedIn) {
-      hint = 'Click your name if you are already listed, or register below. You must register before you can mark availability on the calendar.';
+      hint = 'If your name is already listed, click <strong>This is me</strong> on that row. Otherwise use <strong>Add attendee</strong> below.';
     } else if (attendee.is_organizer) {
-      hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below for other combinations. You can also add people without a PIN.';
+      hint = 'Use Remove duplicate (keep me) on same-name rows, or Merge any two attendees below.';
     } else {
-      hint = 'If you appear more than once, use Remove duplicate (keep me) on the extra row — your row is kept and the duplicate is deleted.';
+      hint = 'If you appear more than once, use Remove duplicate (keep me) on the extra row.';
     }
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
@@ -783,31 +799,19 @@
 
     return `
       <section class="panel stack attendee-section">
-        <h2 class="section-title">${title}</h2>
+        <h2 class="section-title">Registered attendees</h2>
         ${hint ? `<p class="meta">${hint}</p>` : ''}
         <div class="table-wrap">
           <table class="data-table attendee-table">
             <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No one has joined yet.</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">No attendees yet — add one below.</td></tr>`}
             </tbody>
           </table>
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${signedIn ? `
-          <details class="register-block">
-            <summary>Propose another attendee</summary>
-            ${renderProposeAttendeeFields()}
-          </details>` : `
-          <details class="register-block" open>
-            <summary>Register yourself</summary>
-            ${renderJoinForm()}
-          </details>
-          <details class="register-block">
-            <summary>Propose another attendee (without signing in)</summary>
-            ${renderProposeAttendeeFields()}
-          </details>`}
+        ${renderAddAttendeeForm(signedIn)}
       </section>`;
   }
 
@@ -907,19 +911,6 @@
     return built;
   }
 
-  function renderProposeAttendeeFields() {
-    return `
-        <form class="inline-form propose-attendee-form" data-form="propose-attendee">
-          <div class="form-grid">
-            <label>Display name<input name="display_name" required placeholder="Exactly as they should appear in the list"></label>
-            <label>Initials (optional)<input name="initials" maxlength="4"></label>
-            <label>Contact (optional)<input name="contact" placeholder="email or phone"></label>
-          </div>
-          <p class="meta span-full">Adds a row without a PIN. <strong>No invitation is sent</strong> — share the meeting link with them yourself. They use &ldquo;This is me&rdquo; to claim the row.</p>
-          <button type="submit">Add to attendee list</button>
-        </form>`;
-  }
-
   function renderOrganiserMergePanel(m) {
     const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
     return `
@@ -1002,12 +993,22 @@
     const fd = new FormData(form);
     try {
       let data;
-      if (kind === 'join') {
-        data = await apiPost({ action: 'join', slug: state.slug, display_name: fd.get('display_name'), contact: fd.get('contact'),
+      if (kind === 'add-attendee') {
+        const mode = fd.get('add_mode') || 'self';
+        const payload = {
+          action: 'join', slug: state.slug,
+          display_name: fd.get('display_name'), contact: fd.get('contact'),
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
-          pin: fd.get('pin') || undefined, attendee_id: state.attendeeId || undefined });
-        state.attendeeId = data.attendee_id;
-        localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        };
+        if (mode === 'self') {
+          payload.pin = fd.get('pin') || undefined;
+          data = await apiPost(payload);
+          state.attendeeId = data.attendee_id;
+          localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        } else {
+          data = await apiPost(payload);
+        }
+        form.reset();
       } else if (kind === 'claim') {
         data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: fd.get('attendee_id'), pin: fd.get('pin') || undefined });
         state.attendeeId = data.attendee_id;
@@ -1020,12 +1021,6 @@
           timezone: String(fd.get('timezone') || '').trim() || tz,
           show_weekends: fd.get('show_weekends') === 'on',
           organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
-      } else if (kind === 'propose-attendee') {
-        data = await apiPost({
-          action: 'join', slug: state.slug,
-          display_name: fd.get('display_name'), contact: fd.get('contact'),
-          initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
-        });
       } else if (kind === 'update-meta') {
         data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
       } else if (kind === 'add-location') {
@@ -1054,10 +1049,14 @@
         }
       } else return;
       state.meet = data.meet;
-      if (kind === 'join' || kind === 'claim') restoreAttendeeSelections(state);
+      if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
+      else if (kind === 'claim') restoreAttendeeSelections(state);
       render(root, state);
       if (kind === 'add-location') toast('Location added — finalise it on Availability, location & agenda');
-      else if (kind === 'propose-attendee') toast('Attendee added — send them the meeting link (they are not emailed automatically)');
+      else if (kind === 'add-attendee') {
+        const mode = fd.get('add_mode') || 'self';
+        toast(mode === 'self' ? 'You are signed in — mark your availability on the calendar' : 'Attendee added — share the meeting link with them');
+      }
       else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
       else if (kind === 'update-settings') toast('Meeting options saved');
       else toast('Saved');
@@ -1267,6 +1266,14 @@
       return;
     }
     if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
+    if (e.target.name === 'add_mode') {
+      const form = e.target.closest('form');
+      if (!form) return;
+      const isSelf = e.target.value === 'self';
+      form.querySelector('[data-show-when="self"]')?.toggleAttribute('hidden', !isSelf);
+      form.querySelector('[data-show-when="propose"]')?.toggleAttribute('hidden', isSelf);
+      return;
+    }
     if (e.target.name === 'recurrence_type') {
       const extra = root.querySelector('#recurrence-extra');
       const showWeekends = root.querySelector('[name="show_weekends"]')?.checked ?? false;
