@@ -334,7 +334,7 @@
               <h1 class="meet-title">${escapeHtml(m.title)}</h1>
               <div class="row">
                 <button type="button" class="secondary compact-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
-                <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy link</button>
+                <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
             ${renderMeetingStatus(m)}
@@ -346,7 +346,6 @@
               <p class="meta tz-banner">Calendar hours in <strong>${escapeHtml(meetingTz(m))}</strong> · Your timezone: <strong>${escapeHtml(tz)}</strong></p>
               <div class="share-row row desktop-share">
                 <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
-                <button type="button" class="secondary" data-action="copy-link">Copy meeting link</button>
               </div>
             </div>
           </div>
@@ -375,15 +374,7 @@
     afterRenderScroll(root, state);
   }
 
-  function afterRenderScroll(root, state) {
-    if (!state.scrollCalendarOnRender || state.activeTab !== 'calendar') return;
-    state.scrollCalendarOnRender = false;
-    requestAnimationFrame(() => {
-      const signedIn = state.meet.attendees.some((a) => a.id === state.attendeeId);
-      const target = signedIn ? root.querySelector('.calendar-save-row') : root.querySelector('.attendee-block');
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
+  function afterRenderScroll(root, state) {}
 
   // ─── Dashboard nav ───────────────────────────────────────────────────────────
 
@@ -433,7 +424,7 @@
         <div class="help-panel-inner">
           <div class="help-panel-header row">
             <strong>How to use this meeting scheduler</strong>
-            <button type="button" class="secondary compact-btn" data-action="toggle-help">Close</button>
+            <button type="button" class="secondary compact-btn" data-action="toggle-help" title="Close help panel">Close</button>
           </div>
           <div class="help-columns">
             <div class="help-col">
@@ -507,7 +498,7 @@
     // Attendee prompt (shown when signed in as a regular attendee or not yet signed in)
     const attendeePrompt = `
       <details class="attendee-prompt overview-help"${state.overviewHelpOpen ? ' open' : ''}>
-        <summary class="section-title">What to do next</summary>
+        <summary class="section-title" title="Tap or click to expand/collapse">What to do next</summary>
         ${isOrg ? `<ul class="help-steps">
           <li>Review <strong>Meeting options</strong> for duration, timezone, and recurrence.</li>
           <li>Open <strong>Attendees</strong> to confirm who is invited and organiser roles.</li>
@@ -529,20 +520,20 @@
         <p class="meta">Tap or click headings to expand.</p>
         ${attendeePrompt}
         ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
-        <details class="overview-block"><summary class="section-title">Agenda and decisions</summary>
-          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
-          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet.</p>'}
+        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions</summary>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Notes &amp; agenda</strong> to set it.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Notes &amp; agenda</strong> to set them.</p>'}
           ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
         </details>
-        <details class="overview-block"><summary class="section-title">Attendees (${m.attendees.length})</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Attendees (${m.attendees.length})</summary>
           ${renderOverviewAttendeeTable(m)}
         </details>
-        <details class="overview-block"><summary class="section-title">Best overlap times</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Best overlap times</summary>
           ${sorted.length
             ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
             : '<p class="meta">No overlap times yet — go to Set confirmed meeting details to choose a start slot.</p>'}
         </details>
-        <details class="overview-block"><summary class="section-title">Proposed locations (by popularity)</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Proposed locations (by popularity)</summary>
           ${renderLocationPopularitySummary(m)}
         </details>
       </section>`;
@@ -601,9 +592,9 @@
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         ${saveRow}
         <div class="calendar-toolbar">
-          <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
+          <button type="button" class="secondary" data-action="prev-days" title="Show previous days" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="secondary" data-action="next-days">→</button>
+          <button type="button" class="secondary" data-action="next-days" title="Show next days">→</button>
         </div>
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
@@ -620,6 +611,7 @@
             `).join('')}
           </div>
         </div>
+        ${saveRow}
       </section>`;
   }
 
@@ -627,7 +619,7 @@
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
     return `<div class="row save-row calendar-save-row">
-      <button type="button" data-action="save-availability">Save my availability</button>
+      <button type="button" data-action="save-availability" title="Save your currently selected availability slots">Save my availability</button>
       <span class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</span>
     </div>`;
   }
@@ -669,8 +661,8 @@
         <p class="meta"><strong>Current status:</strong> ${m.confirmed_slot ? `Agreed — ${formatTimePair(m.confirmed_slot)} · ${locationInlineHtml(m, m.confirmed_location)}` : 'Scheduling — not yet agreed'}</p>
         <p class="meta">Below is a visual analysis of full and partial availability. Mark your own slots on <strong>My availability</strong>, then choose a start slot here.</p>
         <div class="row group-legend">
-          <span class="legend-chip full">All attendees + full meeting</span>
-          <span class="legend-chip partial-full">Some attendees + full meeting</span>
+          <span class="legend-chip full">All attendees + full meeting duration</span>
+          <span class="legend-chip partial-full">All attendees at this start slot (duration not fully covered)</span>
           <span class="legend-chip partial">Some attendees or partial duration</span>
           <span class="legend-chip selected">Selected start</span>
         </div>
@@ -679,9 +671,9 @@
           <p class="meta"><strong>Proposed start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot above to set it'}</p>
         </div>
         <div class="calendar-toolbar">
-          <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
+          <button type="button" class="secondary" data-action="prev-days" title="Show previous days" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="secondary" data-action="next-days">→</button>
+          <button type="button" class="secondary" data-action="next-days" title="Show next days">→</button>
         </div>
         <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
@@ -703,9 +695,14 @@
         </div>
         ${isOrg
           ? `<div class="row">
-              <button type="button" data-action="confirm-details">Set confirmed meeting details</button>
+              <button type="button" data-action="confirm-details" title="Organiser only: set agreed time and location">Set confirmed meeting details</button>
             </div>`
           : '<p class="meta">Only organisers can set confirmed details.</p>'}
+        ${isOrg
+          ? `<div class="row">
+              <button type="button" data-action="confirm-details" title="Organiser only: set agreed time and location">Set confirmed meeting details</button>
+            </div>`
+          : ''}
       </section>`;
   }
 
@@ -731,11 +728,17 @@
     let cls = 'partial';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
     let initials = '';
+    const atSlotIds = m.availability?.[slotIso] || [];
+    const allAtSlot = m.attendees.length > 0 && atSlotIds.length === m.attendees.length;
     if (fullMap.has(slotIso)) {
       const s = fullMap.get(slotIso);
       cls = 'full';
       tip += ` · all attendees free (${s.count}/${m.attendees.length})`;
       initials = (s.attendees || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+    } else if (allAtSlot) {
+      cls = 'partial-full';
+      tip += ' · all attendees marked at this start slot, but not all have full meeting duration';
+      initials = atSlotIds.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
     } else if (partialMap.has(slotIso)) {
       const p = partialMap.get(slotIso);
       const fullCount = (p.attendees_full || []).length;
@@ -773,7 +776,7 @@
     const selected = state.selectedLocations.has(loc.id);
     return `<div class="location-item">
       <button type="button" class="chip${selected ? ' active' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
-        title="${selected ? 'Click to deselect' : 'Click to select — works for me'}">
+        title="${selected ? 'Click to deselect, then save preferences' : 'Click to select as workable, then save preferences'}">
         ${escapeHtml(locationChipLabel(loc))}
       </button>
       ${attendee?.is_organizer ? `<button type="button" class="secondary compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal">Remove</button>` : ''}
@@ -956,9 +959,9 @@
 
     const body = `
         ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-          ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : '<span class="badge" title="PIN set">PIN ✓</span>'}
-          <button type="button" class="secondary compact-btn" data-action="switch-user">Switch user</button>
-          <button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit my details</button>
+          ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin" title="Set a PIN so you can find this meeting later">Set PIN</button>` : '<span class="badge" title="PIN set">PIN ✓</span>'}
+          <button type="button" class="secondary compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
+          <button type="button" class="secondary compact-btn" data-action="edit-attendee" title="Edit your display name, initials, contact, and PIN">Edit my details</button>
         </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
@@ -995,7 +998,7 @@
   function renderContinueToCalendar(state) {
     const ready = !!state.attendeeId;
     return `<div class="calendar-continue-row">
-      <button type="button" data-action="tab" data-tab="calendar">Continue to My availability →</button>
+      <button type="button" data-action="tab" data-tab="calendar" title="Open My availability">Continue to My availability →</button>
       <p class="meta">${ready
         ? 'Mark your availability on <strong>My availability</strong>.'
         : 'Add yourself above, then go to <strong>My availability</strong>.'}</p>
@@ -1070,12 +1073,12 @@
                 <label>New PIN <span class="label-hint">(numeric, leave blank to remove PIN)</span>
                   <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
                 </label>
-                <button type="button" class="secondary compact-btn" data-action="cancel-pin-change">Cancel PIN change</button>
+                <button type="button" class="secondary compact-btn" data-action="cancel-pin-change" title="Cancel and keep current PIN">Cancel PIN change</button>
               </div>`
-            : `<button type="button" class="secondary compact-btn" data-action="start-pin-change">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</button>`}
+            : `<button type="button" class="secondary compact-btn" data-action="start-pin-change" title="${hasPinAlready ? 'Change your current PIN' : 'Set a PIN'}">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</button>`}
           <div class="row">
             <button type="submit">Save my details</button>
-            <button type="button" class="secondary" data-action="cancel-edit-attendee">Cancel</button>
+            <button type="button" class="secondary" data-action="cancel-edit-attendee" title="Cancel and return without saving">Cancel</button>
           </div>
         </form>`;
   }
@@ -1089,13 +1092,13 @@
     const actions = [];
 
     if (isSelf && signedIn) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit</button>`);
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="edit-attendee" title="Edit your details">Edit</button>`);
     }
 
     if (!signedIn) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee row">${isSelf ? 'You' : 'This is me'}</button>`);
     } else if (current && a.id !== current.id && dupOfSelf) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Remove duplicate (keep me)</button>`);
+      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate row into your attendee row">Remove duplicate (keep me)</button>`);
     }
 
     const organiserCell = showOrganiserCol
@@ -1123,7 +1126,7 @@
         </label>
         <div class="row">
           <button type="submit">Continue</button>
-          <button type="button" class="secondary" data-action="cancel-claim">Cancel</button>
+          <button type="button" class="secondary" data-action="cancel-claim" title="Cancel and return">Cancel</button>
         </div>
       </form>`;
   }
@@ -1222,7 +1225,12 @@
   // ─── Format helpers ───────────────────────────────────────────────────────────
 
   const FMT_TITLES = {
-    strong: 'Bold', em: 'Italic', p: 'Paragraph', br: 'Line break', a: 'Link', ul: 'List',
+    strong: 'Wrap selected text in bold tags, or insert bold tags at the cursor',
+    em: 'Wrap selected text in italic tags, or insert italic tags at the cursor',
+    p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
+    br: 'Insert a line break (<br>) at the cursor',
+    a: 'Wrap selected text as a link (opens in a new tab), or insert a link at the cursor',
+    ul: 'Wrap selected text in a bullet list, or insert a one-item list',
   };
 
   function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text', { withTextHelp = false } = {}) {
@@ -1244,7 +1252,7 @@
     return `
       <div class="meet-intro row">
         <div class="meet-intro-body">${body}</div>
-        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit">✎</button>
+        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit this section text">✎</button>
       </div>`;
   }
 
