@@ -262,12 +262,24 @@
   function tabKey(slug) { return `meet_tab_${slug}`; }
   function overviewHelpKey(slug) { return `meet_overview_help_${slug}`; }
   function groupHoursKey(slug) { return `meet_group_hours_${slug}`; }
+  function setupOptionsSavedKey(slug) { return `meet_setup_options_saved_${slug}`; }
+  function setupLinkCopiedKey(slug) { return `meet_setup_link_copied_${slug}`; }
 
   function wireOperationsLink(slug) {
     const link = document.querySelector('.site-footer a[href="operations.php"]');
     if (!link) return;
     const back = meetingUrl(slug, tabFromUrl() || undefined);
     link.href = `operations.php?back=${encodeURIComponent(back)}`;
+  }
+
+  function setupChecklistState(m, state, attendee) {
+    const isOrg = !!attendee?.is_organizer;
+    const step1 = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes';
+    const step2 = !!attendee;
+    const step3 = !!attendee && countSlotsFor(m, attendee.id) > 0;
+    const step4 = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes';
+    const allDone = step1 && step2 && step3 && step4;
+    return { isOrg, step1, step2, step3, step4, allDone };
   }
 
   function restoreAttendeeSelections(state) {
@@ -466,31 +478,32 @@
 
   function renderOverviewTab(m, state, attendee) {
     const established = meetingEstablished(m);
-    const showOptions = canShowOptions(m, attendee);
+    const setup = setupChecklistState(m, state, attendee);
 
-    if (!established) {
+    if (!established || (setup.isOrg && !setup.allDone)) {
       return `
         <section class="panel stack overview-panel">
           <h2 class="section-title">Getting started</h2>
-          <p>This meeting has been created but no attendees have been added yet. Follow the steps below to set it up.</p>
+          <p>This meeting has been created. Follow these steps to make it ready for attendees.</p>
           <ol class="setup-steps">
             <li>
-              <strong>Set meeting options</strong> — set the title, meeting length, calendar hours, and timezone.
+              <strong>${setup.step1 ? '✓ ' : ''}Set meeting options</strong> — set the title, meeting length, calendar hours, and timezone.
               <br><button type="button" class="secondary compact-btn" data-action="tab" data-tab="options" style="margin-top:0.35rem">Go to Meeting options →</button>
             </li>
             <li>
-              <strong>Add yourself as an attendee</strong> — you will become the default organiser.
+              <strong>${setup.step2 ? '✓ ' : ''}Add yourself as an attendee</strong> — you will become the default organiser.
               <br><button type="button" class="secondary compact-btn" data-action="tab" data-tab="attendees" style="margin-top:0.35rem">Go to Attendees →</button>
             </li>
             <li>
-              <strong>Mark your availability</strong> — open My availability and click the slots when you are free. Optionally propose a location on Locations.
+              <strong>${setup.step3 ? '✓ ' : ''}Mark your availability</strong> — open My availability and click the slots when you are free. Optionally propose a location on Locations.
               <br><button type="button" class="secondary compact-btn" data-action="tab" data-tab="calendar" style="margin-top:0.35rem">Go to My availability →</button>
             </li>
             <li>
-              <strong>Share the link</strong> — press <em>Copy link</em> at the top of the page and send it to your attendees.
+              <strong>${setup.step4 ? '✓ ' : ''}Share the link</strong> — Copy meeting link and send it to all attendees so they can open this meeting and enter availability.
               <br><button type="button" class="secondary compact-btn" data-action="copy-link" style="margin-top:0.35rem">Copy meeting link</button>
             </li>
           </ol>
+          ${setup.isOrg && setup.allDone ? '<p class="meta"><strong>Setup complete.</strong> You can now run the meeting in active mode using the tabs above.</p>' : '<p class="meta">The checklist stays visible until all four steps are complete.</p>'}
         </section>`;
     }
 
@@ -506,9 +519,11 @@
         ${isOrg ? `<ul class="help-steps">
           <li>Review <strong>Meeting options</strong> for duration, timezone, and recurrence.</li>
           <li>Open <strong>Attendees</strong> to confirm who is invited and organiser roles.</li>
-          <li>Open <strong>Set confirmed meeting details</strong> to pick a proposed start slot.</li>
-          <li>Open <strong>Locations</strong> to review preferences and proposals.</li>
-          <li>Set confirmed details on the same page when ready.</li>
+          <li>Open <strong>My availability</strong> and mark your own slots.</li>
+          <li>Allow time for attendees to mark their availability.</li>
+          <li>Open <strong>Set confirmed meeting details</strong> to review overlap and pick a proposed start slot.</li>
+          <li>Open <strong>Locations</strong> to review and select location preference.</li>
+          <li>Set confirmed meeting details when ready.</li>
         </ul>` : `<ul class="help-steps">
           <li>Open <strong>My availability</strong> and mark every time slot when you are free. Save when done.</li>
           <li>Open <strong>Locations</strong> — review proposed venues and select the ones that work for you.</li>
@@ -1430,6 +1445,7 @@
       state.meet = data.meet;
       if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
+      if (kind === 'update-settings') localStorage.setItem(setupOptionsSavedKey(state.slug), 'yes');
       if (kind === 'update-meta') state.openNotesEditor = false;
       if (kind === 'add-attendee' || kind === 'claim') {
         state.overviewHelpOpen = false;
@@ -1465,8 +1481,9 @@
       const link = input?.value || shareUrl(state.slug);
       try {
         await navigator.clipboard.writeText(link);
+        localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes');
         toast('Link copied');
-      } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); toast('Link copied'); }
+      } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes'); toast('Link copied'); }
       return;
     }
 
