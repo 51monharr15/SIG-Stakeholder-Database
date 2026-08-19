@@ -216,9 +216,19 @@ final class MeetStore
         }
 
         usort($results, function ($a, $b) {
-            $t = strcmp($a['title'], $b['title']);
-            if ($t !== 0) return $t;
-            return strcmp((string) ($b['created'] ?? ''), (string) ($a['created'] ?? ''));
+            $dateA = (string) ($a['range_start'] ?? '');
+            if ($dateA === '') {
+                $dateA = substr((string) ($a['created'] ?? ''), 0, 10);
+            }
+            $dateB = (string) ($b['range_start'] ?? '');
+            if ($dateB === '') {
+                $dateB = substr((string) ($b['created'] ?? ''), 0, 10);
+            }
+            $byDate = strcmp($dateA, $dateB);
+            if ($byDate !== 0) {
+                return $byDate;
+            }
+            return strcmp($a['title'], $b['title']);
         });
 
         return $results;

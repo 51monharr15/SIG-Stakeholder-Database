@@ -58,13 +58,17 @@
           box.innerHTML = '<p class="meta">No meetings found for that name and PIN. Check spelling and that you set a PIN when you registered.</p>';
           return;
         }
-        box.innerHTML = `<p class="meta">${res.meetings.length} meeting(s):</p><ul>${
-          res.meetings.map((m) => {
-            const when = String(m.range_start || '').trim() || String(m.created || '').slice(0, 10);
-            const disambig = when ? ` · starts ${escapeHtml(when)}` : '';
-            return `<li><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a> <span class="meta">(${escapeHtml(m.slug)}${disambig})</span></li>`;
-          }).join('')
-        }</ul>`;
+        const countLabel = res.meetings.length === 1 ? '1 meeting found' : `${res.meetings.length} meetings found`;
+        box.innerHTML = `<p class="meta">${countLabel}</p>
+          <table class="meetings-found-table">
+            <tbody>${res.meetings.map((m) => {
+              const when = String(m.range_start || '').trim() || String(m.created || '').slice(0, 10) || '—';
+              return `<tr>
+                <td class="meetings-found-date">${escapeHtml(when)}</td>
+                <td class="meetings-found-title"><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>`;
       } catch (err) {
         if (box) {
           box.hidden = false;

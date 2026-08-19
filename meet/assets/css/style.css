@@ -51,6 +51,11 @@ body {
 .hero-divider { margin: 1.25rem 0; border: none; border-top: 1px solid var(--line); }
 .list-meetings-result { margin-top: 0.75rem; max-width: 420px; }
 .list-meetings-result ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
+.meetings-found-table { width: 100%; border-collapse: collapse; margin-top: 0.35rem; font-size: 0.95rem; }
+.meetings-found-table td { padding: 0.3rem 0.5rem 0.3rem 0; vertical-align: top; }
+.meetings-found-date { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); width: 6.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.meetings-found-title a { color: var(--accent); text-decoration: none; }
+.meetings-found-title a:hover { text-decoration: underline; }
 .fmt-help { margin: 0.35rem 0; font-size: 0.88rem; }
 .help-toggle { margin: 0.35rem 0 0.5rem; font-size: 0.88rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; background: #f8fafc; }
 .help-toggle > summary { cursor: pointer; font-weight: 600; list-style: none; }
