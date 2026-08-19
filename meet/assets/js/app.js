@@ -1093,7 +1093,6 @@
 
   function renderEditAttendeeForm(a, state) {
     const hasPinAlready = a.has_pin;
-    const showPinChange = state.changingPin;
     return `
         <form class="inline-form edit-attendee-form" data-form="edit-attendee">
           <h3 class="section-title">Edit my details</h3>
@@ -1109,16 +1108,14 @@
               <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" value="${escapeHtml(a.contact || '')}">
             </label>
           </div>
-          ${showPinChange
-            ? `<div class="pin-change-block">
-                <h4 class="section-title">Change PIN</h4>
-                ${hasPinAlready ? `<label>Current PIN <input name="current_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="current-password" required></label>` : ''}
-                <label>New PIN <span class="label-hint">(numeric, leave blank to remove PIN)</span>
-                  <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
-                </label>
-                <button type="button" class="compact-btn" data-action="cancel-pin-change" title="Cancel and keep current PIN">Cancel PIN change</button>
-              </div>`
-            : `<button type="button" class="compact-btn" data-action="start-pin-change" title="${hasPinAlready ? 'Change your current PIN' : 'Set a PIN'}">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</button>`}
+          <div class="pin-change-block">
+            <h4 class="section-title">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</h4>
+            ${hasPinAlready ? `<label>Current PIN <input name="current_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="current-password"></label>` : ''}
+            <label>${hasPinAlready ? 'New PIN' : 'PIN'} <span class="label-hint">(numeric)</span>
+              <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
+            </label>
+            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin"> Remove PIN</label>` : ''}
+          </div>
           <div class="row">
             <button type="submit">Save my details</button>
             <button type="button" class="secondary" data-action="cancel-edit-attendee" title="Cancel and return without saving">Cancel</button>
@@ -1130,7 +1127,9 @@
     const isSelf = current?.id === a.id;
     const dupOfSelf = current && a.id !== current.id
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
-    const pinBadge = a.has_pin ? '<span class="badge" title="PIN protected">PIN</span>' : '';
+    const pinBadge = a.has_pin
+      ? '<span class="badge" title="PIN protected">PIN</span>'
+      : '<span class="badge warn" title="No PIN set">No PIN</span>';
     const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
@@ -1426,6 +1425,7 @@
         const contact = validateContact(fd.get('contact'));
         const newPin = String(fd.get('new_pin') || '').trim();
         const currentPin = String(fd.get('current_pin') || '').trim();
+        const clearPin = fd.get('clear_pin') === 'on';
         const payload = {
           action: 'update_attendee', slug: state.slug,
           acting_attendee_id: state.attendeeId,
@@ -1434,10 +1434,10 @@
           contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
         };
-        if (newPin !== '' || form.querySelector('[name="current_pin"]')) {
+        if (newPin !== '' || clearPin || form.querySelector('[name="current_pin"]')) {
           payload.new_pin = newPin;
           payload.current_pin = currentPin;
-          if (newPin === '' && currentPin !== '') payload.clear_pin = true;
+          if (clearPin) payload.clear_pin = true;
         }
         data = await apiPost(payload);
         state.editingAttendeeId = null;
@@ -1679,14 +1679,10 @@
     }
 
     if (action === 'set-pin') {
-      const pin = window.prompt('Choose a numeric PIN (for finding this meeting from the home page):');
-      if (!pin) return;
-      try {
-        const data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: state.attendeeId, pin });
-        state.meet = data.meet;
-        render(root, state);
-        toast('PIN saved');
-      } catch (err) { toast(err.message, true); }
+      state.editingAttendeeId = state.attendeeId;
+      state.attendeePanelOpen = true;
+      render(root, state);
+      requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus());
       return;
     }
 
