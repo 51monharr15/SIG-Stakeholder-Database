@@ -773,13 +773,16 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
 
     $contact = validateContactField(trim((string) ($input['contact'] ?? '')));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
+    $newPin = trim((string) ($input['new_pin'] ?? ''));
+    $currentPin = trim((string) ($input['current_pin'] ?? ''));
+    $clearPin = isset($input['clear_pin']) && (bool) $input['clear_pin'];
 
     $meet = $store->loadBySlug($slug);
     if ($targetId !== $actingId) {
         requireActingOrganizer($meet, $actingId);
     }
 
-    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials) {
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials, $newPin, $currentPin, $clearPin) {
         $idx = attendeeIndexById($m['attendees'], $targetId);
         if ($idx === null) {
             throw new \RuntimeException('Attendee not found', 404);
@@ -787,6 +790,22 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
         $m['attendees'][$idx]['display_name'] = $displayName;
         $m['attendees'][$idx]['contact'] = $contact;
         $m['attendees'][$idx]['initials'] = $initials !== '' ? $initials : attendeeInitialsFromName($displayName);
+
+        if ($newPin !== '' || $clearPin) {
+            $att = &$m['attendees'][$idx];
+            if (attendeeHasPin($att)) {
+                if (!verifyAttendeePin($att, $currentPin)) {
+                    throw new \RuntimeException('Current PIN is incorrect', 403);
+                }
+            }
+            if ($clearPin) {
+                unset($att['pin_hash']);
+                $att['has_pin'] = false;
+            } else {
+                setAttendeePin($att, $newPin);
+            }
+        }
+
         return $m;
     });
 

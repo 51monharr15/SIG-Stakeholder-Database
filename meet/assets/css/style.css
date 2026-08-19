@@ -112,29 +112,25 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 0.85rem 1rem;
 }
 
-.meeting-dashboard {
-  margin: 0.5rem 0 0.35rem;
-  padding: 0.5rem 0 0.35rem;
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.88rem;
+}
+
+.dashboard-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0.1rem;
+  padding-top: 0.4rem;
   border-top: 1px solid var(--line);
 }
 
-.dashboard-title {
-  margin: 0 0 0.35rem;
-  font-size: 0.92rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.dashboard-snippet { margin: 0.2rem 0; font-size: 0.88rem; }
-
-.dashboard-shortcuts {
-  margin: 0.5rem 0 0.15rem;
-  gap: 0.35rem;
-}
-
-.dashboard-shortcut {
+.dash-btn {
   background: #fff;
   color: var(--text);
   border: 1px solid #c5cdd8;
@@ -142,19 +138,101 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 0.28rem 0.65rem;
   font-size: 0.8rem;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.dashboard-shortcut:hover { border-color: var(--accent); }
+.dash-btn:hover { border-color: var(--accent); }
 
-.dashboard-shortcut.active {
-  background: var(--accent-soft);
-  border-color: #93c5fd;
-  color: #1d4ed8;
+.dash-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
   font-weight: 600;
 }
 
-button.linkish,
-button.goto-link {
+/* Help panel */
+.help-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f8fafc;
+  margin: 0.5rem 0 0.25rem;
+  padding: 0.85rem 1rem;
+}
+
+.help-panel-header {
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.help-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 2rem;
+}
+
+@media (max-width: 700px) {
+  .help-columns { grid-template-columns: 1fr; }
+}
+
+.help-heading {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.help-steps li { margin-bottom: 0.4rem; }
+
+.help-footer {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Agreed time display */
+.agreed-display {
+  padding: 0.65rem 0.85rem;
+  background: var(--good-soft);
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+/* Setup steps on overview */
+.setup-steps {
+  margin: 0.5rem 0;
+  padding-left: 1.3rem;
+  line-height: 1.7;
+}
+
+.setup-steps li { margin-bottom: 0.6rem; }
+
+/* Attendee prompt on overview */
+.attendee-prompt {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* PIN change block */
+.pin-change-block {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0.35rem 0;
+}
+
+button.linkish {
   background: none;
   border: none;
   padding: 0;
@@ -247,29 +325,6 @@ button.goto-link {
 .section-title { margin: 0 0 0.5rem; font-size: 1rem; }
 .meta-line { font-size: 0.92rem; color: var(--muted); }
 
-.tab-nav { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.5rem; }
-
-.tab {
-  background: #fff;
-  color: var(--text);
-  border: 1px solid #c5cdd8;
-  border-radius: 999px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.tab:hover:not(.active) { background: #f3f4f6; border-color: var(--accent); }
-
-.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-.tab-nav-primary {
-  position: relative;
-  z-index: 60;
-  margin: 0.5rem 0 0.35rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--line);
-}
 
 .setup-next-step {
   margin-top: 1rem;
@@ -521,7 +576,6 @@ button.goto-link {
 .recurrence-inline label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
 .recurrence-inline select { width: auto; min-width: 4.5rem; }
 
-.tab-nav .tab { font-size: 0.82rem; }
 
 .save-row button:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -531,11 +585,6 @@ button.goto-link {
   scroll-margin-top: 11rem;
 }
 
-.tab.tab-disabled,
-.tab:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 
 .attendee-block {
   width: 100%;
