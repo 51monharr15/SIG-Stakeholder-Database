@@ -8,7 +8,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
 
-# PHP + MariaDB are provided by the base image (.cursor/Dockerfile).
+# PHP + MariaDB are provided by the base environment snapshot.
 echo "==> Ensuring MariaDB is running"
 bash "$HERE/start-mariadb.sh"
 
