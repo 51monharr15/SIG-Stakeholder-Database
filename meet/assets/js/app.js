@@ -506,36 +506,45 @@
     const isOrg = !!attendee?.is_organizer;
 
     // Attendee prompt (shown when signed in as a regular attendee or not yet signed in)
-    const attendeePrompt = !isOrg ? `
+    const attendeePrompt = `
       <details class="attendee-prompt overview-help"${state.overviewHelpOpen ? ' open' : ''}>
         <summary class="section-title">What to do next</summary>
-        <ul class="help-steps">
+        ${isOrg ? `<ul class="help-steps">
+          <li>Review <strong>Meeting options</strong> for duration, timezone, and recurrence.</li>
+          <li>Open <strong>Attendees</strong> to confirm who is invited and organiser roles.</li>
+          <li>Open <strong>Group availability</strong> to pick a proposed start slot.</li>
+          <li>Open <strong>Locations</strong> to review preferences and proposals.</li>
+          <li>Open <strong>Agree time</strong> to confirm the final time and location.</li>
+        </ul>` : `<ul class="help-steps">
           <li>Open <strong>My availability</strong> and mark every time slot when you are free. Save when done.</li>
-          <li>Open <strong>Locations</strong> — review any proposed venues and mark the ones that work for you. You can also suggest a new location.</li>
-          <li>Open <strong>Group availability</strong> to see how your times overlap with others.</li>
-          <li>Optionally open <strong>Attendees</strong> to review who is coming and add anyone who is missing.</li>
+          <li>Open <strong>Locations</strong> — review proposed venues and select the ones that work for you.</li>
+          <li>Open <strong>Group availability</strong> to see overlap and discuss best start times.</li>
+          <li>Optionally open <strong>Attendees</strong> to review who is coming and add anyone missing.</li>
           <li>These steps can be done in any order and repeated as the meeting evolves.</li>
-        </ul>
-      </details>` : '';
+        </ul>`}
+      </details>`;
 
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
         ${attendeePrompt}
         ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
-        <h3 class="section-title">Attendees (${m.attendees.length})</h3>
-        ${renderOverviewAttendeeTable(m)}
-        <h3 class="section-title">Best overlap times</h3>
-        ${sorted.length
-          ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
-          : '<p class="meta">No overlap times yet — attendees need to mark availability.</p>'}
-        ${(m.agenda.length || m.decisions.length || (m.notes || '').trim()) ? `
-          <h3 class="section-title">Agenda &amp; notes (preview)</h3>
-          ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-          ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}` : ''}
-        <h3 class="section-title">Proposed locations (by popularity)</h3>
-        ${renderLocationPopularitySummary(m)}
+        <details class="overview-block"><summary class="section-title">Attendees (${m.attendees.length})</summary>
+          ${renderOverviewAttendeeTable(m)}
+        </details>
+        <details class="overview-block"><summary class="section-title">Best overlap times</summary>
+          ${sorted.length
+            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
+            : '<p class="meta">No overlap times yet — attendees need to mark availability.</p>'}
+        </details>
+        <details class="overview-block"><summary class="section-title">Agenda and decisions</summary>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet.</p>'}
+          ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+        </details>
+        <details class="overview-block"><summary class="section-title">Proposed locations (by popularity)</summary>
+          ${renderLocationPopularitySummary(m)}
+        </details>
       </section>`;
   }
 
@@ -689,20 +698,23 @@
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     let cls = 'partial';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
+    let initials = '';
     if (fullMap.has(slotIso)) {
       const s = fullMap.get(slotIso);
       cls = 'full';
       tip += ` · all attendees free (${s.count}/${m.attendees.length})`;
+      initials = (s.attendees || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
     } else if (partialMap.has(slotIso)) {
       const p = partialMap.get(slotIso);
       const fullCount = (p.attendees_full || []).length;
       cls = fullCount > 0 ? 'partial-full' : 'partial';
       tip += ` · ${fullCount}/${m.attendees.length} free for full meeting`;
+      initials = (p.attendees_full || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
     } else {
       tip += ' · no marked overlap yet';
     }
     const selectedClass = selected === slotIso ? ' selected-start' : '';
-    return `<button type="button" class="slot group-slot ${cls}${selectedClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}"></button>`;
+    return `<button type="button" class="slot group-slot ${cls}${selectedClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
   }
 
   // ─── Locations tab ───────────────────────────────────────────────────────────
@@ -711,7 +723,7 @@
     return `
       <section class="panel stack" id="meeting-locations-pane">
         <h2 class="section-title">Locations</h2>
-        <p class="meta">Propose where the meeting could happen and mark which options work for you. The organiser agrees the final location on <strong>Agree time</strong>.</p>
+        <p class="meta"><strong>Select from locations proposed and save choice. Propose new location(s) if you need to.</strong></p>
         <h3 class="section-title">Proposed locations</h3>
         <p class="meta">Click a location to select it (turns blue = OK for you), then press <strong>Save my location preferences</strong>. You can select multiple.</p>
         <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location above.</p>'}</div>
@@ -1298,6 +1310,12 @@
         data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
       } else if (kind === 'add-location') {
         const built = buildLocationPayload(fd);
+        const duplicate = (state.meet.locations || []).some((loc) => {
+          return String(loc.label || '').trim().toLowerCase() === String(built.label || '').trim().toLowerCase()
+            && String(loc.kind || '').trim().toLowerCase() === String(built.kind || '').trim().toLowerCase()
+            && String(loc.detail || '').trim().toLowerCase() === String(built.detail || '').trim().toLowerCase();
+        });
+        if (duplicate) throw new Error('That location already exists. Edit details or add a unique option.');
         data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
         form.reset();
       } else if (kind === 'add-attachment') {

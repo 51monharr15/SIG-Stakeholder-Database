@@ -220,6 +220,16 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   padding: 0.75rem 1rem;
   margin-bottom: 0.5rem;
 }
+.overview-block {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.overview-block > summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0.35rem;
+}
+.overview-block > summary::-webkit-details-marker { display: none; }
 
 .attendee-prompt > summary {
   cursor: pointer;
