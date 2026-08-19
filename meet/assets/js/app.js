@@ -1111,10 +1111,10 @@
           <div class="pin-change-block">
             <h4 class="section-title">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</h4>
             ${hasPinAlready ? `<label>Current PIN <input name="current_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="current-password"></label>` : ''}
+            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin"> Remove PIN instead of setting a new one</label>` : ''}
             <label>${hasPinAlready ? 'New PIN' : 'PIN'} <span class="label-hint">(numeric)</span>
               <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
             </label>
-            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin"> Remove PIN</label>` : ''}
           </div>
           <div class="row">
             <button type="submit">Save my details</button>
@@ -1426,6 +1426,13 @@
         const newPin = String(fd.get('new_pin') || '').trim();
         const currentPin = String(fd.get('current_pin') || '').trim();
         const clearPin = fd.get('clear_pin') === 'on';
+        const hasPinFlow = !!form.querySelector('[name="current_pin"]');
+        if (hasPinFlow && clearPin && !currentPin) {
+          throw new Error('Enter your current PIN to remove it');
+        }
+        if (hasPinFlow && !clearPin && newPin === '') {
+          throw new Error('Enter a new PIN, or tick "Remove PIN instead of setting a new one"');
+        }
         const payload = {
           action: 'update_attendee', slug: state.slug,
           acting_attendee_id: state.attendeeId,
@@ -1434,7 +1441,7 @@
           contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
         };
-        if (newPin !== '' || clearPin || form.querySelector('[name="current_pin"]')) {
+        if (newPin !== '' || clearPin || hasPinFlow) {
           payload.new_pin = newPin;
           payload.current_pin = currentPin;
           if (clearPin) payload.clear_pin = true;
@@ -1682,7 +1689,11 @@
       state.editingAttendeeId = state.attendeeId;
       state.attendeePanelOpen = true;
       render(root, state);
-      requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus());
+      requestAnimationFrame(() => {
+        const current = root.querySelector('.edit-attendee-form input[name="current_pin"]');
+        if (current) current.focus();
+        else root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus();
+      });
       return;
     }
 
