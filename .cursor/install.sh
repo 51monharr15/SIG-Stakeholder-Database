@@ -8,18 +8,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
 
-# System packages: PHP (with PDO MySQL) and a local MariaDB server. Kept here
-# so the environment works on the default base image without a custom snapshot.
-# Idempotent: apt is a no-op when the packages are already present.
-if ! command -v php >/dev/null 2>&1 || ! { command -v mariadbd >/dev/null 2>&1 || [ -x /usr/sbin/mariadbd ]; }; then
-  echo "==> Installing system packages (php-cli, php-mysql, mariadb-server)"
-  sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    php-cli php-mysql mariadb-server mariadb-client
-else
-  echo "==> System packages already present"
-fi
-
+# PHP + MariaDB are provided by the base image (.cursor/Dockerfile).
 echo "==> Ensuring MariaDB is running"
 bash "$HERE/start-mariadb.sh"
 
