@@ -59,7 +59,11 @@
           return;
         }
         box.innerHTML = `<p class="meta">${res.meetings.length} meeting(s):</p><ul>${
-          res.meetings.map((m) => `<li><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a> <span class="meta">(${escapeHtml(m.slug)})</span></li>`).join('')
+          res.meetings.map((m) => {
+            const when = String(m.range_start || '').trim() || String(m.created || '').slice(0, 10);
+            const disambig = when ? ` · starts ${escapeHtml(when)}` : '';
+            return `<li><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a> <span class="meta">(${escapeHtml(m.slug)}${disambig})</span></li>`;
+          }).join('')
         }</ul>`;
       } catch (err) {
         if (box) {
@@ -946,8 +950,8 @@
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots.">Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
-            <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+            <label title="Earliest start time shown on the calendar grid.">Earliest start time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+            <label title="Latest end time shown on the calendar grid.">Latest end time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
           <details class="timezone-block">
@@ -957,7 +961,8 @@
               <select name="timezone">${timezoneOptions(m.timezone)}</select>
             </label>
           </details>
-          <label>Description for attendees <span class="label-hint">(simple HTML — shown on Overview)</span>
+          <h3 class="section-title">Description for attendees</h3>
+          <label><span class="label-hint">(simple HTML — shown on Overview)</span>
             ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
             <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
@@ -996,9 +1001,10 @@
 
     const body = `
         ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-          ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin" title="Set a PIN so you can find this meeting later">Set PIN</button>` : '<span class="badge" title="PIN set">PIN ✓</span>'}
-          <button type="button" class="secondary compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
-          <button type="button" class="secondary compact-btn" data-action="edit-attendee" title="Edit your display name, initials, contact, and PIN">Edit my details</button>
+          ${!attendee.has_pin ? '<span class="badge warn" title="No PIN set">No PIN</span>' : '<span class="badge" title="PIN set">PIN ✓</span>'}
+          <button type="button" class="compact-btn" data-action="set-pin" title="Set a PIN so you can find this meeting later and protect your attendee identity">${attendee.has_pin ? 'Set new PIN' : 'Set PIN'}</button>
+          <button type="button" class="compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
+          <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your display name, initials, contact, and PIN">Edit my details</button>
         </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
@@ -1110,9 +1116,9 @@
                 <label>New PIN <span class="label-hint">(numeric, leave blank to remove PIN)</span>
                   <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
                 </label>
-                <button type="button" class="secondary compact-btn" data-action="cancel-pin-change" title="Cancel and keep current PIN">Cancel PIN change</button>
+                <button type="button" class="compact-btn" data-action="cancel-pin-change" title="Cancel and keep current PIN">Cancel PIN change</button>
               </div>`
-            : `<button type="button" class="secondary compact-btn" data-action="start-pin-change" title="${hasPinAlready ? 'Change your current PIN' : 'Set a PIN'}">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</button>`}
+            : `<button type="button" class="compact-btn" data-action="start-pin-change" title="${hasPinAlready ? 'Change your current PIN' : 'Set a PIN'}">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</button>`}
           <div class="row">
             <button type="submit">Save my details</button>
             <button type="button" class="secondary" data-action="cancel-edit-attendee" title="Cancel and return without saving">Cancel</button>
@@ -1128,9 +1134,7 @@
     const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
     const actions = [];
 
-    if (isSelf && signedIn) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="edit-attendee" title="Edit your details">Edit</button>`);
-    }
+    // Row-level self edit is intentionally omitted to avoid duplicate edit actions.
 
     if (!signedIn) {
       actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee row">${isSelf ? 'You' : 'This is me'}</button>`);

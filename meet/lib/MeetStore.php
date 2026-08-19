@@ -208,12 +208,18 @@ final class MeetStore
                 $results[] = [
                     'title' => $meet['title'],
                     'slug' => $meet['slug'],
+                    'created' => $meet['created'] ?? '',
+                    'range_start' => $meet['range_start'] ?? '',
                 ];
                 break;
             }
         }
 
-        usort($results, fn ($a, $b) => strcmp($a['title'], $b['title']));
+        usort($results, function ($a, $b) {
+            $t = strcmp($a['title'], $b['title']);
+            if ($t !== 0) return $t;
+            return strcmp((string) ($b['created'] ?? ''), (string) ($a['created'] ?? ''));
+        });
 
         return $results;
     }
