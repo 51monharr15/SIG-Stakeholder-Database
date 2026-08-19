@@ -229,11 +229,23 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   list-style: none;
   margin-bottom: 0.35rem;
 }
+.overview-block > summary::before {
+  content: "▶ ";
+}
+.overview-block[open] > summary::before {
+  content: "▼ ";
+}
 .overview-block > summary::-webkit-details-marker { display: none; }
 
 .attendee-prompt > summary {
   cursor: pointer;
   list-style: none;
+}
+.attendee-prompt > summary::before {
+  content: "▶ ";
+}
+.attendee-prompt[open] > summary::before {
+  content: "▼ ";
 }
 
 .attendee-prompt > summary::-webkit-details-marker { display: none; }

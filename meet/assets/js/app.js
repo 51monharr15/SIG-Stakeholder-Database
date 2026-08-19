@@ -90,6 +90,7 @@
       claimingId: null,
       editingAttendeeId: null,
       changingPin: false,
+      pendingConfirmLocation: null,
       overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
       attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
@@ -145,7 +146,7 @@
 
   function tabFromUrl() {
     const t = new URLSearchParams(window.location.search).get('view');
-    const valid = ['overview', 'attendees', 'calendar', 'group', 'locations', 'confirm', 'notes', 'records', 'options'];
+    const valid = ['overview', 'attendees', 'calendar', 'group', 'locations', 'notes', 'records', 'options'];
     return valid.includes(t) ? t : null;
   }
 
@@ -295,9 +296,8 @@
     { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
     { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
     { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
-    { id: 'group',      label: 'Group availability', tip: 'See when everyone\'s availability overlaps.' },
+    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Viewed by anyone. Set/changed by organisers.' },
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
-    { id: 'confirm',    label: 'Agree time',         tip: 'View or agree the final meeting time and location.' },
     { id: 'notes',      label: 'Notes & agenda',     tip: 'Agenda items, decisions needed, and preparatory notes.' },
     { id: 'records',    label: 'Records',            tip: 'After the meeting: recordings, transcripts, and summaries.' },
     { id: 'options',    label: 'Meeting options',    tip: 'Meeting length, grid step, timezone, recurrence — organiser only.', organiserOnly: true },
@@ -357,7 +357,6 @@
           ${state.activeTab === 'calendar'  ? renderCalendarTab(m, state, attendee) : ''}
           ${state.activeTab === 'group'     ? renderGroupAvailabilityTab(m, state, attendee) : ''}
           ${state.activeTab === 'locations' ? renderLocationsTab(m, state, attendee) : ''}
-          ${state.activeTab === 'confirm'   ? renderConfirmTab(m, state, attendee) : ''}
           ${state.activeTab === 'notes'     ? renderNotesTab(m, state, attendee) : ''}
           ${state.activeTab === 'records'   ? renderRecordsTab(m, state) : ''}
           ${state.activeTab === 'options'   ? renderOptionsTab(m, state, attendee) : ''}
@@ -401,7 +400,7 @@
 
   function renderMeetingStatus(m) {
     if (m.confirmed_slot) {
-      const tip = 'To change: open Agree time and update as organiser.';
+      const tip = 'To change: open Set confirmed meeting details and update as organiser.';
       return `<div class="status-strip">
         <span class="badge good" title="${escapeHtml(tip)}">Agreed</span>
         <span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span>
@@ -445,8 +444,8 @@
                 <li><strong>My availability</strong> — mark every time slot when you are free by clicking or dragging on the calendar grid. Press <em>Save my availability</em>.</li>
                 <li><strong>Locations</strong> — optionally propose one or more meeting locations (online or physical).</li>
                 <li><strong>Share the link</strong> — press <em>Copy link</em> at the top of the page and send it to your attendees. Anyone with the link can join.</li>
-                <li>Once attendees have marked their availability, open <strong>Group availability</strong> to see when everyone overlaps.</li>
-                <li>When ready, open <strong>Agree time</strong>, pick the final slot and location, and press <em>Agree meeting time &amp; location</em>. The status badge changes to <em>Agreed</em>.</li>
+                <li>Once attendees have marked their availability, open <strong>Set confirmed meeting details</strong> to see overlaps.</li>
+                <li>When ready, choose a start slot and location there, then set confirmed meeting details. The status badge changes to <em>Agreed</em>.</li>
               </ol>
             </div>
             <div class="help-col">
@@ -456,8 +455,8 @@
                 <li>Go to <strong>Attendees</strong>. If you are already listed, press <em>This is me</em> on your row and enter your PIN if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
                 <li>Open <strong>My availability</strong> and mark every slot when you are free. Press <em>Save my availability</em>. You can come back and update this any time.</li>
                 <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (they highlight in blue), then press <em>Save location preferences</em>. You can also propose a new location.</li>
-                <li>Open <strong>Group availability</strong> to see how your times overlap with others.</li>
-                <li>Check <strong>Agree time</strong> to see the current proposed or agreed meeting time.</li>
+                <li>Open <strong>Set confirmed meeting details</strong> to see how times overlap and what is proposed/agreed.</li>
+                <li>Check the top status badge for the current agreed time and location.</li>
                 <li>Repeat any of these steps as the meeting evolves — there is no fixed order.</li>
               </ol>
             </div>
@@ -512,13 +511,13 @@
         ${isOrg ? `<ul class="help-steps">
           <li>Review <strong>Meeting options</strong> for duration, timezone, and recurrence.</li>
           <li>Open <strong>Attendees</strong> to confirm who is invited and organiser roles.</li>
-          <li>Open <strong>Group availability</strong> to pick a proposed start slot.</li>
+          <li>Open <strong>Set confirmed meeting details</strong> to pick a proposed start slot.</li>
           <li>Open <strong>Locations</strong> to review preferences and proposals.</li>
-          <li>Open <strong>Agree time</strong> to confirm the final time and location.</li>
+          <li>Set confirmed details on the same page when ready.</li>
         </ul>` : `<ul class="help-steps">
           <li>Open <strong>My availability</strong> and mark every time slot when you are free. Save when done.</li>
           <li>Open <strong>Locations</strong> — review proposed venues and select the ones that work for you.</li>
-          <li>Open <strong>Group availability</strong> to see overlap and discuss best start times.</li>
+          <li>Open <strong>Set confirmed meeting details</strong> to see overlap and discuss best start times.</li>
           <li>Optionally open <strong>Attendees</strong> to review who is coming and add anyone missing.</li>
           <li>These steps can be done in any order and repeated as the meeting evolves.</li>
         </ul>`}
@@ -527,20 +526,21 @@
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
+        <p class="meta">Tap or click headings to expand.</p>
         ${attendeePrompt}
         ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
+        <details class="overview-block"><summary class="section-title">Agenda and decisions</summary>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet.</p>'}
+          ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+        </details>
         <details class="overview-block"><summary class="section-title">Attendees (${m.attendees.length})</summary>
           ${renderOverviewAttendeeTable(m)}
         </details>
         <details class="overview-block"><summary class="section-title">Best overlap times</summary>
           ${sorted.length
             ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
-            : '<p class="meta">No overlap times yet — attendees need to mark availability.</p>'}
-        </details>
-        <details class="overview-block"><summary class="section-title">Agenda and decisions</summary>
-          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
-          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet.</p>'}
-          ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+            : '<p class="meta">No overlap times yet — go to Set confirmed meeting details to choose a start slot.</p>'}
         </details>
         <details class="overview-block"><summary class="section-title">Proposed locations (by popularity)</summary>
           ${renderLocationPopularitySummary(m)}
@@ -656,13 +656,17 @@
     const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const selected = state.pendingConfirmSlot || m.confirmed_slot || '';
+    const selectedLocation = state.pendingConfirmLocation || m.confirmed_location || '';
+    const isOrg = !!attendee?.is_organizer;
     const todayStr = meetingTodayStr(m);
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
     const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
     const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
     return `
       <section class="panel stack" id="meeting-availability-pane">
-        <h2 class="section-title">Group availability</h2>
+        <h2 class="section-title">Set confirmed meeting details</h2>
+        <p class="meta"><strong>Viewed by anyone. Set/changed by organisers.</strong></p>
+        <p class="meta"><strong>Current status:</strong> ${m.confirmed_slot ? `Agreed — ${formatTimePair(m.confirmed_slot)} · ${locationInlineHtml(m, m.confirmed_location)}` : 'Scheduling — not yet agreed'}</p>
         <p class="meta">Below is a visual analysis of full and partial availability. Mark your own slots on <strong>My availability</strong>, then choose a start slot here.</p>
         <div class="row group-legend">
           <span class="legend-chip full">All attendees + full meeting</span>
@@ -672,7 +676,7 @@
         </div>
         <p class="meta">Click a slot to set the proposed meeting start time. You can change it by clicking another slot. Times shown in your timezone and UTC.</p>
         <div class="row">
-          <p class="meta"><strong>Proposed start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet'}</p>
+          <p class="meta"><strong>Proposed start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot above to set it'}</p>
         </div>
         <div class="calendar-toolbar">
           <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
@@ -691,7 +695,35 @@
             `).join('')}
           </div>
         </div>
+        <h3 class="section-title">Proposed locations</h3>
+        <p class="meta">Organisers can click a location to set it as the confirmed location candidate. Attendees can see who marked each location as workable.</p>
+        ${renderConfirmLocationChoices(m, state, isOrg, selectedLocation)}
+        <div class="row">
+          <p class="meta"><strong>Selected location:</strong> ${selectedLocation ? locationInlineHtml(m, selectedLocation) : 'none selected yet — choose a location above'}</p>
+        </div>
+        ${isOrg
+          ? `<div class="row">
+              <button type="button" data-action="confirm-details">Set confirmed meeting details</button>
+            </div>`
+          : '<p class="meta">Only organisers can set confirmed details.</p>'}
       </section>`;
+  }
+
+  function renderConfirmLocationChoices(m, state, isOrg, selectedLocation) {
+    if (!m.locations.length) return '<p class="meta">No proposed locations yet. Use the Locations tab to add one.</p>';
+    return `<div class="chip-list">${m.locations.map((loc) => {
+      const voters = attendeesForLocation(m, loc.id);
+      const isSelected = selectedLocation === loc.id;
+      const title = voters.length
+        ? `Preferred by: ${voters.map((a) => attendeeLabel(a)).join(', ')}`
+        : 'No attendee preferences saved yet';
+      return `<button type="button" class="chip${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(loc.label)} (${voters.length})</button>`;
+    }).join('')}</div>`;
+  }
+
+  function attendeesForLocation(m, locationId) {
+    const prefs = m.location_preferences || {};
+    return m.attendees.filter((a) => (prefs[a.id] || []).includes(locationId));
   }
 
   function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap) {
@@ -1469,6 +1501,47 @@
       toast('Proposed meeting start updated');
       return;
     }
+    if (action === 'pick-confirm-location') {
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (!me?.is_organizer) {
+        toast('Only organisers can set the confirmed location candidate', true);
+        return;
+      }
+      state.pendingConfirmLocation = btn.dataset.locationId;
+      render(root, state);
+      toast('Confirmed location candidate updated');
+      return;
+    }
+    if (action === 'confirm-details') {
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (!me?.is_organizer) {
+        toast('Only organisers can set confirmed meeting details', true);
+        return;
+      }
+      const slot = state.pendingConfirmSlot || state.meet.confirmed_slot || '';
+      const location = state.pendingConfirmLocation || state.meet.confirmed_location || '';
+      if (!slot) {
+        toast('Choose a start slot first on the calendar above', true);
+        return;
+      }
+      try {
+        const data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_slot: slot,
+          confirmed_location: location,
+        });
+        state.meet = data.meet;
+        state.pendingConfirmSlot = null;
+        state.pendingConfirmLocation = null;
+        render(root, state);
+        toast('Meeting confirmed');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
 
     if (action === 'switch-user') {
       state.attendeeId = '';
@@ -1754,7 +1827,7 @@
     if (type === 'friday_13th') {
       return '<p class="meta">Highlights dates that are the 13th and a Friday. Rare — usually leave as One-off.</p>';
     }
-    return '<p class="meta">Pick a time everyone can make, then agree it on Agree time.</p>';
+    return '<p class="meta">Pick a time everyone can make, then set confirmed details on Set confirmed meeting details.</p>';
   }
 
   function weekdayCheckboxes(rec, showWeekends) {
