@@ -1,0 +1,2 @@
+# Local development configuration holds DB credentials and is never committed.
+config.php
