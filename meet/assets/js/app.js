@@ -98,7 +98,7 @@
       const explicit = tabFromUrl();
       const signedIn = state.meet.attendees.find((a) => a.id === state.attendeeId);
       let activeTab = explicit || localStorage.getItem(tabKey(slug))
-        || (state.meet.attendees.length ? 'calendar' : 'organiser');
+        || (state.meet.attendees.length ? 'overview' : 'organiser');
       if (activeTab === 'organiser' && state.meet.attendees.length && !signedIn?.is_organizer) {
         activeTab = 'calendar';
       }
@@ -141,7 +141,7 @@
 
   function tabFromUrl() {
     const t = new URLSearchParams(window.location.search).get('view');
-    return ['calendar', 'times', 'after', 'organiser'].includes(t) ? t : null;
+    return ['overview', 'attendees', 'calendar', 'times', 'after', 'organiser'].includes(t) ? t : null;
   }
 
   function isValidIanaTimezone(id) {
@@ -252,8 +252,26 @@
 
   function meetingUrl(slug, view) {
     const base = `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`;
-    const v = view && view !== 'calendar' ? `&view=${encodeURIComponent(view)}` : '';
+    const v = view ? `&view=${encodeURIComponent(view)}` : '';
     return `${base}/?=${encodeURIComponent(slug)}${v}`;
+  }
+
+  function gotoWorkspace(root, state, target) {
+    const routes = {
+      overview: { tab: 'overview' },
+      attendees: { tab: 'attendees' },
+      calendar: { tab: 'calendar', scrollCalendar: true },
+      group: { tab: 'times', scrollAfterRender: 'meeting-availability-pane' },
+      notes: { tab: 'times', scrollAfterRender: 'meeting-notes-pane' },
+      organiser: { tab: 'organiser' },
+      setup: { tab: 'organiser' },
+    };
+    const cfg = routes[target];
+    if (!cfg) return;
+    setTab(state, cfg.tab);
+    if (cfg.scrollCalendar) state.scrollCalendarOnRender = true;
+    if (cfg.scrollAfterRender) state.scrollAfterRender = cfg.scrollAfterRender;
+    render(root, state);
   }
 
   function attendeeKey(slug) { return `meet_attendee_${slug}`; }
@@ -302,12 +320,12 @@
                 <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
-            ${renderMeetingStatus(m)}
+            ${renderMeetingDashboard(m, state, attendee)}
             <nav class="tab-nav tab-nav-primary" role="tablist">
               ${renderTabNav(m, state, attendee)}
             </nav>
             <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
-              ${renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Add a short description for attendees', { withTextHelp: true })}
+              ${state.activeTab === 'organiser' ? renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Add a short description for attendees', { withTextHelp: true }) : ''}
               ${tabPageIntro(m, state)}
               <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
               <div class="share-row row desktop-share">
@@ -318,6 +336,8 @@
           </div>
         </div>
         <div class="meet-content">
+          ${state.activeTab === 'overview' ? renderOverviewTab(m, state, attendee) : ''}
+          ${state.activeTab === 'attendees' ? renderAttendeesTab(m, state, attendee) : ''}
           ${state.activeTab === 'calendar' ? renderCalendarTab(m, state, attendee) : ''}
           ${state.activeTab === 'times' ? renderTimesTab(m, state, attendee) : ''}
           ${state.activeTab === 'after' ? renderAfterTab(m, state) : ''}
@@ -358,9 +378,11 @@
   }
 
   const TAB_TIPS = {
-    organiser: 'Meeting length, grid step, timezone, recurrence, and description for attendees. Optional: add a known location here.',
-    calendar: 'Register attendees and mark when each person is free.\nDoes not set the final meeting time.',
-    times: 'See overlaps, propose locations, finalise time and location (organiser), agenda and decisions.',
+    overview: 'Summary of who is invited, best overlap times, and meeting status.',
+    attendees: 'Register attendees, edit your details, and manage the attendee list.',
+    organiser: 'Meeting length, grid step, timezone, recurrence, and description for attendees.',
+    calendar: 'Mark when you are free on the calendar grid.',
+    times: 'See when everyone overlaps, propose locations, and edit agenda and notes.',
     after: 'Recordings, links, and text summaries after the meeting.',
   };
 
@@ -375,35 +397,112 @@
   function tabNavItems(m, attendee) {
     const showOrg = canShowOrganiserTab(m, attendee);
     const established = meetingEstablished(m);
-    const organiser = {
-      id: 'organiser',
-      label: established ? '4. Meeting options' : '1. Set meeting options',
-      tip: TAB_TIPS.organiser,
-    };
-    const calendar = {
-      id: 'calendar',
-      label: established ? '1. Choose calendar times' : '2. Choose calendar times',
-      tip: TAB_TIPS.calendar,
-    };
-    const times = {
-      id: 'times',
-      label: established ? '2. Availability, location & agenda' : '3. Availability, location & agenda',
-      tip: TAB_TIPS.times,
-    };
-    const after = {
-      id: 'after',
-      label: established ? '3. After meeting' : '4. After meeting',
-      tip: TAB_TIPS.after,
-    };
     if (established) {
-      const items = [calendar, times, after];
-      if (showOrg) items.push(organiser);
+      const items = [
+        { id: 'overview', label: 'Meeting overview', tip: TAB_TIPS.overview },
+        { id: 'attendees', label: 'Attendees', tip: TAB_TIPS.attendees },
+        { id: 'calendar', label: 'My availability', tip: TAB_TIPS.calendar },
+        { id: 'times', label: 'Group availability & notes', tip: TAB_TIPS.times },
+        { id: 'after', label: 'After meeting', tip: TAB_TIPS.after },
+      ];
+      if (showOrg) {
+        items.push({ id: 'organiser', label: 'Meeting options', tip: TAB_TIPS.organiser });
+      }
       return items;
     }
     const items = [];
-    if (showOrg) items.push(organiser);
-    items.push(calendar, times, after);
+    if (showOrg) {
+      items.push({ id: 'organiser', label: '1. Set meeting options', tip: TAB_TIPS.organiser });
+    }
+    items.push(
+      { id: 'calendar', label: '2. Choose calendar times', tip: TAB_TIPS.calendar },
+      { id: 'times', label: '3. Group availability & notes', tip: TAB_TIPS.times },
+      { id: 'after', label: '4. After meeting', tip: TAB_TIPS.after },
+    );
     return items;
+  }
+
+  function dashboardShortcut(goto, label, state, tabId) {
+    const active = state.activeTab === tabId;
+    return `<button type="button" class="dashboard-shortcut${active ? ' active' : ''}" data-action="goto" data-goto="${goto}">${escapeHtml(label)}</button>`;
+  }
+
+  function renderDashboardAttendeeSummary(m) {
+    if (!m.attendees.length) return '<p class="meta dashboard-snippet">No attendees registered yet.</p>';
+    const parts = m.attendees.map((a) => {
+      const slots = countSlotsFor(m, a.id);
+      const org = a.is_organizer ? ' · organiser' : '';
+      return `${escapeHtml(a.display_name)} (${slots} slot${slots === 1 ? '' : 's'}${org})`;
+    });
+    return `<p class="meta dashboard-snippet"><strong>Attendees (${m.attendees.length}):</strong> ${parts.join(' · ')}</p>`;
+  }
+
+  function renderDashboardTimesSummary(m) {
+    const full = (m.suggestions?.slots || []).slice(0, 3);
+    if (!full.length) {
+      return '<p class="meta dashboard-snippet"><strong>Best overlaps:</strong> none yet — attendees need to mark availability.</p>';
+    }
+    const lines = full.map((s) => `${formatSlotLocal(s.slot)} (${s.count}/${m.attendees.length})`);
+    return `<p class="meta dashboard-snippet"><strong>Best overlaps:</strong> ${lines.map((l) => escapeHtml(l)).join(' · ')}</p>`;
+  }
+
+  function renderMeetingDashboard(m, state, attendee) {
+    const established = meetingEstablished(m);
+    const showOrg = canShowOrganiserTab(m, attendee);
+    const shortcuts = established
+      ? [
+        dashboardShortcut('overview', 'Meeting overview', state, 'overview'),
+        dashboardShortcut('attendees', 'Attendees', state, 'attendees'),
+        dashboardShortcut('calendar', 'My availability', state, 'calendar'),
+        dashboardShortcut('group', 'Group availability', state, 'times'),
+        dashboardShortcut('notes', 'Meeting notes', state, 'times'),
+        ...(showOrg ? [dashboardShortcut('organiser', 'Meeting options', state, 'organiser')] : []),
+      ].join('')
+      : [
+        dashboardShortcut('setup', 'Meeting setup', state, 'organiser'),
+        dashboardShortcut('calendar', 'Calendar', state, 'calendar'),
+        dashboardShortcut('group', 'Group availability', state, 'times'),
+        dashboardShortcut('notes', 'Meeting notes', state, 'times'),
+      ].join('');
+    return `
+      <div class="meeting-dashboard">
+        <h2 class="dashboard-title">Meeting dashboard</h2>
+        ${renderMeetingStatus(m)}
+        ${established ? `${renderDashboardAttendeeSummary(m)}${renderDashboardTimesSummary(m)}` : ''}
+        <nav class="dashboard-shortcuts row" aria-label="Go to meeting section">${shortcuts}</nav>
+      </div>`;
+  }
+
+  function renderOverviewTab(m, state, attendee) {
+    const sorted = sortSuggestions(m, 'date').slice(0, 5);
+    const desc = (m.organizer_intro || '').trim();
+    return `
+      <section class="panel stack overview-panel">
+        <h2 class="section-title">Meeting overview</h2>
+        <p class="meta">Use the <strong>Meeting dashboard</strong> shortcuts above to open attendees, your calendar, group availability, or notes.</p>
+        ${renderMeetingStatus(m)}
+        <h3 class="section-title">Attendees</h3>
+        ${renderDashboardAttendeeSummary(m)}
+        <p><button type="button" class="secondary" data-action="goto" data-goto="attendees">Open attendees page →</button></p>
+        <h3 class="section-title">Best overlap times</h3>
+        ${sorted.length
+          ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
+          : '<p class="meta">No overlap times yet.</p>'}
+        <p><button type="button" class="secondary" data-action="goto" data-goto="group">Open group availability →</button></p>
+        ${desc ? `<h3 class="section-title">Description for attendees</h3><div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
+        ${(m.agenda.length || m.decisions.length || (m.notes || '').trim())
+          ? `<h3 class="section-title">Agenda &amp; notes</h3>
+            ${m.agenda.length ? `<p><strong>Agenda</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
+            ${m.decisions.length ? `<p><strong>Decisions</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
+            ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+            <p><button type="button" class="secondary" data-action="goto" data-goto="notes">Open meeting notes →</button></p>`
+          : '<p class="meta">No agenda or notes yet. <button type="button" class="linkish" data-action="goto" data-goto="notes">Add meeting notes</button></p>'}
+        <p class="meta">Mark your own availability: <button type="button" class="linkish" data-action="goto" data-goto="calendar">Open my availability calendar</button></p>
+      </section>`;
+  }
+
+  function renderAttendeesTab(m, state, attendee) {
+    return `<section class="panel stack">${renderAttendeesSection(m, state, attendee, { standalone: true })}</section>`;
   }
 
   function renderTabNav(m, state, attendee) {
@@ -413,10 +512,10 @@
   function renderContinueToCalendar(state) {
     const ready = calendarReady(state);
     return `<div class="calendar-continue-row">
-      <button type="button" data-action="tab" data-tab="calendar">Continue to calendar →</button>
+      <button type="button" data-action="goto" data-goto="calendar">Continue to my availability →</button>
       <p class="meta">${ready
-        ? 'Add more attendees here if needed, then open <strong>Choose calendar times</strong> to mark when you are free.'
-        : 'Add yourself below, or click <strong>This is me</strong> on your row, then open <strong>Choose calendar times</strong>.'}</p>
+        ? 'Add more attendees on the <strong>Attendees</strong> page, then open <strong>My availability</strong> to mark when you are free.'
+        : 'Add yourself on the <strong>Attendees</strong> page, or click <strong>This is me</strong> on your row, then open <strong>My availability</strong>.'}</p>
     </div>`;
   }
 
@@ -525,12 +624,12 @@
         </form>
         <details class="propose-location-block" open>
           <summary>Meeting location (optional)</summary>
-          <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Availability, location &amp; agenda</strong>.</p>
+          <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Group availability &amp; notes</strong>.</p>
           ${renderAddLocationForm()}
         </details>
         ${!meetingEstablished(m)
           ? renderAttendeesSection(m, state, attendee, { showContinue: true })
-          : '<p class="meta attendee-tab-hint">Add or manage attendees on <strong>1. Choose calendar times</strong> (expand the panel there).</p>'}
+          : '<p class="meta attendee-tab-hint">Add or manage attendees via <strong>Attendees</strong> on the meeting dashboard.</p>'}
       </section>`;
   }
 
@@ -546,12 +645,12 @@
 
     return `
       <section class="panel stack calendar-panel">
-        <p class="meta">Mark when <strong>you</strong> are free. This saves <strong>your availability</strong> only — it does not set the final meeting time. Organisers set the final time on <strong>Availability, location &amp; agenda</strong>.</p>
+        <p class="meta">Mark when <strong>you</strong> are free. Use <strong>Attendees</strong> on the dashboard to register people. Organisers set the final time on <strong>Group availability &amp; notes</strong>.</p>
         <div class="row meta-line">
           <span class="badge">${escapeHtml(m.recurrence_label)}</span>
           <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
         </div>
-        ${renderAttendeesSection(m, state, attendee)}
+        ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         ${saveRow}
         <div class="calendar-toolbar">
           <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
@@ -654,7 +753,7 @@
 
   function locationDisplayHtml(m, locationId) {
     if (!locationId) {
-      return '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>';
+      return '<span class="label-hint">No location agreed — propose or select on <strong>Group availability &amp; notes</strong>.</span>';
     }
     const loc = m.locations.find((l) => l.id === locationId);
     if (!loc) return escapeHtml(locationId);
@@ -675,7 +774,7 @@
   }
 
   function renderMeetingStatus(m) {
-    const finalisedTip = 'To change the final time or location: open Availability, location & agenda and use Update final meeting time / location (organiser only).';
+    const finalisedTip = 'To change the final time or location: open Group availability & notes and use Update final meeting time / location (organiser only).';
     if (m.confirmed_slot) {
       return `<div class="meeting-status">
         <p class="status-head"><span class="status-label">Current status:</span> <span class="badge good" title="${escapeHtml(finalisedTip)}">Finalised</span></p>
@@ -684,7 +783,7 @@
       </div>`;
     }
     const proposed = bestProposedSlot(m);
-    let timeHint = 'No agreed time yet — mark availability on <strong>Choose calendar times</strong>.';
+    let timeHint = 'No agreed time yet — mark availability on <strong>My availability</strong>.';
     if (proposed?.kind === 'everyone') {
       timeHint = `Earliest where <strong>everyone</strong> is available: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length})</span>`;
     } else if (proposed?.kind === 'organiser_plus_one') {
@@ -693,8 +792,8 @@
     const locHint = m.confirmed_location
       ? locationDisplayHtml(m, m.confirmed_location)
       : (m.locations?.length
-        ? `<span class="label-hint">${m.locations.length} location(s) proposed — not finalised. Agree one on <strong>Availability, location &amp; agenda</strong>.</span>`
-        : '<span class="label-hint">No location agreed — propose or select on <strong>Availability, location &amp; agenda</strong>.</span>');
+        ? `<span class="label-hint">${m.locations.length} location(s) proposed — not finalised. Agree one on <strong>Group availability &amp; notes</strong>.</span>`
+        : '<span class="label-hint">No location agreed — propose or select on <strong>Group availability &amp; notes</strong>.</span>');
     return `<div class="meeting-status">
       <p class="status-head"><span class="status-label">Current status:</span> <span class="badge">Scheduling</span></p>
       <p class="meta">Time: ${timeHint}</p>
@@ -814,7 +913,7 @@
           ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
         </div>
       </section>
-      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : '<p class="meta attendee-tab-hint">Manage attendees on <strong>1. Choose calendar times</strong>.</p>'}
+      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : ''}
       <section class="panel stack">
         <h2 class="section-title">Locations &amp; final time</h2>
         <details class="propose-location-block" open><summary>Propose a location</summary>
@@ -827,7 +926,7 @@
         ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : '<p class="meta">Sign in to mark location preferences.</p>'}
         ${renderFinaliseSection(m, state, attendee, slotVal)}
       </section>
-      <section class="panel stack">
+      <section class="panel stack" id="meeting-notes-pane">
         <h2 class="section-title">Agenda &amp; decisions required</h2>
         <p class="meta">Agenda and decisions are plain-text lines (one item per line). Notes support simple HTML. Special file markers (<code>@@</code> at the start of a line) are neutralised automatically on save.</p>
         ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
@@ -936,11 +1035,11 @@
     return !meetingEstablished(m) || !attendee;
   }
 
-  function renderAttendeesSection(m, state, attendee, { showContinue = false } = {}) {
+  function renderAttendeesSection(m, state, attendee, { showContinue = false, standalone = false } = {}) {
     const signedIn = !!attendee;
     const established = meetingEstablished(m);
-    const panelOpen = attendeePanelIsOpen(state, m, attendee);
-    const summaryLabel = established && signedIn
+    const panelOpen = standalone || attendeePanelIsOpen(state, m, attendee);
+    const summaryLabel = established && signedIn && !standalone
       ? `Registered attendees (${m.attendees.length}) — click to expand`
       : `Registered attendees (${m.attendees.length || 'none yet'})`;
     const listHint = signedIn
@@ -952,10 +1051,7 @@
     const showOrganiserCol = signedIn && attendee.is_organizer;
     const colCount = 5 + (showOrganiserCol ? 1 : 0);
 
-    return `
-      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
-        <summary class="attendee-block-summary">${summaryLabel}</summary>
-        <div class="attendee-block-body stack">
+    const body = `
         ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser
           ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : '<span class="badge" title="PIN set">PIN</span>'}
           <button type="button" class="secondary compact-btn" data-action="switch-user">Switch user</button>
@@ -974,7 +1070,21 @@
         ${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee) : ''}
         ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
         ${renderAddAttendeeForm(signedIn, attendee)}
-        ${showContinue ? renderContinueToCalendar(state) : ''}
+        ${showContinue ? renderContinueToCalendar(state) : ''}`;
+
+    if (standalone) {
+      return `
+      <div class="attendee-block stack attendee-block-standalone">
+        <h2 class="section-title">Registered attendees</h2>
+        ${body}
+      </div>`;
+    }
+
+    return `
+      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
+        <summary class="attendee-block-summary">${summaryLabel}</summary>
+        <div class="attendee-block-body stack">
+        ${body}
         </div>
       </details>`;
   }
@@ -1241,7 +1351,7 @@
       else if (kind === 'claim') restoreAttendeeSelections(state);
       if (kind === 'add-attendee' || kind === 'claim') state.scrollAfterRender = 'attendee-block';
       render(root, state);
-      if (kind === 'add-location') toast('Location added — finalise it on Availability, location & agenda');
+      if (kind === 'add-location') toast('Location added — finalise it on Group availability & notes');
       else if (kind === 'add-attendee') {
         const mode = fd.get('add_mode') || 'self';
         toast(mode === 'self' ? 'You are signed in — mark your availability on the calendar' : 'Attendee added — share the meeting link with them');
@@ -1263,6 +1373,7 @@
     }
 
     const action = btn.dataset.action;
+    if (action === 'goto') { gotoWorkspace(root, state, btn.dataset.goto); return; }
     if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); return; }
     if (action === 'copy-link') {
       const input = document.getElementById('share-url-input');
