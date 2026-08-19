@@ -391,6 +391,19 @@
       window.scrollTo(0, scrollY);
     }
     afterRenderScroll(root, state);
+    syncClearPinFields(root.querySelector('.edit-attendee-form'));
+  }
+
+  function syncClearPinFields(form) {
+    if (!form) return;
+    const clearing = form.querySelector('[name="clear_pin"]')?.checked;
+    const newPinField = form.querySelector('[data-clear-pin-target]');
+    const newPinInput = form.querySelector('[name="new_pin"]');
+    if (newPinField) newPinField.hidden = !!clearing;
+    if (newPinInput) {
+      newPinInput.disabled = !!clearing;
+      if (clearing) newPinInput.value = '';
+    }
   }
 
   function afterRenderScroll(root, state) {}
@@ -1111,8 +1124,8 @@
           <div class="pin-change-block">
             <h4 class="section-title">${hasPinAlready ? 'Change PIN' : 'Set PIN'}</h4>
             ${hasPinAlready ? `<label>Current PIN <input name="current_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="current-password"></label>` : ''}
-            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin"> Remove PIN instead of setting a new one</label>` : ''}
-            <label>${hasPinAlready ? 'New PIN' : 'PIN'} <span class="label-hint">(numeric)</span>
+            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove PIN instead of setting a new one</label>` : ''}
+            <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New PIN' : 'PIN'} <span class="label-hint">(numeric)</span>
               <input name="new_pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password">
             </label>
           </div>
@@ -1467,7 +1480,7 @@
 
       if (kind === 'add-location') toast('Location saved');
       else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee added');
-      else if (kind === 'edit-attendee') toast('Your details were updated');
+      else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'PIN removed' : 'Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
       else if (kind === 'update-settings') toast('Meeting options saved. Next: add yourself as attendee (or return to Getting started).');
       else toast('Saved');
@@ -1759,6 +1772,11 @@
       return;
     }
     if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
+    if (e.target.name === 'clear_pin') {
+      syncClearPinFields(e.target.closest('form'));
+      if (e.target.checked) e.target.closest('form')?.querySelector('[name="current_pin"]')?.focus();
+      return;
+    }
     if (e.target.name === 'add_mode') {
       const form = e.target.closest('form');
       if (!form) return;

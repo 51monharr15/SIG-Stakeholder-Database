@@ -377,6 +377,12 @@ function setAttendeePin(array &$attendee, string $pin): void
 }
 
 /** @param array<string, mixed> $attendee */
+function clearAttendeePin(array &$attendee): void
+{
+    $attendee['pin'] = '';
+}
+
+/** @param array<string, mixed> $attendee */
 function maybeSetAttendeePin(array &$attendee, string $pin): void
 {
     if ($pin === '' || attendeeHasPin($attendee)) {
@@ -799,8 +805,7 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
                 }
             }
             if ($clearPin) {
-                unset($att['pin_hash']);
-                $att['has_pin'] = false;
+                clearAttendeePin($att);
             } else {
                 setAttendeePin($att, $newPin);
             }
