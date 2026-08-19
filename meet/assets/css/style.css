@@ -269,6 +269,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .group-slot.partial-full { background: #ffedd5; border-color: #fb923c; }
 .group-slot.partial { background: #ede9fe; border-color: #a78bfa; }
 .group-slot.selected-start { border: 2px solid #111827; }
+.confirm-loc-chip { background: #ffedd5; border-color: #fb923c; }
+.confirm-loc-chip.active { background: #f59e0b; border-color: #b45309; color: #111827; }
 
 /* PIN change block */
 .pin-change-block {

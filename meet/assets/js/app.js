@@ -91,6 +91,8 @@
       editingAttendeeId: null,
       changingPin: false,
       pendingConfirmLocation: null,
+      showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
+      openNotesEditor: false,
       overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
       attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
@@ -245,9 +247,9 @@
   }
 
   function meetingUrl(slug, view) {
-    const base = `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`;
+    const base = `${window.location.origin}${window.location.pathname}`;
     const v = view ? `&view=${encodeURIComponent(view)}` : '';
-    return `${base}/?=${encodeURIComponent(slug)}${v}`;
+    return `${base}?=${encodeURIComponent(slug)}${v}`;
   }
 
   function gotoTab(root, state, tab) {
@@ -259,6 +261,7 @@
   function slotsKey(slug, id) { return `meet_slots_${slug}_${id}`; }
   function tabKey(slug) { return `meet_tab_${slug}`; }
   function overviewHelpKey(slug) { return `meet_overview_help_${slug}`; }
+  function groupHoursKey(slug) { return `meet_group_hours_${slug}`; }
 
   function wireOperationsLink(slug) {
     const link = document.querySelector('.site-footer a[href="operations.php"]');
@@ -520,7 +523,7 @@
         <p class="meta">Tap or click headings to expand.</p>
         ${attendeePrompt}
         ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
-        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions <button type="button" class="secondary compact-btn" data-action="edit-agenda-decisions" title="Modify agenda and/or decisions" style="margin-left:0.4rem">✎</button></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Notes &amp; agenda</strong> to set it.</p>'}
           ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Notes &amp; agenda</strong> to set them.</p>'}
           ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
@@ -646,7 +649,7 @@
     const mtz = meetingTz(m);
     const dayCount = visibleDayCount();
     const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
-    const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
+    const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = state.pendingConfirmSlot || m.confirmed_slot || '';
     const selectedLocation = state.pendingConfirmLocation || m.confirmed_location || '';
     const isOrg = !!attendee?.is_organizer;
@@ -654,6 +657,9 @@
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
     const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
     const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
+    const hours = state.showAllGroupHours
+      ? allHours
+      : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <h2 class="section-title">Set confirmed meeting details</h2>
@@ -669,7 +675,14 @@
         <p class="meta">Click a slot to set the proposed meeting start time. You can change it by clicking another slot. Times shown in your timezone and UTC.</p>
         <div class="row">
           <p class="meta"><strong>Proposed start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot above to set it'}</p>
+          <button type="button" class="secondary compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
         </div>
+        ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
+        ${isOrg
+          ? `<div class="row">
+              <button type="button" data-action="confirm-details" title="Organiser only: set agreed time and location">Set confirmed meeting details</button>
+            </div>`
+          : '<p class="meta">Only organisers can set confirmed details.</p>'}
         <div class="calendar-toolbar">
           <button type="button" class="secondary" data-action="prev-days" title="Show previous days" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(days)}</strong>
@@ -697,13 +710,18 @@
           ? `<div class="row">
               <button type="button" data-action="confirm-details" title="Organiser only: set agreed time and location">Set confirmed meeting details</button>
             </div>`
-          : '<p class="meta">Only organisers can set confirmed details.</p>'}
-        ${isOrg
-          ? `<div class="row">
-              <button type="button" data-action="confirm-details" title="Organiser only: set agreed time and location">Set confirmed meeting details</button>
-            </div>`
           : ''}
       </section>`;
+  }
+
+  function groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap) {
+    return days.some((day) => {
+      const slotIso = slotIsoFromMeetingDate(toDateIso(day), hm, mtz);
+      if (slotIso === selected) return true;
+      if (fullMap.has(slotIso) || partialMap.has(slotIso)) return true;
+      const ids = m.availability?.[slotIso] || [];
+      return ids.length > 0;
+    });
   }
 
   function renderConfirmLocationChoices(m, state, isOrg, selectedLocation) {
@@ -714,7 +732,7 @@
       const title = voters.length
         ? `Preferred by: ${voters.map((a) => attendeeLabel(a)).join(', ')}`
         : 'No attendee preferences saved yet';
-      return `<button type="button" class="chip${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(loc.label)} (${voters.length})</button>`;
+      return `<button type="button" class="chip confirm-loc-chip${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(loc.label)} (${voters.length})</button>`;
     }).join('')}</div>`;
   }
 
@@ -857,7 +875,7 @@
         ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
         ${m.decisions.length ? `<h3 class="section-title">Decisions required</h3><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
         ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
-        <details><summary>Edit agenda / decisions / notes</summary>
+        <details class="notes-edit-details"${state.openNotesEditor ? ' open' : ''}><summary>Edit agenda / decisions / notes</summary>
           <form class="inline-form" data-form="update-meta">
             <label>Agenda <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
             <label>Decisions required <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
@@ -1405,6 +1423,7 @@
       state.meet = data.meet;
       if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
+      if (kind === 'update-meta') state.openNotesEditor = false;
       if (kind === 'add-attendee' || kind === 'claim') {
         state.overviewHelpOpen = false;
         localStorage.setItem(overviewHelpKey(state.slug), 'closed');
@@ -1445,6 +1464,13 @@
     }
 
     if (action === 'toggle-help') { state.helpOpen = !state.helpOpen; render(root, state); return; }
+    if (action === 'edit-agenda-decisions') {
+      state.openNotesEditor = true;
+      setTab(state, 'notes');
+      state.scrollAfterRender = 'notes-edit-details';
+      render(root, state);
+      return;
+    }
     if (action === 'toggle-header') { state.headerExpanded = !state.headerExpanded; render(root, state); return; }
 
     if (action === 'edit-intro') { state.editingIntro = btn.dataset.field; render(root, state); return; }
@@ -1629,6 +1655,12 @@
         render(root, state);
         toast('Availability saved');
       } catch (err) { toast(err.message, true); }
+      return;
+    }
+    if (action === 'toggle-group-hours') {
+      state.showAllGroupHours = !state.showAllGroupHours;
+      localStorage.setItem(groupHoursKey(state.slug), state.showAllGroupHours ? 'all' : 'compact');
+      render(root, state);
       return;
     }
 

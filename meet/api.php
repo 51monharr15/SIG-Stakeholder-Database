@@ -592,6 +592,9 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
     requireActingOrganizer($meet, $actingId);
 
     $meet = $store->update($meet['id'], function (array $m) use ($locationId) {
+        if (($m['confirmed_location'] ?? '') === $locationId) {
+            throw new \RuntimeException('Cannot delete the agreed location. First set a different agreed location, then remove this one.', 400);
+        }
         $m['locations'] = array_values(array_filter(
             $m['locations'],
             fn ($loc) => ($loc['id'] ?? '') !== $locationId
@@ -601,9 +604,6 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
                 $ids,
                 fn ($id) => $id !== $locationId
             ));
-        }
-        if (($m['confirmed_location'] ?? '') === $locationId) {
-            $m['confirmed_location'] = '';
         }
         return $m;
     });
