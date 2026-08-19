@@ -278,10 +278,14 @@
 
   function setupChecklistState(m, state, attendee) {
     const isOrg = !!attendee?.is_organizer;
-    const step1 = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes';
+    // Step 1: options were set at creation (title) or explicitly saved
+    const step1 = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes'
+      || !!(m.title?.trim());
     const step2 = !!attendee;
     const step3 = !!attendee && countSlotsFor(m, attendee.id) > 0;
-    const step4 = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes';
+    // Step 4: link copied/acknowledged, or another attendee joined via the link
+    const step4 = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes'
+      || (m.attendees?.length || 0) > 1;
     const allDone = step1 && step2 && step3 && step4;
     return { isOrg, step1, step2, step3, step4, allDone };
   }
@@ -517,7 +521,10 @@
             </li>
             <li>
               <strong>${setup.step4 ? '✓ ' : ''}Share the link</strong> — Copy meeting link and send it to all attendees so they can open this meeting and enter availability.
-              <br><button type="button" class="secondary compact-btn" data-action="copy-link" style="margin-top:0.35rem">Copy meeting link</button>
+              <br><span class="row" style="margin-top:0.35rem;flex-wrap:wrap;gap:0.35rem">
+                <button type="button" class="secondary compact-btn" data-action="copy-link">Copy meeting link</button>
+                <button type="button" class="secondary compact-btn" data-action="ack-link-shared" title="Mark this step done if you have already sent the link by other means">I've shared the link</button>
+              </span>
             </li>
           </ol>
           ${setup.isOrg && setup.allDone ? '<p class="meta"><strong>Setup complete.</strong> You can now run the meeting in active mode using the tabs above.</p>' : '<p class="meta">The checklist stays visible until all four steps are complete.</p>'}
@@ -1508,6 +1515,14 @@
         localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes');
         toast('Link copied');
       } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes'); toast('Link copied'); }
+      render(root, state);
+      return;
+    }
+
+    if (action === 'ack-link-shared') {
+      localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes');
+      toast('Marked as shared');
+      render(root, state);
       return;
     }
 
