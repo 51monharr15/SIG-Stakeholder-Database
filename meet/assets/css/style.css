@@ -153,7 +153,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   font-weight: 600;
 }
 
-button.linkish {
+button.linkish,
+button.goto-link {
   background: none;
   border: none;
   padding: 0;
@@ -162,6 +163,11 @@ button.linkish {
   cursor: pointer;
   font: inherit;
 }
+
+.overview-attendee-table { font-size: 0.88rem; margin: 0.35rem 0; }
+
+.overview-attendee-table th,
+.overview-attendee-table td { padding: 0.35rem 0.5rem; }
 
 .attendee-block-standalone {
   border-top: none;
