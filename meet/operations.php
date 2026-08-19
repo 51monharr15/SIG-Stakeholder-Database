@@ -2,6 +2,10 @@
 $versionFile = __DIR__ . '/VERSION';
 $appVersion = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'dev';
 $cssVer = is_readable(__DIR__ . '/assets/css/style.css') ? filemtime(__DIR__ . '/assets/css/style.css') : time();
+$back = (string) ($_GET['back'] ?? './');
+if ($back === '' || preg_match('/^\s*javascript:/i', $back)) {
+    $back = './';
+}
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,7 +36,7 @@ $cssVer = is_readable(__DIR__ . '/assets/css/style.css') ? filemtime(__DIR__ . '
 </head>
 <body>
   <div class="ops-wrap">
-    <a class="back-link" href="./">← Back to meeting scheduler</a>
+    <a class="back-link" href="<?= htmlspecialchars($back, ENT_QUOTES, 'UTF-8') ?>">← Back to meeting scheduler</a>
     <h1>How to use the meeting scheduler</h1>
     <p>This page explains everything you need to know — whether you are setting up a brand-new meeting or joining one that someone else has created.</p>
 
@@ -198,7 +202,7 @@ $cssVer = is_readable(__DIR__ . '/assets/css/style.css') ? filemtime(__DIR__ . '
       <p>No — the scheduler does not send any emails. Share the meeting link with people directly. When the time is agreed, let them know separately.</p>
     </div>
 
-    <p class="meta" style="margin-top:1.5rem">Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · <a href="./">Back to meeting scheduler</a></p>
+    <p class="meta" style="margin-top:1.5rem">Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · <a href="<?= htmlspecialchars($back, ENT_QUOTES, 'UTF-8') ?>">Back to meeting scheduler</a></p>
   </div>
 </body>
 </html>

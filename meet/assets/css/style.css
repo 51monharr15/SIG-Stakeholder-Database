@@ -221,6 +221,33 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   margin-bottom: 0.5rem;
 }
 
+.attendee-prompt > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.attendee-prompt > summary::-webkit-details-marker { display: none; }
+
+.group-legend { gap: 0.4rem; }
+
+.legend-chip {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.legend-chip.full { background: #bfdbfe; border-color: #60a5fa; }
+.legend-chip.partial-full { background: #dbeafe; border-color: #93c5fd; }
+.legend-chip.partial { background: #f0fdf4; border-color: #86efac; }
+.legend-chip.selected { border: 2px solid #1f2937; background: #fff; }
+
+.group-slot.full { background: #bfdbfe; border-color: #60a5fa; }
+.group-slot.partial-full { background: #dbeafe; border-color: #93c5fd; }
+.group-slot.partial { background: #f0fdf4; border-color: #86efac; }
+.group-slot.selected-start { border: 2px solid #111827; }
+
 /* PIN change block */
 .pin-change-block {
   display: grid;
