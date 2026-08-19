@@ -448,7 +448,7 @@
                 <li>Open the meeting link you were sent. You will see the meeting title and current status.</li>
                 <li>Go to <strong>Attendees</strong>. If you are already listed, press <em>This is me</em> on your row and enter your PIN if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
                 <li>Open <strong>My availability</strong> and mark every slot when you are free. Press <em>Save my availability</em>. You can come back and update this any time.</li>
-                <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (they highlight in blue), then press <em>Save location preferences</em>. You can also propose a new location.</li>
+                <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
                 <li>Open <strong>Set confirmed meeting details</strong> to see how times overlap and what is proposed/agreed.</li>
                 <li>Check the top status badge for the current agreed time and location.</li>
                 <li>Repeat any of these steps as the meeting evolves — there is no fixed order.</li>
@@ -488,6 +488,7 @@
             </li>
             <li>
               <strong>Share the link</strong> — press <em>Copy link</em> at the top of the page and send it to your attendees.
+              <br><button type="button" class="secondary compact-btn" data-action="copy-link" style="margin-top:0.35rem">Copy meeting link</button>
             </li>
           </ol>
         </section>`;
@@ -521,6 +522,7 @@
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
         <p class="meta">Tap or click headings to expand.</p>
+        ${isOrg ? '<p class="meta"><strong>You are now in active meeting mode because you have joined as an attendee.</strong></p>' : ''}
         ${attendeePrompt}
         ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
         <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions <button type="button" class="secondary compact-btn" data-action="edit-agenda-decisions" title="Modify agenda and/or decisions" style="margin-left:0.4rem">✎</button></summary>
@@ -778,11 +780,9 @@
         <h2 class="section-title">Locations</h2>
         <p class="meta"><strong>Select from locations proposed and save choice. Propose new location(s) if you need to.</strong></p>
         <h3 class="section-title">Proposed locations</h3>
-        <p class="meta">Click a location to select it (turns blue = OK for you), then press <strong>Save my location preferences</strong>. You can select multiple.</p>
+        <p class="meta">Click a location to save it as workable for you (blue). Click again to remove it. You can select multiple.</p>
         <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location above.</p>'}</div>
-        ${attendee
-          ? '<button type="button" data-action="save-locations">Save my location preferences</button>'
-          : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
+        ${attendee ? '<p class="meta">Preferences save automatically when you click a location.</p>' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
         <details class="propose-location-block" open><summary>Propose a location</summary>
           <p class="meta">Anyone can propose a location. Add as many options as you like.</p>
           ${renderAddLocationForm()}
@@ -921,7 +921,11 @@
     return `
       <section class="panel stack">
         <h2 class="section-title">Meeting options</h2>
-        ${!m.attendees.length ? '<p class="meta">Save your options below, then go to <strong>Attendees</strong> to add yourself as the first attendee.</p>' : ''}
+        ${!m.attendees.length ? '<p class="meta"><strong>Setup step 1 of 5:</strong> Save your options below. Then return to Getting started or go straight to Attendees to add yourself as the first attendee.</p>' : ''}
+        ${!m.attendees.length ? `<div class="row">
+          <button type="button" class="secondary compact-btn" data-action="tab" data-tab="overview">Back to Getting started</button>
+          <button type="button" class="secondary compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
+        </div>` : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
@@ -1033,7 +1037,7 @@
           </div>
         </fieldset>`;
     const pinRow = signedIn ? '' : `
-          <label class="field-pin">PIN <span class="label-hint">(optional — lets you find this meeting from the home page)</span>
+          <label class="field-pin">PIN <span class="label-hint">(optional — helps find meetings from home and protects your attendee identity)</span>
             <input class="input-pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
           </label>`;
     const extras = signedIn ? '' : `
@@ -1385,6 +1389,9 @@
         }
         data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type, url, body: fd.get('body') });
       } else if (kind === 'confirm') {
+        if (!fd.get('confirmed_location')) {
+          throw new Error('Select a location before agreeing meeting details');
+        }
         data = await apiPost({ action: 'confirm', slug: state.slug, acting_attendee_id: state.attendeeId, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
         state.pendingConfirmSlot = null;
       } else if (kind === 'merge-organiser') {
@@ -1432,10 +1439,10 @@
       render(root, state);
 
       if (kind === 'add-location') toast('Location saved');
-      else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in — mark your availability on My availability' : 'Attendee added');
+      else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee added');
       else if (kind === 'edit-attendee') toast('Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
-      else if (kind === 'update-settings') toast('Meeting options saved');
+      else if (kind === 'update-settings') toast('Meeting options saved. Next: add yourself as attendee (or return to Getting started).');
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
@@ -1493,10 +1500,21 @@
     if (action === 'toggle-slot') { toggleSlot(state, btn.dataset.slot); render(root, state); return; }
 
     if (action === 'toggle-location') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to save location preferences', true);
+        return;
+      }
       const id = btn.dataset.location;
       state.selectedLocations.has(id) ? state.selectedLocations.delete(id) : state.selectedLocations.add(id);
-      render(root, state);
-      toast(state.selectedLocations.has(id) ? 'Location selected — press Save my location preferences' : 'Location deselected');
+      try {
+        const data = await apiPost({ action: 'save_location_prefs', slug: state.slug, attendee_id: state.attendeeId, location_ids: [...state.selectedLocations] });
+        state.meet = data.meet;
+        render(root, state);
+        toast(state.selectedLocations.has(id) ? 'Location preference saved' : 'Location preference removed');
+      } catch (err) {
+        state.selectedLocations.has(id) ? state.selectedLocations.delete(id) : state.selectedLocations.add(id);
+        toast(err.message, true);
+      }
       return;
     }
 
@@ -1556,6 +1574,10 @@
       const location = state.pendingConfirmLocation || state.meet.confirmed_location || '';
       if (!slot) {
         toast('Choose a start slot first on the calendar above', true);
+        return;
+      }
+      if (!location) {
+        toast('Select a location before setting confirmed meeting details', true);
         return;
       }
       try {
