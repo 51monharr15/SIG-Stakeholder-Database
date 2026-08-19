@@ -484,7 +484,7 @@
       return `
         <section class="panel stack overview-panel">
           <h2 class="section-title">Getting started</h2>
-          <p>This meeting has been created. Follow these steps to make it ready for attendees.</p>
+          <p><strong>Meeting is currently in setup mode.</strong> Follow these steps to make it ready for attendees.</p>
           <ol class="setup-steps">
             <li>
               <strong>${setup.step1 ? '✓ ' : ''}Set meeting options</strong> — set the title, meeting length, calendar hours, and timezone.
@@ -537,9 +537,9 @@
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
         <p class="meta">Tap or click headings to expand.</p>
-        ${isOrg ? '<p class="meta"><strong>You are now in active meeting mode because you have joined as an attendee.</strong></p>' : ''}
+        ${isOrg ? '<p class="meta"><strong>You are now in active meeting mode because all required setup steps are complete.</strong></p>' : ''}
         ${attendeePrompt}
-        ${desc ? `<div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
+        ${desc ? `<h3 class="section-title">Description for attendees</h3><div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : '<h3 class="section-title">Description for attendees</h3><p class="meta">No description yet — add one in Meeting options.</p>'}
         <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions <button type="button" class="secondary compact-btn" data-action="edit-agenda-decisions" title="Modify agenda and/or decisions" style="margin-left:0.4rem">✎</button></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Notes &amp; agenda</strong> to set it.</p>'}
           ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Notes &amp; agenda</strong> to set them.</p>'}
