@@ -342,7 +342,7 @@
               ${renderDashboardNav(m, state, attendee)}
             </nav>
             ${state.helpOpen ? renderHelpPanel(m, attendee) : ''}
-            <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
+            <div class="sticky-extras is-open">
               <p class="meta tz-banner">Calendar hours in <strong>${escapeHtml(meetingTz(m))}</strong> · Your timezone: <strong>${escapeHtml(tz)}</strong></p>
               <div class="share-row row desktop-share">
                 <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">

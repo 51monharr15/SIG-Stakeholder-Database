@@ -318,12 +318,10 @@ button.linkish {
 
 .compact-btn { padding: 0.35rem 0.65rem; font-size: 0.82rem; }
 
-.sticky-extras { display: none; }
-.sticky-extras.is-open { display: block; }
+.sticky-extras { display: block; }
 
 @media (min-width: 701px) {
   .compact-btn[data-action="toggle-header"] { display: inline-block; }
-  .sticky-head .compact-btn[data-action="copy-link"] { display: none; }
 }
 
 @media (max-width: 700px) {
