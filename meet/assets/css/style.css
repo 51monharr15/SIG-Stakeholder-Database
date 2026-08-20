@@ -6,11 +6,16 @@
   --line: #d8dee6;
   --accent: #2563eb;
   --accent-soft: #dbeafe;
+  --nav: #15803d;
+  --nav-soft: #dcfce7;
   --good: #15803d;
   --good-soft: #dcfce7;
   --warn: #b45309;
+  --cancel-bg: #f3f4f6;
+  --cancel-text: #1a2332;
   --shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
   --radius: 12px;
+  --btn-radius: 8px;
   --sticky-h: 0px;
 }
 
@@ -47,9 +52,10 @@ body {
 .hero h1 { margin-top: 0; }
 .lede { color: var(--muted); }
 
-.create-form { display: grid; gap: 0.75rem; max-width: 420px; margin-top: 1rem; }
+.create-form { display: grid; gap: 0.75rem; max-width: none; width: 100%; margin-top: 1rem; }
+.home-collapse { max-width: none; width: 100%; }
 .hero-divider { margin: 1.25rem 0; border: none; border-top: 1px solid var(--line); }
-.list-meetings-result { margin-top: 0.75rem; max-width: 420px; }
+.list-meetings-result { margin-top: 0.75rem; max-width: none; width: 100%; }
 .list-meetings-result ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 .meetings-found-table { width: 100%; border-collapse: collapse; margin-top: 0.35rem; font-size: 0.95rem; }
 .meetings-found-table td { padding: 0.3rem 0.5rem 0.3rem 0; vertical-align: top; }
@@ -80,18 +86,40 @@ input, textarea, select {
   width: 100%;
 }
 
+/* Button roles: action (blue), nav (green), cancel (light neutral), disabled (muted + tooltip) */
 button, .btn {
   border: none;
-  border-radius: 8px;
+  border-radius: var(--btn-radius);
   padding: 0.6rem 1rem;
   background: var(--accent);
   color: #fff;
   cursor: pointer;
 }
 
-button.secondary { background: #e5e7eb; color: var(--text); }
-button.linkish { background: none; color: var(--accent); padding: 0; text-decoration: underline; }
-button:disabled { opacity: 0.6; cursor: not-allowed; }
+button.btn-nav,
+button.nav,
+.dash-btn {
+  background: var(--nav-soft);
+  color: var(--nav);
+  border: 1px solid #86efac;
+}
+
+button.btn-cancel,
+button.secondary {
+  background: var(--cancel-bg);
+  color: var(--cancel-text);
+  border: 1px solid var(--line);
+}
+
+button.linkish { background: none; color: var(--accent); padding: 0; text-decoration: underline; border: none; }
+button:disabled,
+button.btn-disabled {
+  background: #e5e7eb !important;
+  color: #9ca3af !important;
+  border-color: #d1d5db !important;
+  opacity: 1;
+  cursor: not-allowed;
+}
 
 .hint, .meta { color: var(--muted); font-size: 0.92rem; }
 .label-hint { color: var(--muted); font-weight: normal; font-size: 0.85rem; }
@@ -120,10 +148,35 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .status-strip {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.75rem;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
   margin: 0.35rem 0 0.25rem;
   font-size: 0.88rem;
+  padding: 0.45rem 0.65rem;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: var(--btn-radius);
+}
+
+.status-strip .status-label {
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.status-strip .status-value {
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.share-row-top {
+  margin: 0.35rem 0 0.15rem;
 }
 
 .dashboard-nav {
@@ -136,21 +189,18 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 
 .dash-btn {
-  background: #fff;
-  color: var(--text);
-  border: 1px solid #c5cdd8;
-  border-radius: 999px;
+  border-radius: var(--btn-radius);
   padding: 0.28rem 0.65rem;
   font-size: 0.8rem;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.dash-btn:hover { border-color: var(--accent); }
+.dash-btn:hover { border-color: var(--nav); background: #bbf7d0; }
 
 .dash-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--nav);
+  border-color: var(--nav);
   color: #fff;
   font-weight: 600;
 }
@@ -197,6 +247,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   margin-top: 0.75rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--line);
+}
+
+.help-panel-footer-close {
+  margin-top: 0.65rem;
+  justify-content: flex-end;
 }
 
 /* Agreed time display */
@@ -255,27 +310,43 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .attendee-prompt > summary::-webkit-details-marker { display: none; }
 
-.group-legend { gap: 0.4rem; }
+.day-head.day-gap-before {
+  border-left: 3px solid #111827;
+  padding-left: 0.35rem;
+}
+.cal-body .slot.day-gap-before,
+.group-calendar .cal-body > .day-gap-col {
+  border-left: 3px solid #111827;
+}
 
 .legend-chip {
   display: inline-block;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--btn-radius);
   padding: 0.2rem 0.55rem;
   font-size: 0.82rem;
 }
 
-.legend-chip.full { background: #fef3c7; border-color: #f59e0b; }
-.legend-chip.partial-full { background: #ffedd5; border-color: #fb923c; }
+.legend-chip.full { background: #bbf7d0; border-color: #16a34a; }
+.legend-chip.partial-full { background: #fef3c7; border-color: #f59e0b; }
 .legend-chip.partial { background: #ede9fe; border-color: #a78bfa; }
-.legend-chip.selected { border: 2px solid #1f2937; background: #fff; }
+.legend-chip.selected { border: 2px solid #14532d; background: #dcfce7; }
 
-.group-slot.full { background: #fef3c7; border-color: #f59e0b; }
-.group-slot.partial-full { background: #ffedd5; border-color: #fb923c; }
+.group-slot.full { background: #bbf7d0; border-color: #16a34a; }
+.group-slot.partial-full { background: #fef3c7; border-color: #f59e0b; }
 .group-slot.partial { background: #ede9fe; border-color: #a78bfa; }
-.group-slot.selected-start { border: 2px solid #111827; }
-.confirm-loc-chip { background: #ffedd5; border-color: #fb923c; }
-.confirm-loc-chip.active { background: #f59e0b; border-color: #b45309; color: #111827; }
+.group-slot.selected-start {
+  border: 3px solid #14532d;
+  box-shadow: inset 0 0 0 1px #14532d;
+  border-radius: 4px;
+}
+.confirm-loc-chip { background: #fef3c7; border-color: #f59e0b; border-radius: var(--btn-radius); }
+.confirm-loc-chip.loc-all { background: #bbf7d0; border-color: #16a34a; }
+.confirm-loc-chip.active,
+.confirm-loc-chip.selected-start {
+  outline: 3px solid #14532d;
+  outline-offset: 1px;
+}
 
 /* PIN change block */
 .pin-change-block {
@@ -335,7 +406,6 @@ button.linkish {
   .sticky-top-inner { padding: 0.5rem 0.65rem; }
   .meet-title { font-size: 1.05rem; }
   .tab { padding: 0.28rem 0.5rem; font-size: 0.72rem; }
-  .desktop-share { display: none !important; }
   .sticky-head { gap: 0.35rem; }
   .sticky-head .compact-btn[data-action="copy-link"] {
     font-size: 0.72rem;

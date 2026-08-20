@@ -135,7 +135,9 @@ final class MeetStore
             'duration_minutes' => $meet['duration_minutes'],
             'slot_granularity_minutes' => $meet['slot_granularity_minutes'],
             'range_start' => $rangeStart,
+            'range_start_stored' => $meet['range_start'],
             'range_end' => $rangeEnd,
+            'range_end_stored' => $meet['range_end'],
             'calendar_start' => $today,
             'recurrence' => $meet['recurrence'],
             'recurrence_label' => Recurrence::describe($meet['recurrence']),
@@ -177,7 +179,7 @@ final class MeetStore
     public function listMeetingsForPerson(string $displayName, string $pin): array
     {
         $nameKey = strtolower(trim($displayName));
-        $pin = preg_replace('/\D/', '', $pin) ?? '';
+        $pin = MeetFile::normalizePasscode($pin);
         if ($nameKey === '' || $pin === '') {
             return [];
         }

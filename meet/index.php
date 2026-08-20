@@ -60,7 +60,8 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
       <section class="panel hero">
         <h1>Find a meeting time everyone can make</h1>
         <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
-        <p class="hint">Places can be online (URL), physical, or hybrid. Times are shown in your local timezone and UTC.</p>
+        <p class="hint">Meeting locations can be online (URL) or physical. Times are shown to attendees in local timezone and UTC.</p>
+        <p class="hint" id="home-local-time">Your local time zone is …</p>
         <form id="create-form" class="create-form">
           <label>
             Meeting title
@@ -68,14 +69,14 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
           </label>
           <button type="submit">Create meeting</button>
         </form>
-        <p class="hint">Create meeting generates a private link with a random code. <strong>Save it.</strong><br>Or click/tap <strong>Find my meetings</strong> below to search by Attendee's registered<br>ID AND PIN (Requires you have joined and set a personal pin when you joining).</p>
+        <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it.</strong></p>
         <details class="help-toggle home-collapse">
           <summary>Find my meetings</summary>
           <div class="help-body">
-            <p class="meta">Enter the <strong>registered identity</strong> (Identity exactly as when you joined) and <strong>personal PIN</strong> for a list of matching meetings.</p>
+            <p class="meta">Enter the <strong>registered identity</strong> (exactly as when you joined) and <strong>passcode</strong> for a list of matching meetings.</p>
             <form id="list-meetings-form" class="create-form">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
-              <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
+              <label>Passcode <input type="text" name="pin" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters."></label>
               <button type="submit">List my meetings</button>
             </form>
             <div id="list-meetings-result" class="list-meetings-result" hidden></div>
@@ -89,7 +90,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
 
   <footer class="site-footer">
     <div class="wrap">
-      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span> · <a href="operations.php">Operations guide</a></small>
+      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span> · <a href="operations.php">Installation, Operations and Maintenance Guide</a></small>
     </div>
   </footer>
 

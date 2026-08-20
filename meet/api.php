@@ -359,11 +359,11 @@ function verifyAttendeePin(array $attendee, string $pin): bool
     if (!attendeeHasPin($attendee)) {
         return true;
     }
-    $pin = normalizePin($pin);
+    $pin = sanitizePasscode($pin);
     if ($pin === '') {
         return false;
     }
-    return $pin === (string) ($attendee['pin'] ?? '');
+    return $pin === sanitizePasscode((string) ($attendee['pin'] ?? ''));
 }
 
 /** @param array<string, mixed> $attendee */
@@ -391,9 +391,21 @@ function maybeSetAttendeePin(array &$attendee, string $pin): void
     setAttendeePin($attendee, $pin);
 }
 
+/** Fold case and strip unsafe characters. Does not enforce length (legacy codes). */
+function sanitizePasscode(string $pin): string
+{
+    return MeetFile::normalizePasscode($pin);
+}
+
+/** Sanitize and require length 2–20 for newly set passcodes. */
 function normalizePin(string $pin): string
 {
-    return preg_replace('/\D/', '', $pin) ?? '';
+    $pin = sanitizePasscode($pin);
+    $len = strlen($pin);
+    if ($len < 2 || $len > 20) {
+        return '';
+    }
+    return $pin;
 }
 
 /** @param array<int, array<string, mixed>> $attendees */

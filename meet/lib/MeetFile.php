@@ -382,7 +382,7 @@ final class MeetFile
             }
             $attendee['contact'] = $attendee['contact'] ?? '';
             $attendee['initials'] = $attendee['initials'] ?? '';
-            $attendee['pin'] = preg_replace('/\D/', '', (string) ($attendee['pin'] ?? ''));
+            $attendee['pin'] = self::normalizePasscode((string) ($attendee['pin'] ?? ''));
             $attendee['organizer'] = !empty($attendee['organizer']);
         }
         unset($attendee);
@@ -427,6 +427,15 @@ final class MeetFile
     public static function sanitizePipeField(string $value): string
     {
         return trim(str_replace('|', '/', (string) $value));
+    }
+
+    /** Sanitize stored passcode on load (no length wipe — preserves legacy short codes). */
+    public static function normalizePasscode(string $pin): string
+    {
+        $pin = strtolower(trim($pin));
+        $pin = preg_replace('/[|\r\n\t]/', '', $pin) ?? '';
+        $pin = preg_replace('/[^\x20-\x7e]/', '', $pin) ?? '';
+        return preg_replace('/ {2,}/', ' ', $pin) ?? '';
     }
 
     public static function sanitizeHeaderValue(string $value): string
