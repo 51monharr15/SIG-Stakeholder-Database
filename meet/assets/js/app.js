@@ -713,7 +713,7 @@
         ${saveRow}
         <div class="calendar-toolbar">
           <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
-          <strong>${formatDayRangeLabel(days)}</strong>
+          <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
           <button type="button" class="btn-nav" data-action="next-days" title="Show next day">→</button>
         </div>
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
@@ -778,10 +778,9 @@
     const hours = state.showAllGroupHours
       ? allHours
       : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
-    let visibleDays = state.showAllGroupHours
-      ? days
-      : days.filter((day) => groupDayHasSignal(m, day, allHours, mtz, selected, fullMap, partialMap));
-    if (!visibleDays.length) visibleDays = days;
+    // Keep a fixed number of day columns so the grid does not shrink to 2 or 1 days.
+    const lastAvail = lastAvailabilityDay(m);
+    const canGoForward = !lastAvail || startOfDay(days[days.length - 1]) < startOfDay(lastAvail);
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
@@ -798,26 +797,26 @@
         <p class="meta">Click a slot to set the currently selected meeting start. Click it again to clear it. Times shown in your timezone and UTC.</p>
         <div class="row">
           <p class="meta"><strong>Currently selected meeting start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot above to set it'}</p>
-          <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours and days">${state.showAllGroupHours ? 'Hide empty hours/days' : 'Show all hours/days'}</button>
+          <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
         </div>
-        ${!state.showAllGroupHours ? '<p class="meta">Empty time rows and days with no signal are hidden. Use "Show all hours/days" to display everything.</p>' : ''}
+        ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
         <div class="calendar-toolbar">
           <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
-          <strong>${formatDayRangeLabel(visibleDays)}</strong>
-          <button type="button" class="btn-nav" data-action="next-days" title="Show next day">→</button>
+          <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
+          <button type="button" class="btn-nav" data-action="next-days" title="Show next day" ${canGoForward ? '' : 'disabled'}>→</button>
         </div>
-        <div class="calendar group-calendar" style="--cal-cols:${visibleDays.length || dayCount}">
+        <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
-            ${visibleDays.map((d, i) => {
-              const gap = dayHasGapBefore(visibleDays, i);
+            ${days.map((d, i) => {
+              const gap = dayHasGapBefore(days, i);
               return `<div class="day-head${gap ? ' day-gap-before' : ''}">${formatDayHeadDateStr(toDateIso(d), mtz)}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
             ${hours.map((hm) => `
               <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
-              ${visibleDays.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(visibleDays, i))).join('')}
+              ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
         </div>
@@ -1804,7 +1803,23 @@
       return;
     }
     if (action === 'next-days') {
-      state.viewStart = shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends);
+      if (state.activeTab === 'group') {
+        const lastAvail = lastAvailabilityDay(state.meet);
+        if (lastAvail) {
+          const dayCount = visibleDayCount();
+          const days = getVisibleDays(calendarViewStart(state, state.meet), dayCount, state.meet.show_weekends);
+          if (days.length && startOfDay(days[days.length - 1]) >= startOfDay(lastAvail)) {
+            toast('No availability marked after this date', true);
+            return;
+          }
+        }
+      }
+      let next = shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends);
+      if (state.activeTab === 'group') {
+        const lastAvail = lastAvailabilityDay(state.meet);
+        if (lastAvail && startOfDay(next) > startOfDay(lastAvail)) next = startOfDay(lastAvail);
+      }
+      state.viewStart = next;
       render(root, state);
       return;
     }
@@ -2265,6 +2280,16 @@
   function calendarViewStart(state, m) { const min = calendarMinStart(m); return state.viewStart < min ? min : state.viewStart; }
   function toDateIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function formatDayHead(d) { return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
+  function lastAvailabilityDay(m) {
+    let maxMs = 0;
+    for (const [iso, ids] of Object.entries(m.availability || {})) {
+      if (!ids || !ids.length) continue;
+      const t = new Date(iso).getTime();
+      if (!Number.isNaN(t) && t > maxMs) maxMs = t;
+    }
+    return maxMs ? startOfDay(new Date(maxMs)) : null;
+  }
+
   function formatDayRangeLabel(days) {
     if (!days.length) return '';
     return days.length === 1 ? formatDayHead(days[0]) : `${formatDayHead(days[0])} – ${formatDayHead(days[days.length - 1])}`;
