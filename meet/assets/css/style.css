@@ -310,13 +310,13 @@ button.btn-disabled {
 
 .attendee-prompt > summary::-webkit-details-marker { display: none; }
 
-.day-head.day-gap-before {
-  border-left: 3px solid #111827;
+.day-head.day-gap-before,
+.slot.day-gap-before {
+  box-shadow: inset 4px 0 0 #111827;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: 0.15rem;
   padding-left: 0.35rem;
-}
-.cal-body .slot.day-gap-before,
-.group-calendar .cal-body > .day-gap-col {
-  border-left: 3px solid #111827;
 }
 
 .legend-chip {

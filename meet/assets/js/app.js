@@ -712,23 +712,23 @@
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         ${saveRow}
         <div class="calendar-toolbar">
-          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous days" ${canGoBack ? '' : 'disabled'}>←</button>
+          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="btn-nav" data-action="next-days" title="Show next days">→</button>
+          <button type="button" class="btn-nav" data-action="next-days" title="Show next day">→</button>
         </div>
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
             ${days.map((d, i) => {
               const dateStr = toDateIso(d);
-              const gap = i > 0 && ((d - days[i - 1]) / 86400000) > 1.5;
+              const gap = dayHasGapBefore(days, i);
               return `<div class="day-head${gap ? ' day-gap-before' : ''}${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
             ${hours.map((hm) => `
               <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
-              ${days.map((day) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz)).join('')}
+              ${days.map((day, i) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
         </div>
@@ -745,7 +745,7 @@
     </div>`;
   }
 
-  function renderSlotCell(m, state, dateStr, hm, attendee, mtz) {
+  function renderSlotCell(m, state, dateStr, hm, attendee, mtz, gapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     const ids = m.availability[slotIso] || [];
     const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
@@ -754,7 +754,7 @@
     const tip = names
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}"
+    return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
       data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
@@ -802,22 +802,22 @@
         </div>
         ${!state.showAllGroupHours ? '<p class="meta">Empty time rows and days with no signal are hidden. Use "Show all hours/days" to display everything.</p>' : ''}
         <div class="calendar-toolbar">
-          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous days" ${canGoBack ? '' : 'disabled'}>←</button>
+          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
           <strong>${formatDayRangeLabel(visibleDays)}</strong>
-          <button type="button" class="btn-nav" data-action="next-days" title="Show next days">→</button>
+          <button type="button" class="btn-nav" data-action="next-days" title="Show next day">→</button>
         </div>
         <div class="calendar group-calendar" style="--cal-cols:${visibleDays.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
             ${visibleDays.map((d, i) => {
-              const gap = i > 0 && ((d - visibleDays[i - 1]) / 86400000) > 1.5;
+              const gap = dayHasGapBefore(visibleDays, i);
               return `<div class="day-head${gap ? ' day-gap-before' : ''}">${formatDayHeadDateStr(toDateIso(d), mtz)}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
             ${hours.map((hm) => `
               <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
-              ${visibleDays.map((day) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap)).join('')}
+              ${visibleDays.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(visibleDays, i))).join('')}
             `).join('')}
           </div>
         </div>
@@ -896,7 +896,7 @@
     return m.attendees.filter((a) => !ids.has(a.id));
   }
 
-  function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap) {
+  function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap, gapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     let cls = 'empty';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
@@ -945,7 +945,8 @@
       tip += ' · no availability marked';
     }
     const selectedClass = selected === slotIso ? ' selected-start' : '';
-    return `<button type="button" class="slot group-slot ${cls}${selectedClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
+    const gapClass = gapBefore ? ' day-gap-before' : '';
+    return `<button type="button" class="slot group-slot ${cls}${selectedClass}${gapClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
   }
 
   /** Attendee ids who are free for the whole meeting window starting at slotIso. */
@@ -1797,13 +1798,16 @@
 
     if (action === 'prev-days') {
       const min = calendarMinStart(state.meet);
-      const step = visibleDayCount();
-      state.viewStart = addDays(state.viewStart, -step);
+      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends);
       if (state.viewStart < min) state.viewStart = min;
       render(root, state);
       return;
     }
-    if (action === 'next-days') { state.viewStart = addDays(state.viewStart, visibleDayCount()); render(root, state); return; }
+    if (action === 'next-days') {
+      state.viewStart = shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends);
+      render(root, state);
+      return;
+    }
 
     if (action === 'jump-slot') {
       state.viewStart = startOfDay(new Date(btn.dataset.slot));
@@ -2119,6 +2123,27 @@
       guard++;
     }
     return days;
+  }
+
+  /** Move the calendar window by N displayed days (skips Sat/Sun when weekends hidden). */
+  function shiftViewByDisplayedDays(start, delta, showWeekends) {
+    let cursor = startOfDay(new Date(start));
+    const step = delta >= 0 ? 1 : -1;
+    let moved = 0;
+    let guard = 0;
+    while (moved < Math.abs(delta) && guard < 366) {
+      cursor = addDays(cursor, step);
+      const dow = cursor.getDay();
+      if (showWeekends || (dow !== 0 && dow !== 6)) moved++;
+      guard++;
+    }
+    return cursor;
+  }
+
+  function dayHasGapBefore(days, index) {
+    if (index <= 0) return false;
+    const ms = days[index].getTime() - days[index - 1].getTime();
+    return ms > 36 * 60 * 60 * 1000; // more than 1.5 days → weekend/hidden days skipped
   }
 
   function buildHours(startStr, endStr, granularity) {
