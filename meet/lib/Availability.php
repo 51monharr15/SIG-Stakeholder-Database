@@ -103,8 +103,8 @@ final class Availability
         }
 
         return [
-            'slots' => array_slice($full, 0, 20),
-            'partial_slots' => array_slice($partial, 0, 20),
+            'slots' => $full,
+            'partial_slots' => $partial,
             'locations' => $bestLocations,
         ];
     }

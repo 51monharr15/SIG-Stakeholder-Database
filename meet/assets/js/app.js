@@ -719,9 +719,10 @@
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
-            ${days.map((d) => {
+            ${days.map((d, i) => {
               const dateStr = toDateIso(d);
-              return `<div class="day-head${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
+              const gap = i > 0 && ((d - days[i - 1]) / 86400000) > 1.5;
+              return `<div class="day-head${gap ? ' day-gap-before' : ''}${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
@@ -897,7 +898,7 @@
 
   function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
-    let cls = 'partial';
+    let cls = 'empty';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
     let initials = '';
     const atSlotIds = m.availability?.[slotIso] || [];
@@ -905,23 +906,75 @@
     if (fullMap.has(slotIso)) {
       const s = fullMap.get(slotIso);
       cls = 'full';
-      tip += ` · all attendees free (${s.count}/${m.attendees.length})`;
+      tip += ` · all attendees free for full meeting (${s.count}/${m.attendees.length})`;
       initials = (s.attendees || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
-    } else if (allAtSlot) {
-      cls = 'partial-full';
-      tip += ' · all attendees marked at this start slot, but not all have full meeting duration';
-      initials = atSlotIds.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
     } else if (partialMap.has(slotIso)) {
       const p = partialMap.get(slotIso);
       const fullCount = (p.attendees_full || []).length;
-      cls = fullCount > 0 ? 'partial-full' : 'partial';
-      tip += ` · ${fullCount}/${m.attendees.length} free for full meeting`;
-      initials = (p.attendees_full || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+      if (fullCount === m.attendees.length) {
+        cls = 'full';
+        tip += ` · all attendees free for full meeting (${fullCount}/${m.attendees.length})`;
+      } else if (allAtSlot || fullCount > 0) {
+        cls = 'partial-full';
+        tip += fullCount > 0
+          ? ` · ${fullCount}/${m.attendees.length} free for full meeting; others partial or absent`
+          : ' · all attendees marked at this start, but not for the full meeting duration';
+      } else {
+        cls = 'partial';
+        tip += ' · some attendees available (not full duration for everyone)';
+      }
+      const idList = (p.attendees_full || []).length
+        ? p.attendees_full
+        : atSlotIds;
+      initials = idList.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+    } else if (atSlotIds.length) {
+      // Fallback when suggestion maps miss a slot: judge duration locally
+      const fullIds = attendeesFullForStart(m, slotIso);
+      if (fullIds.length === m.attendees.length && m.attendees.length > 0) {
+        cls = 'full';
+        tip += ` · all attendees free for full meeting (${fullIds.length}/${m.attendees.length})`;
+      } else if (allAtSlot) {
+        cls = 'partial-full';
+        tip += ' · all attendees marked at this start, but not for the full meeting duration';
+      } else {
+        cls = 'partial';
+        tip += ' · some attendees available';
+      }
+      initials = atSlotIds.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
     } else {
-      tip += ' · no marked overlap yet';
+      tip += ' · no availability marked';
     }
     const selectedClass = selected === slotIso ? ' selected-start' : '';
     return `<button type="button" class="slot group-slot ${cls}${selectedClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
+  }
+
+  /** Attendee ids who are free for the whole meeting window starting at slotIso. */
+  function attendeesFullForStart(m, slotIso) {
+    const duration = Math.max(1, Number(m.duration_minutes) || 60);
+    const gran = Math.max(1, Number(m.slot_granularity_minutes) || 30);
+    const steps = Math.max(1, Math.ceil(duration / gran));
+    const startMs = new Date(slotIso).getTime();
+    if (Number.isNaN(startMs)) return [];
+    const windowKeys = [];
+    for (let i = 0; i < steps; i++) {
+      windowKeys.push(new Date(startMs + i * gran * 60000).toISOString());
+    }
+    return m.attendees
+      .map((a) => a.id)
+      .filter((id) => windowKeys.every((key) => {
+        const ids = m.availability?.[key] || availabilityIdsAt(m, key);
+        return ids.includes(id);
+      }));
+  }
+
+  function availabilityIdsAt(m, iso) {
+    if (m.availability?.[iso]) return m.availability[iso];
+    const target = new Date(iso).getTime();
+    if (Number.isNaN(target)) return [];
+    for (const [key, ids] of Object.entries(m.availability || {})) {
+      if (new Date(key).getTime() === target) return ids;
+    }
+    return [];
   }
 
   // ─── Locations tab ───────────────────────────────────────────────────────────
