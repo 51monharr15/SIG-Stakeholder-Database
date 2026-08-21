@@ -717,8 +717,9 @@ function normalizeLocationDetail(string $kind, string $detail): string
         Response::error('Hybrid online link must be a well-formed URL (e.g. https://meet.example.com/room).');
     }
 
-    $suffix = trim(str_replace($matches[1], '', $detail, 1));
-    $suffix = trim(preg_replace('#^·\s*#', '', $suffix));
+    // PHP 8+: str_replace's 4th arg is &$count (by reference) — never pass a literal.
+    $suffix = trim(str_replace($matches[1], '', $detail));
+    $suffix = trim(preg_replace('#^·\s*#', '', $suffix) ?? $suffix);
 
     return $suffix !== '' ? $url . ' · ' . $suffix : $url;
 }
