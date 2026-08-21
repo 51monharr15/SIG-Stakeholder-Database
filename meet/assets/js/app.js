@@ -436,7 +436,12 @@
     }
   }
 
-  function afterRenderScroll(root, state) {}
+  function afterRenderScroll(root, state) {
+    const sticky = root.querySelector('.sticky-top');
+    if (sticky) {
+      document.documentElement.style.setProperty('--sticky-h', `${Math.ceil(sticky.getBoundingClientRect().height)}px`);
+    }
+  }
 
   // ─── Dashboard nav ───────────────────────────────────────────────────────────
 
