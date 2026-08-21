@@ -136,6 +136,7 @@ if ($back === '' || preg_match('/^\s*javascript:/i', $back)) {
 
     <div class="section-card" id="installation">
       <h2 style="margin-top:0;border:none;padding:0">3. Installation</h2>
+      <div class="warn"><strong>Not a hardened application.</strong> Meet Scheduler is built for trusted groups sharing a private link. It aims to stop easy mistakes (wrong pane, accidental edits by non-organisers), not to resist a determined attacker who has the meeting URL or crafts API requests. Do not use it where strong authentication, audit trails, or hostile-user security are required.</div>
       <h3>Local PHP test server</h3>
       <p>Serve from the <code>meet</code> directory (the folder that contains <code>index.php</code>), not its parent:</p>
       <pre><code>cd path\to\SIG-Stakeholder-Database\meet
