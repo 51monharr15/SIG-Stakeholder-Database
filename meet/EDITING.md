@@ -14,8 +14,9 @@ These are **not the same folder**. Editing in the agent chat does **not** change
 
 | File | What it is |
 |------|------------|
-| `meet/docs/OPERATIONS.md` | Source text (markdown) |
-| `meet/operations.php` | Web page the footer links to |
+| `meet/docs/OPERATIONS.md` | **The** operations guide (edit this file only) |
+| `meet/operations.php` | Thin viewer: shows that Markdown in the browser |
+| `meet/lib/Parsedown.php` | Helper that turns Markdown into HTML |
 
 `git pull` may have downloaded `docs/OPERATIONS.md` but not `operations.php` if you are on an old commit or the wrong branch. You need branch `cursor/meet-scheduler-ca2b` and a recent pull.
 
