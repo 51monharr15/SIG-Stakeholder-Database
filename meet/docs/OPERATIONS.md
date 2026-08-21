@@ -8,6 +8,8 @@ A self-contained PHP app under `meet/`. No MySQL. Each meeting is a plain-text f
 
 ## Install from Git
 
+**Not a hardened application.** Meet Scheduler is for trusted groups sharing a private link. It aims to stop easy mistakes, not to resist a determined attacker who has the meeting URL or crafts API requests. Do not use it where strong authentication or hostile-user security are required.
+
 ```bash
 git clone https://github.com/51monharr15/SIG-Stakeholder-Database.git
 cd SIG-Stakeholder-Database
