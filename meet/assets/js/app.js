@@ -129,6 +129,8 @@
       attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
       helpOpen: false,
+      locOnline: true,
+      locPhysical: false,
     };
 
     try {
@@ -348,21 +350,23 @@
     { id: 'getting-started', label: 'Getting started', tip: 'Step-by-step checklist for setting up this meeting.' },
     { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
     { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
-    { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
-    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Selecting a confirmed meeting time requires organiser status.' },
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
     { id: 'agenda',     label: 'Agenda, Attachments and Records', tip: 'Agenda items, decisions, notes, and post-meeting attachments/records.' },
-    { id: 'options',    label: 'Meeting options',    tip: 'Meeting length, calendar slot duration, timezone, recurrence — organiser only.', organiserOnly: true },
+    { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
+    { id: 'options',    label: 'Meeting options',    tip: 'Meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change.' },
+    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Selecting a confirmed meeting time requires organiser status.' },
   ];
 
   function allValidTabs(m, attendee) {
-    return TAB_DEFS
-      .filter((t) => !t.organiserOnly || canShowOptions(m, attendee))
-      .map((t) => t.id);
+    return TAB_DEFS.map((t) => t.id);
+  }
+
+  function canEditOptions(m, attendee) {
+    return !m.attendees.length || !!attendee?.is_organizer;
   }
 
   function canShowOptions(m, attendee) {
-    return !m.attendees.length || !!attendee?.is_organizer;
+    return true;
   }
 
   function meetingEstablished(m) {
@@ -442,7 +446,6 @@
 
   function renderDashboardNav(m, state, attendee) {
     return TAB_DEFS
-      .filter((t) => !t.organiserOnly || canShowOptions(m, attendee))
       .map((t) => {
         const active = state.activeTab === t.id;
         return `<button type="button" class="dash-btn${active ? ' active' : ''}" data-action="tab" data-tab="${t.id}" title="${escapeHtml(t.tip)}">${escapeHtml(t.label)}</button>`;
@@ -986,11 +989,11 @@
         <p class="meta"><strong>Select from locations proposed and save choice. Propose new location(s) if you need to.</strong></p>
         <h3 class="section-title">Proposed locations</h3>
         <p class="meta">Click a location to save it as workable for you (blue). Click again to remove it. You can select multiple.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location above.</p>'}</div>
-        ${attendee ? '<p class="meta">Preferences save automatically when you click a location.</p>' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
+        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
+        ${attendee ? '<p class="meta">Clicking/tapping a location toggles its selection and saves your choice(s).</p>' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
         <details class="propose-location-block" open><summary>Propose a location</summary>
-          <p class="meta">Anyone can propose a location. Add as many options as you like.</p>
-          ${renderAddLocationForm()}
+          <p class="meta">Anyone can propose a location. Add as many options as you like. Deleting a proposed location requires organiser status.</p>
+          ${renderAddLocationForm(state)}
         </details>
       </section>`;
   }
@@ -1131,25 +1134,27 @@
   // ─── Meeting options tab ─────────────────────────────────────────────────────
 
   function renderOptionsTab(m, state, attendee) {
-    if (!canShowOptions(m, attendee)) {
-      return `<section class="panel stack"><p class="meta">Only meeting organisers can access meeting options.</p></section>`;
-    }
+    const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
     return `
       <section class="panel stack">
         <h2 class="section-title">Meeting options</h2>
-        ${!m.attendees.length ? '<p class="meta"><strong>Setup step 1 of 5:</strong> Save your options below. Then return to Getting started or go straight to Attendees to add yourself as the first attendee.</p>' : ''}
-        ${!m.attendees.length ? `<div class="row">
+        ${canEdit
+          ? '<p class="meta">Don\'t forget to <strong>Save meeting options</strong> after amending details.</p>'
+          : '<p class="meta"><strong>View only.</strong> Only a meeting organiser can change these settings.</p>'}
+        ${canEdit && !m.attendees.length ? '<p class="meta"><strong>Setup:</strong> Save your options below. Then return to Getting started or go straight to Attendees to add yourself as the first attendee.</p>' : ''}
+        ${canEdit && !m.attendees.length ? `<div class="row">
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="getting-started">Back to Getting started</button>
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
         </div>` : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
+          <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
           </div>
           <h3 class="section-title">Description for attendees</h3>
           <label><span class="label-hint">(simple HTML — shown on Overview)</span>
-            ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
+            ${canEdit ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
             <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
           <div class="form-grid">
@@ -1165,17 +1170,18 @@
             </label>
           </details>
           <div class="form-grid">
-            <label title="Earliest date this meeting is open for scheduling.">Earliest date<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
-            <label title="Earliest start time shown on the calendar grid, each day.">Earliest start time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
-            <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">Latest date <span class="label-hint">(optional — blank = open-ended)</span><input type="date" name="range_end" value="${escapeHtml(optionsRangeEnd(m))}"></label>
-            <label title="Latest end time shown on the calendar grid, each day.">Latest end time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+            <label title="Earliest date this meeting is open for scheduling.">Earliest bookable meeting start<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
+            <label title="Earliest start time shown on the calendar grid, each day.">Allow bookings from <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+            <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">Require bookings to be on or before <span class="label-hint">(optional — blank = open-ended)</span><input type="date" name="range_end" value="${escapeHtml(optionsRangeEnd(m))}"></label>
+            <label title="Latest end time shown on the calendar grid, each day.">Allow bookings up until end time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
           </div>
           <details>
             <summary class="recurrence-summary">Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
             <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
             <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
           </details>
-          <button type="submit">Save meeting options</button>
+          </fieldset>
+          ${canEdit ? '<button type="submit">Save meeting options</button>' : ''}
         </form>
       </section>`;
   }
@@ -1436,16 +1442,20 @@
     return '';
   }
 
-  function renderAddLocationForm() {
+  function renderAddLocationForm(state) {
+    const online = !!state.locOnline;
+    const physical = !!state.locPhysical;
     return `
       <form class="inline-form add-location-form" data-form="add-location">
-        <label>Type
-          <select name="location_mode">
-            <option value="online">Online</option>
-            <option value="physical">Physical</option>
-          </select>
-        </label>
-        <div data-loc-fields="online" class="loc-fields">
+        <div class="span-full">
+          <span class="label-hint">Meeting type</span>
+          <div class="loc-type-checks">
+            <label class="checkbox-label"><input type="checkbox" name="loc_online" ${online ? 'checked' : ''}> Online</label>
+            <label class="checkbox-label"><input type="checkbox" name="loc_physical" ${physical ? 'checked' : ''}> Physical</label>
+          </div>
+          <p class="meta">Tick both for hybrid (online and in person).</p>
+        </div>
+        <div data-loc-fields="online" class="loc-fields"${online ? '' : ' hidden'}>
           <label>Service
             <select name="online_service">
               <option value="Zoom">Zoom</option>
@@ -1454,27 +1464,41 @@
               <option value="Other">Other</option>
             </select>
           </label>
-          <label>Meeting link (optional) <input name="online_url" placeholder="https://..."></label>
+          <label>Meeting link (optional)
+            <input name="online_url" type="url" value="https://" placeholder="https://" autocapitalize="off" autocomplete="url" spellcheck="false">
+          </label>
         </div>
-        <div data-loc-fields="physical" class="loc-fields" hidden>
+        <div data-loc-fields="physical" class="loc-fields"${physical ? '' : ' hidden'}>
           <label>Location details <input name="physical_address" placeholder="Venue name, address, room, phone, or joining note"></label>
         </div>
         <p class="meta span-full">Save adds another option to the list — you can propose several.</p>
-        <button type="submit">Save location</button>
+        <button type="submit"${!online && !physical ? ' disabled' : ''}>Save New Location</button>
       </form>`;
   }
 
   function buildLocationPayload(fd) {
-    const mode = fd.get('location_mode') || 'online';
-    if (mode === 'physical') {
-      const addr = String(fd.get('physical_address') || '').trim();
+    const online = fd.get('loc_online') === 'on';
+    const physical = fd.get('loc_physical') === 'on';
+    if (!online && !physical) throw new Error('Select Online and/or Physical before saving');
+
+    const rawUrl = String(fd.get('online_url') || '').trim();
+    const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
+    if (online && url && !isWellFormedUrl(url)) {
+      throw new Error('Please enter a validly formatted link starting with https://');
+    }
+    const addr = String(fd.get('physical_address') || '').trim();
+    const service = String(fd.get('online_service') || 'Online').trim() || 'Online';
+
+    if (online && physical) {
+      if (!addr) throw new Error('Enter physical location details before saving');
+      const detail = url ? `${url} · ${addr}` : addr;
+      return { label: `${service} + venue`, kind: 'hybrid', detail };
+    }
+    if (physical) {
       if (!addr) throw new Error('Enter physical location details before saving');
       return { label: 'Physical location', kind: 'physical', detail: addr };
     }
-    const rawUrl = String(fd.get('online_url') || '').trim();
-    const url = rawUrl ? normalizeExternalUrl(rawUrl) : '';
-    if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
-    return { label: String(fd.get('online_service') || 'Online').trim() || 'Online', kind: 'video', detail: url || 'Link to be added' };
+    return { label: service, kind: 'video', detail: url || 'Link to be added' };
   }
 
   // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -1597,6 +1621,10 @@
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
         state.claimingId = null;
       } else if (kind === 'update-settings') {
+        const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+        if (!canEditOptions(state.meet, me)) {
+          throw new Error('Only a meeting organiser can change these settings.');
+        }
         const rangeStart = String(fd.get('range_start') || '').trim() || meetingTodayStr(state.meet);
         const rangeEnd = String(fd.get('range_end') || '').trim() || OPEN_ENDED_RANGE_END;
         data = await apiPost({
@@ -1623,6 +1651,8 @@
         if (duplicate) throw new Error('That location already exists. Edit details or add a unique option.');
         data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
         form.reset();
+        state.locOnline = true;
+        state.locPhysical = false;
       } else if (kind === 'add-attachment') {
         const type = fd.get('attachment_type') || 'url';
         const rawUrl = String(fd.get('url') || '').trim();
@@ -1698,7 +1728,11 @@
       else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee added');
       else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'Passcode removed' : 'Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
-      else if (kind === 'update-settings') toast('Meeting options saved. Next: add yourself as attendee (or return to Getting started).');
+      else if (kind === 'update-settings') {
+        toast(state.attendeeId
+          ? 'Meeting options saved.'
+          : 'Meeting options saved. Next: add yourself as attendee (or return to Getting started).');
+      }
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
@@ -2032,9 +2066,11 @@
       if (hidden) hidden.value = e.target.value;
       return;
     }
-    if (e.target.name === 'location_mode') {
+    if (e.target.name === 'loc_online' || e.target.name === 'loc_physical') {
       const form = e.target.closest('form');
-      if (form) form.querySelectorAll('[data-loc-fields]').forEach((el) => { el.hidden = el.dataset.locFields !== e.target.value; });
+      state.locOnline = !!form?.querySelector('[name="loc_online"]')?.checked;
+      state.locPhysical = !!form?.querySelector('[name="loc_physical"]')?.checked;
+      render(root, state);
       return;
     }
     if (e.target.name === 'attachment_type') {

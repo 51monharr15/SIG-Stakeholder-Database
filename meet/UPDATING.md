@@ -33,9 +33,9 @@ If you upload file-by-file, make sure these are on the server as well as the usu
 
 | File | Purpose |
 |------|---------|
-| `operations.php` | Operations guide page (footer link) |
+| `operations.php` | Opens the operations guide in the browser (reads `docs/OPERATIONS.md`) |
 | `favicon.svg` | Calendar icon in the browser tab |
-| `docs/OPERATIONS.md` | Source text for the operations guide |
+| `docs/OPERATIONS.md` | **Edit this** — the only copy of the guide text |
 
 ## Version check
 
