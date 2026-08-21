@@ -166,7 +166,10 @@ final class MeetStore
             'page_times_intro' => $meet['page_times_intro'] ?? '',
             'page_after_intro' => $meet['page_after_intro'] ?? '',
             'confirmed_slot' => $meet['confirmed_slot'],
-            'confirmed_location' => $meet['confirmed_location'],
+            'confirmed_location' => $meet['confirmed_location_online']
+                ?: ($meet['confirmed_location_physical'] ?: $meet['confirmed_location']),
+            'confirmed_location_physical' => $meet['confirmed_location_physical'] ?? null,
+            'confirmed_location_online' => $meet['confirmed_location_online'] ?? null,
             'suggestions' => $suggestions,
         ];
     }

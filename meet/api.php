@@ -60,6 +60,9 @@ try {
             case 'add_location':
                 handleAddLocation($store, $slug, $input);
                 break;
+            case 'update_location':
+                handleUpdateLocation($store, $slug, $input);
+                break;
             case 'remove_location':
                 handleRemoveLocation($store, $slug, $input);
                 break;
@@ -605,6 +608,48 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
     Response::json(['ok' => true, 'location' => $location, 'meet' => $store->publicView($meet)]);
 }
 
+function handleUpdateLocation(MeetStore $store, string $slug, array $input): void
+{
+    $locationId = trim((string) ($input['location_id'] ?? ''));
+    $label = trim((string) ($input['label'] ?? ''));
+    $kind = trim((string) ($input['kind'] ?? ''));
+    $detail = trim((string) ($input['detail'] ?? ''));
+    if ($locationId === '' || $label === '') {
+        Response::error('location_id and label required');
+    }
+    if ($kind === '') {
+        Response::error('kind required');
+    }
+    if ($kind === 'video' && $detail === '') {
+        Response::error('Online locations need a meeting link URL.');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($locationId, $label, $kind, $detail) {
+        $found = false;
+        foreach ($m['locations'] as &$loc) {
+            if (($loc['id'] ?? '') !== $locationId) {
+                continue;
+            }
+            $found = true;
+            $loc['label'] = $label;
+            $loc['kind'] = $kind;
+            $loc['detail'] = $detail;
+            if (in_array($kind, ['video', 'hybrid'], true) && $detail !== '') {
+                $loc['detail'] = normalizeLocationDetail($kind, $detail);
+            }
+            break;
+        }
+        unset($loc);
+        if (!$found) {
+            throw new \RuntimeException('Location not found', 404);
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
 function handleRemoveLocation(MeetStore $store, string $slug, array $input): void
 {
     $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
@@ -617,8 +662,13 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
     requireActingOrganizer($meet, $actingId);
 
     $meet = $store->update($meet['id'], function (array $m) use ($locationId) {
-        if (($m['confirmed_location'] ?? '') === $locationId) {
-            throw new \RuntimeException('Cannot delete the agreed location. First set a different agreed location, then remove this one.', 400);
+        $confirmedIds = array_filter([
+            (string) ($m['confirmed_location'] ?? ''),
+            (string) ($m['confirmed_location_physical'] ?? ''),
+            (string) ($m['confirmed_location_online'] ?? ''),
+        ]);
+        if (in_array($locationId, $confirmedIds, true)) {
+            throw new \RuntimeException('Cannot delete a confirmed location. Clear it from Set confirmed meeting details first, then remove this one.', 400);
         }
         $m['locations'] = array_values(array_filter(
             $m['locations'],
@@ -799,8 +849,33 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
         if (!empty($input['confirmed_slot'])) {
             $m['confirmed_slot'] = trim((string) $input['confirmed_slot']);
         }
-        if (!empty($input['confirmed_location'])) {
-            $m['confirmed_location'] = trim((string) $input['confirmed_location']);
+        $hasDual = array_key_exists('confirmed_location_physical', $input)
+            || array_key_exists('confirmed_location_online', $input);
+        if ($hasDual) {
+            $phys = trim((string) ($input['confirmed_location_physical'] ?? ''));
+            $online = trim((string) ($input['confirmed_location_online'] ?? ''));
+            $m['confirmed_location_physical'] = $phys !== '' ? $phys : null;
+            $m['confirmed_location_online'] = $online !== '' ? $online : null;
+            $m['confirmed_location'] = $online !== '' ? $online : ($phys !== '' ? $phys : null);
+        } elseif (!empty($input['confirmed_location'])) {
+            // Legacy single-field confirm: map by kind.
+            $id = trim((string) $input['confirmed_location']);
+            $kind = 'other';
+            foreach ($m['locations'] as $loc) {
+                if (($loc['id'] ?? '') === $id) {
+                    $kind = (string) ($loc['kind'] ?? 'other');
+                    break;
+                }
+            }
+            if ($kind === 'hybrid') {
+                $m['confirmed_location_physical'] = $id;
+                $m['confirmed_location_online'] = $id;
+            } elseif (in_array($kind, ['video', 'phone'], true)) {
+                $m['confirmed_location_online'] = $id;
+            } else {
+                $m['confirmed_location_physical'] = $id;
+            }
+            $m['confirmed_location'] = $id;
         }
         return $m;
     });

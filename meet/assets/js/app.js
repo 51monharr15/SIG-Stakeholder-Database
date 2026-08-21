@@ -2,20 +2,26 @@
   'use strict';
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Prefer unambiguous abbreviations only — many letter codes collide worldwide (CST, IST, …).
   const TZ_ALIASES = {
-    EDT: 'America/New_York', EST: 'America/New_York',
-    CDT: 'America/Chicago', CST: 'America/Chicago',
-    MDT: 'America/Denver', MST: 'America/Denver',
-    PDT: 'America/Los_Angeles', PST: 'America/Los_Angeles',
-    BST: 'Europe/London', GMT: 'UTC',
+    UTC: 'UTC', GMT: 'UTC',
+    BST: 'Europe/London',
+    JST: 'Asia/Tokyo',
+    AEST: 'Australia/Sydney',
+    NZST: 'Pacific/Auckland',
+    SAST: 'Africa/Johannesburg',
   };
-  const COMMON_TIMEZONES = [
+  /** World shortlist shown first in Meeting options (not US-centric). */
+  const WORLD_SHORTLIST = [
     'UTC',
-    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'America/Toronto', 'America/Sao_Paulo',
-    'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-    'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Athens',
+    'Africa/Cairo', 'Africa/Lagos', 'Africa/Johannesburg', 'Africa/Nairobi',
+    'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Tokyo',
+    'Australia/Sydney', 'Pacific/Auckland',
+    'America/Sao_Paulo', 'America/Mexico_City', 'America/New_York', 'America/Chicago',
+    'America/Denver', 'America/Los_Angeles', 'America/Toronto',
   ];
+  const TZ_REGION_ORDER = ['Shortlist', 'UTC', 'Africa', 'America', 'Antarctica', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Other'];
   const INTRO_PLACEHOLDER = 'Add a short description for attendees — use Meeting options.';
   const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
   const page = document.body.dataset.page;
@@ -124,6 +130,9 @@
       editingAttachmentId: null,
       changingPin: false,
       pendingConfirmLocation: null,
+      pendingConfirmLocationPhysical: null,
+      pendingConfirmLocationOnline: null,
+      editingLocationId: null,
       showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
       openNotesEditor: false,
       overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
@@ -210,11 +219,42 @@
     } catch (_) { return id; }
   }
 
+  function timezoneRegion(id) {
+    if (id === 'UTC' || id.startsWith('Etc/')) return 'UTC';
+    const i = id.indexOf('/');
+    if (i < 0) return 'Other';
+    const prefix = id.slice(0, i);
+    if (TZ_REGION_ORDER.includes(prefix)) return prefix;
+    return 'Other';
+  }
+
   function timezoneOptions(selected) {
     const current = normalizeTimezone(selected);
-    const all = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : COMMON_TIMEZONES;
-    const ids = [...new Set([current, tz, ...COMMON_TIMEZONES, ...all])].sort();
-    return ids.map((id) => `<option value="${escapeHtml(id)}"${id === current ? ' selected' : ''}>${escapeHtml(timezoneLabel(id))}</option>`).join('');
+    const all = typeof Intl.supportedValuesOf === 'function'
+      ? Intl.supportedValuesOf('timeZone')
+      : WORLD_SHORTLIST;
+    const ids = [...new Set([current, tz, ...WORLD_SHORTLIST, ...all])];
+    const shortSet = new Set(WORLD_SHORTLIST);
+    const groups = new Map();
+    for (const id of ids) {
+      const region = shortSet.has(id) ? 'Shortlist' : timezoneRegion(id);
+      if (!groups.has(region)) groups.set(region, []);
+      groups.get(region).push(id);
+    }
+    const order = TZ_REGION_ORDER.filter((r) => groups.has(r));
+    for (const r of groups.keys()) {
+      if (!order.includes(r)) order.push(r);
+    }
+    return order.map((region) => {
+      const list = groups.get(region).slice().sort((a, b) => a.localeCompare(b));
+      const label = region === 'Shortlist'
+        ? 'World shortlist (common cities)'
+        : region === 'UTC' ? 'UTC' : region;
+      return `<optgroup label="${escapeHtml(label)}">${list.map((id) => {
+        const mine = id === tz ? ' — your timezone' : '';
+        return `<option value="${escapeHtml(id)}"${id === current ? ' selected' : ''}>${escapeHtml(timezoneLabel(id))}${mine}</option>`;
+      }).join('')}</optgroup>`;
+    }).join('');
   }
 
   async function repairMeetingTimezone(state) {
@@ -484,19 +524,26 @@
     const label = STATUS_LABELS[kind];
     let timeHtml;
     let locHtml;
-    if (kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised') {
+    const locs = effectiveConfirmLocations(state, m);
+    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
+    if (scheduled) {
       timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span>`;
-      locHtml = `<span class="meta">Location: ${locationInlineHtml(m, m.confirmed_location)}</span>`;
     } else {
       const pendingSlot = effectiveConfirmSlot(state, m);
-      const pendingLoc = effectiveConfirmLocation(state, m);
       timeHtml = pendingSlot
         ? `<span class="meta">Time (proposed): ${formatTimePair(pendingSlot)}</span>`
         : '<span class="meta">No date and time selected</span>';
-      locHtml = pendingLoc
-        ? `<span class="meta">Location (proposed): ${locationInlineHtml(m, pendingLoc)}</span>`
-        : '<span class="meta">No location selected</span>';
     }
+    const parts = [];
+    if (locs.online) {
+      parts.push(`${scheduled ? 'Online' : 'Online (proposed)'}: ${locationInlineHtml(m, locs.online)}`);
+    }
+    if (locs.physical) {
+      parts.push(`${scheduled ? 'Physical' : 'Physical (proposed)'}: ${locationInlineHtml(m, locs.physical)}`);
+    }
+    locHtml = parts.length
+      ? parts.map((p) => `<span class="meta">${p}</span>`).join('')
+      : '<span class="meta">No location selected</span>';
     return `<div class="status-strip" title="${escapeHtml(STATUS_TIP)}">
       <span class="status-label">Status:</span>
       <span class="status-value">${escapeHtml(label)}</span>
@@ -802,7 +849,7 @@
     const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
     const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = effectiveConfirmSlot(state, m);
-    const selectedLocation = effectiveConfirmLocation(state, m);
+    const selectedLocations = effectiveConfirmLocations(state, m);
     const isOrg = !!attendee?.is_organizer;
     const todayStr = meetingTodayStr(m);
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
@@ -858,10 +905,11 @@
           </div>
         </details>
         <details class="confirm-section" open>
-          <summary class="section-title">Proposed location</summary>
-          <p class="meta"><strong>Currently selected location:</strong> ${selectedLocation ? locationInlineHtml(m, selectedLocation) : 'none selected yet — choose a location below'}</p>
-          <p class="meta">Organisers can click a location to set it as the currently selected location. Everyone can see who marked each location as workable.</p>
-          ${renderConfirmLocationChoices(m, state, isOrg, selectedLocation)}
+          <summary class="section-title">Proposed locations</summary>
+          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location (click again to clear). Hybrid proposals set both. Accept requires both an Online and a Physical confirmation.</p>
+          <p class="meta"><strong>Online:</strong> ${selectedLocations.online ? locationInlineHtml(m, selectedLocations.online) : 'none selected'}</p>
+          <p class="meta"><strong>Physical:</strong> ${selectedLocations.physical ? locationInlineHtml(m, selectedLocations.physical) : 'none selected'}</p>
+          ${renderConfirmLocationChoices(m, state, isOrg, selectedLocations)}
           <p class="meta">Locations can be proposed and voted for on the <strong>Locations</strong> tab.</p>
         </details>
         <div class="row">
@@ -872,7 +920,7 @@
 
   function renderAcceptScheduledButton(isOrg) {
     if (isOrg) {
-      return `<button type="button" data-action="confirm-details" title="Accept the currently selected start time and location as the scheduled meeting time">Accept proposed start as scheduled start time</button>`;
+      return `<button type="button" data-action="confirm-details" title="Accept the currently selected start time and both Online and Physical confirmed locations">Accept proposed start as scheduled start time</button>`;
     }
     return `<button type="button" data-action="confirm-details" disabled title="Disabled because selecting a confirmed meeting time requires organiser status.">Accept proposed start as scheduled start time</button>`;
   }
@@ -883,10 +931,35 @@
     return m.confirmed_slot || '';
   }
 
+  function effectiveConfirmLocationPhysical(state, m) {
+    if (state.pendingConfirmLocationPhysical === '') return '';
+    if (state.pendingConfirmLocationPhysical) return state.pendingConfirmLocationPhysical;
+    return m.confirmed_location_physical || '';
+  }
+
+  function effectiveConfirmLocationOnline(state, m) {
+    if (state.pendingConfirmLocationOnline === '') return '';
+    if (state.pendingConfirmLocationOnline) return state.pendingConfirmLocationOnline;
+    return m.confirmed_location_online || '';
+  }
+
+  function effectiveConfirmLocations(state, m) {
+    return {
+      physical: effectiveConfirmLocationPhysical(state, m),
+      online: effectiveConfirmLocationOnline(state, m),
+    };
+  }
+
+  /** Legacy helper: prefer online, else physical. */
   function effectiveConfirmLocation(state, m) {
-    if (state.pendingConfirmLocation === '') return '';
-    if (state.pendingConfirmLocation) return state.pendingConfirmLocation;
-    return m.confirmed_location || '';
+    const locs = effectiveConfirmLocations(state, m);
+    return locs.online || locs.physical || '';
+  }
+
+  function locationConfirmChannel(kind) {
+    if (kind === 'hybrid') return 'both';
+    if (kind === 'video' || kind === 'phone') return 'online';
+    return 'physical';
   }
 
   function groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap) {
@@ -910,17 +983,22 @@
     });
   }
 
-  function renderConfirmLocationChoices(m, state, isOrg, selectedLocation) {
+  function renderConfirmLocationChoices(m, state, isOrg, selectedLocations) {
     if (!m.locations.length) return '<p class="meta">No proposed locations yet. Use the Locations tab to add one.</p>';
     return `<div class="chip-list">${m.locations.map((loc) => {
       const voters = attendeesForLocation(m, loc.id);
       const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
       const allPreferred = m.attendees.length > 0 && voters.length === m.attendees.length;
-      const isSelected = selectedLocation === loc.id;
+      const channel = locationConfirmChannel(loc.kind);
+      const isSelected = channel === 'both'
+        ? selectedLocations.online === loc.id && selectedLocations.physical === loc.id
+        : channel === 'online'
+          ? selectedLocations.online === loc.id
+          : selectedLocations.physical === loc.id;
       const title = voters.length
         ? `Preferred by: ${voters.map((a) => attendeeLabel(a)).join(', ')}`
         : 'No attendee preferences saved yet';
-      return `<button type="button" class="chip confirm-loc-chip${allPreferred ? ' loc-all' : ''}${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(loc.label)}${initials ? ` (${escapeHtml(initials)})` : ' (no preferences yet)'}</button>`;
+      return `<button type="button" class="chip confirm-loc-chip${allPreferred ? ' loc-all' : ''}${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(locationChipLabel(loc))}${initials ? ` (${escapeHtml(initials)})` : ' (no preferences yet)'}</button>`;
     }).join('')}</div>`;
   }
 
@@ -1019,7 +1097,7 @@
   // ─── Locations tab ───────────────────────────────────────────────────────────
 
   function renderLocationsTab(m, state, attendee) {
-    const selectedLoc = effectiveConfirmLocation(state, m);
+    const selectedLocs = effectiveConfirmLocations(state, m);
     return `
       <section class="panel stack" id="meeting-locations-pane">
         <h2 class="section-title">Locations</h2>
@@ -1031,27 +1109,54 @@
         </div>
         <h3 class="section-title">Proposed locations</h3>
         <p class="meta">Clicking/tapping a location toggles its selection and saves your choice(s). Initials show attendees who are OK with each destination.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc, selectedLoc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
+        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc, selectedLocs)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
         ${attendee ? '' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
         <details class="propose-location-block" open><summary>Propose a location</summary>
-          <p class="meta">Anyone can propose a location. Add as many options as you like. Deleting a proposed location requires organiser status.</p>
+          <p class="meta">Anyone can propose a location. Add as many options as you like. Deleting a proposed location requires organiser status. Signed-in people can edit a proposal if the URL or details are wrong.</p>
           ${renderAddLocationForm(state)}
         </details>
       </section>`;
   }
 
-  function renderLocationItem(m, state, attendee, loc, selectedLoc) {
+  function renderLocationItem(m, state, attendee, loc, selectedLocs) {
     const selected = state.selectedLocations.has(loc.id);
-    const organiserPicked = selectedLoc === loc.id;
+    const organiserPicked = selectedLocs.online === loc.id || selectedLocs.physical === loc.id;
     const voters = attendeesForLocation(m, loc.id);
     const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
+    const editing = state.editingLocationId === loc.id;
+    if (editing && attendee) {
+      return renderEditLocationForm(loc);
+    }
     return `<div class="location-item">
       <button type="button" class="chip${selected ? ' active' : ''}${organiserPicked ? ' selected-start' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
         title="${selected ? 'Click to deselect as workable for you' : 'Click to select as workable for you'}">
         ${escapeHtml(locationChipLabel(loc))}${initials ? ` <span class="label-hint">(${escapeHtml(initials)})</span>` : ''}
       </button>
+      ${attendee ? `<button type="button" class="compact-btn" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit this location proposal">Edit</button>` : ''}
       ${attendee?.is_organizer ? `<button type="button" class="btn-cancel compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal (organiser)">Remove</button>` : ''}
     </div>`;
+  }
+
+  function renderEditLocationForm(loc) {
+    const online = loc.kind === 'video' || loc.kind === 'hybrid' || loc.kind === 'phone';
+    const physical = loc.kind === 'physical' || loc.kind === 'hybrid';
+    const url = online ? (extractUrlFromDetail(loc.detail) || 'https://') : '';
+    const physDetail = physical
+      ? String(loc.detail || '').replace(extractUrlFromDetail(loc.detail) || '', '').replace(/^[\s·]+/, '').trim()
+      : '';
+    return `
+      <form class="inline-form edit-location-form" data-form="edit-location">
+        <input type="hidden" name="location_id" value="${escapeHtml(loc.id)}">
+        <input type="hidden" name="kind" value="${escapeHtml(loc.kind)}">
+        <label>Label <input name="label" required value="${escapeHtml(loc.label)}"></label>
+        ${online ? `<label>Meeting link <input name="online_url" type="url" value="${escapeHtml(url)}" autocapitalize="off" spellcheck="false"></label>` : ''}
+        ${physical ? `<label>Location details <input name="physical_address" value="${escapeHtml(physDetail || (!online ? (loc.detail || '') : ''))}"></label>` : ''}
+        ${!online && !physical ? `<label>Details <input name="detail" value="${escapeHtml(loc.detail || '')}"></label>` : ''}
+        <div class="row">
+          <button type="submit">Save location</button>
+          <button type="button" class="btn-cancel" data-action="cancel-edit-location">Cancel</button>
+        </div>
+      </form>`;
   }
 
   // ─── Agree time tab ──────────────────────────────────────────────────────────
@@ -1059,6 +1164,7 @@
   function renderConfirmTab(m, state, attendee) {
     const isOrg = !!attendee?.is_organizer;
     const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
+    const locs = effectiveConfirmLocations(state, m);
 
     if (m.confirmed_slot) {
       return `
@@ -1067,7 +1173,8 @@
           <div class="agreed-display">
             <p><span class="badge good">Agreed</span></p>
             <p class="meta"><strong>Time:</strong> ${formatTimePair(m.confirmed_slot)}</p>
-            <p class="meta"><strong>Location:</strong> ${locationInlineHtml(m, m.confirmed_location)}</p>
+            <p class="meta"><strong>Online:</strong> ${locs.online ? locationInlineHtml(m, locs.online) : '— none —'}</p>
+            <p class="meta"><strong>Physical:</strong> ${locs.physical ? locationInlineHtml(m, locs.physical) : '— none —'}</p>
           </div>
           ${isOrg ? renderConfirmForm(m, state, slotVal, true) : '<p class="meta">The organiser can update the agreed time and location if needed.</p>'}
         </section>`;
@@ -1084,9 +1191,12 @@
   }
 
   function renderConfirmForm(m, state, slotVal, isUpdate) {
+    const locs = effectiveConfirmLocations(state, m);
+    const onlineOpts = m.locations.filter((l) => ['video', 'phone', 'hybrid'].includes(l.kind));
+    const physOpts = m.locations.filter((l) => ['physical', 'hybrid', 'other'].includes(l.kind));
     return `
       <details${isUpdate ? '' : ' open'}><summary>${isUpdate ? 'Update agreed time &amp; location (organiser)' : 'Agree meeting time &amp; location (organiser)'}</summary>
-        <p class="meta">Choose a time from <strong>Group availability</strong> by clicking a slot, or enter a UTC time directly below. Then pick the final location and press the button.</p>
+        <p class="meta">Choose a time from <strong>Set confirmed meeting details</strong> by clicking a slot, or enter a UTC time below. Confirm both an Online and a Physical location (a Hybrid proposal can fill both).</p>
         <form class="inline-form" data-form="confirm" id="confirm-form">
           <label>Proposed meeting start time
             ${renderProposedStartBlock(m, slotVal)}
@@ -1097,9 +1207,14 @@
               <input class="mono" data-action="edit-confirmed-slot" value="${escapeHtml(slotVal)}" placeholder="2026-09-03T10:00:00.000Z">
             </details>
           </label>
-          <label>Final location <span class="label-hint">(organiser chooses)</span>
-            <select name="confirmed_location"><option value="">— none —</option>
-              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
+          <label>Online location
+            <select name="confirmed_location_online"><option value="">— none —</option>
+              ${onlineOpts.map((l) => `<option value="${escapeHtml(l.id)}"${locs.online === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
+            </select>
+          </label>
+          <label>Physical location
+            <select name="confirmed_location_physical"><option value="">— none —</option>
+              ${physOpts.map((l) => `<option value="${escapeHtml(l.id)}"${locs.physical === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
             </select>
           </label>
           <button type="submit">${isUpdate ? 'Update agreed time &amp; location' : 'Agree meeting time &amp; location'}</button>
@@ -1731,6 +1846,39 @@
         form.reset();
         state.locOnline = true;
         state.locPhysical = false;
+      } else if (kind === 'edit-location') {
+        const locId = String(fd.get('location_id') || '');
+        const existing = (state.meet.locations || []).find((l) => l.id === locId);
+        if (!existing) throw new Error('Location not found');
+        const locKind = String(fd.get('kind') || existing.kind || 'other');
+        let detail = '';
+        if (locKind === 'video' || locKind === 'phone') {
+          const rawUrl = String(fd.get('online_url') || '').trim();
+          const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
+          if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
+          detail = url || 'Link to be added';
+        } else if (locKind === 'hybrid') {
+          const rawUrl = String(fd.get('online_url') || '').trim();
+          const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
+          if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
+          const addr = String(fd.get('physical_address') || '').trim();
+          if (!addr) throw new Error('Enter physical location details before saving');
+          detail = url ? `${url} · ${addr}` : addr;
+        } else if (fd.get('physical_address') != null) {
+          detail = String(fd.get('physical_address') || '').trim();
+          if (!detail) throw new Error('Enter physical location details before saving');
+        } else {
+          detail = String(fd.get('detail') || '').trim();
+        }
+        data = await apiPost({
+          action: 'update_location',
+          slug: state.slug,
+          location_id: locId,
+          label: String(fd.get('label') || '').trim(),
+          kind: locKind,
+          detail,
+        });
+        state.editingLocationId = null;
       } else if (kind === 'add-attachment') {
         const type = fd.get('attachment_type') || 'url';
         const rawUrl = String(fd.get('url') || '').trim();
@@ -1759,11 +1907,22 @@
         data = await apiPost(payload);
         state.editingAttachmentId = null;
       } else if (kind === 'confirm') {
-        if (!fd.get('confirmed_location')) {
-          throw new Error('Select a location before agreeing meeting details');
+        const online = String(fd.get('confirmed_location_online') || '').trim();
+        const physical = String(fd.get('confirmed_location_physical') || '').trim();
+        if (!online || !physical) {
+          throw new Error('Select both an Online and a Physical location before agreeing meeting details');
         }
-        data = await apiPost({ action: 'confirm', slug: state.slug, acting_attendee_id: state.attendeeId, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
+        data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_slot: fd.get('confirmed_slot'),
+          confirmed_location_online: online,
+          confirmed_location_physical: physical,
+        });
         state.pendingConfirmSlot = null;
+        state.pendingConfirmLocationOnline = null;
+        state.pendingConfirmLocationPhysical = null;
       } else if (kind === 'merge-organiser') {
         const keepId = fd.get('keep_id');
         const removeId = fd.get('remove_id');
@@ -1920,9 +2079,25 @@
         const data = await apiPost({ action: 'remove_location', slug: state.slug, acting_attendee_id: state.attendeeId, location_id: btn.dataset.locationId });
         state.meet = data.meet;
         state.selectedLocations.delete(btn.dataset.locationId);
+        if (state.editingLocationId === btn.dataset.locationId) state.editingLocationId = null;
         render(root, state);
         toast('Location removed');
       } catch (err) { toast(err.message, true); }
+      return;
+    }
+
+    if (action === 'edit-location') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to edit a location', true);
+        return;
+      }
+      state.editingLocationId = btn.dataset.locationId;
+      render(root, state);
+      return;
+    }
+    if (action === 'cancel-edit-location') {
+      state.editingLocationId = null;
+      render(root, state);
       return;
     }
 
@@ -2014,9 +2189,22 @@
         toast('Only organisers can set the currently selected location', true);
         return;
       }
-      state.pendingConfirmLocation = btn.dataset.locationId;
+      const loc = state.meet.locations.find((l) => l.id === btn.dataset.locationId);
+      if (!loc) return;
+      const channel = locationConfirmChannel(loc.kind);
+      const id = loc.id;
+      const cur = effectiveConfirmLocations(state, state.meet);
+      if (channel === 'both') {
+        const on = cur.online === id && cur.physical === id;
+        state.pendingConfirmLocationOnline = on ? '' : id;
+        state.pendingConfirmLocationPhysical = on ? '' : id;
+      } else if (channel === 'online') {
+        state.pendingConfirmLocationOnline = cur.online === id ? '' : id;
+      } else {
+        state.pendingConfirmLocationPhysical = cur.physical === id ? '' : id;
+      }
       render(root, state);
-      toast('Currently selected location updated');
+      toast('Confirmed location selection updated');
       return;
     }
     if (action === 'confirm-details') {
@@ -2026,13 +2214,13 @@
         return;
       }
       const slot = effectiveConfirmSlot(state, state.meet);
-      const location = effectiveConfirmLocation(state, state.meet);
+      const locs = effectiveConfirmLocations(state, state.meet);
       if (!slot) {
         toast('Choose a start slot first on the calendar above', true);
         return;
       }
-      if (!location) {
-        toast('Select a location before accepting the scheduled start time', true);
+      if (!locs.online || !locs.physical) {
+        toast('Confirm both an Online and a Physical location before accepting (use a Hybrid proposal to set both at once)', true);
         return;
       }
       const wasAlreadyConfirmed = !!state.meet.confirmed_slot;
@@ -2042,11 +2230,13 @@
           slug: state.slug,
           acting_attendee_id: state.attendeeId,
           confirmed_slot: slot,
-          confirmed_location: location,
+          confirmed_location_online: locs.online,
+          confirmed_location_physical: locs.physical,
         });
         state.meet = data.meet;
         state.pendingConfirmSlot = null;
-        state.pendingConfirmLocation = null;
+        state.pendingConfirmLocationPhysical = null;
+        state.pendingConfirmLocationOnline = null;
         if (wasAlreadyConfirmed) {
           state.wasRescheduled = true;
           localStorage.setItem(rescheduledKey(state.slug), 'yes');

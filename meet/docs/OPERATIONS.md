@@ -62,7 +62,7 @@ A passcode protects your attendee row and lets you find meetings from the home p
 
 - **Entering organiser details** — no attendees yet.
 - **Entering attendee details** — attendees present; time/location not yet accepted.
-- **Scheduled** — organiser accepted a start time and location.
+- **Scheduled** — organiser accepted a start time and both an Online and a Physical confirmed location (a Hybrid proposal can supply both).
 - **Rescheduled** — organiser changed a previously scheduled time or location.
 - **Past** — current time is after the scheduled start.
 - **Summarised** — past, and records/attachments exist.

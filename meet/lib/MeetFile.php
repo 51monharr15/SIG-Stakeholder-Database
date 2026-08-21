@@ -43,6 +43,8 @@ final class MeetFile
             'page_after_intro' => '',
             'confirmed_slot' => null,
             'confirmed_location' => null,
+            'confirmed_location_physical' => null,
+            'confirmed_location_online' => null,
         ];
     }
 
@@ -114,8 +116,19 @@ final class MeetFile
         if (!empty($meet['confirmed_slot'])) {
             $out[] = 'confirmed_slot: ' . $meet['confirmed_slot'];
         }
-        if (!empty($meet['confirmed_location'])) {
-            $out[] = 'confirmed_location: ' . $meet['confirmed_location'];
+        // Prefer explicit dual fields; keep legacy confirmed_location for older readers.
+        $phys = trim((string) ($meet['confirmed_location_physical'] ?? ''));
+        $online = trim((string) ($meet['confirmed_location_online'] ?? ''));
+        $legacy = trim((string) ($meet['confirmed_location'] ?? ''));
+        if ($phys !== '') {
+            $out[] = 'confirmed_location_physical: ' . $phys;
+        }
+        if ($online !== '') {
+            $out[] = 'confirmed_location_online: ' . $online;
+        }
+        $compat = $online !== '' ? $online : ($phys !== '' ? $phys : $legacy);
+        if ($compat !== '') {
+            $out[] = 'confirmed_location: ' . $compat;
         }
 
         $out[] = '';
@@ -376,6 +389,31 @@ final class MeetFile
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
+        $meet['confirmed_location_physical'] = $meet['confirmed_location_physical'] ?? null;
+        $meet['confirmed_location_online'] = $meet['confirmed_location_online'] ?? null;
+        // Migrate legacy single confirmed_location into physical/online by kind.
+        $legacy = trim((string) ($meet['confirmed_location'] ?? ''));
+        if ($legacy !== '') {
+            $phys = trim((string) ($meet['confirmed_location_physical'] ?? ''));
+            $online = trim((string) ($meet['confirmed_location_online'] ?? ''));
+            if ($phys === '' && $online === '') {
+                $kind = 'other';
+                foreach ($meet['locations'] as $loc) {
+                    if (($loc['id'] ?? '') === $legacy) {
+                        $kind = (string) ($loc['kind'] ?? 'other');
+                        break;
+                    }
+                }
+                if ($kind === 'hybrid') {
+                    $meet['confirmed_location_online'] = $legacy;
+                    $meet['confirmed_location_physical'] = $legacy;
+                } elseif (in_array($kind, ['video', 'phone'], true)) {
+                    $meet['confirmed_location_online'] = $legacy;
+                } else {
+                    $meet['confirmed_location_physical'] = $legacy;
+                }
+            }
+        }
         foreach ($meet['attendees'] as &$attendee) {
             if (!isset($attendee['contact']) && isset($attendee['alias'])) {
                 $attendee['contact'] = $attendee['alias'];
