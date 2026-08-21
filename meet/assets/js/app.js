@@ -30,7 +30,7 @@
     const p = sanitizePasscode(raw);
     return (p.length >= 2 && p.length <= 20) ? p : '';
   }
-  const PASSCODE_TIP = 'Passcodes are 2 to 20 characters: 0–9, a–z (stored as all lowercase), spaces, and safe specials (not |). Required to find this meeting if you do not have the link.';
+  const PASSCODE_TIP = '0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
 
   document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
 
@@ -121,6 +121,7 @@
       headerExpanded: false,
       claimingId: null,
       editingAttendeeId: null,
+      editingAttachmentId: null,
       changingPin: false,
       pendingConfirmLocation: null,
       showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
@@ -269,11 +270,6 @@
   }
 
   function setTab(state, tab) {
-    const signedIn = state.meet?.attendees.find((a) => a.id === state.attendeeId);
-    if (tab === 'options' && state.meet?.attendees.length && !signedIn?.is_organizer) {
-      toast('Only meeting organisers can access meeting options', true);
-      return;
-    }
     state.activeTab = tab;
     if (tab === 'calendar') state.scrollCalendarOnRender = true;
     localStorage.setItem(tabKey(state.slug), tab);
@@ -309,16 +305,16 @@
 
   function setupChecklistState(m, state, attendee) {
     const isOrg = !!attendee?.is_organizer;
-    // Step 1: options were set at creation (title) or explicitly saved
-    const step1 = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes'
+    const stepSelf = !!attendee;
+    const stepOptions = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes'
       || !!(m.title?.trim());
-    const step2 = !!attendee;
-    const step3 = !!attendee && countSlotsFor(m, attendee.id) > 0;
-    // Step 4: link copied/acknowledged, or another attendee joined via the link
-    const step4 = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes'
+    const stepOthers = (m.attendees?.length || 0) > 1;
+    const stepAvail = !!attendee && countSlotsFor(m, attendee.id) > 0;
+    const stepLocations = (m.locations?.length || 0) > 0;
+    const stepShare = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes'
       || (m.attendees?.length || 0) > 1;
-    const allDone = step1 && step2 && step3 && step4;
-    return { isOrg, step1, step2, step3, step4, allDone };
+    const allDone = stepSelf && stepOptions && stepAvail && stepShare;
+    return { isOrg, stepSelf, stepOptions, stepOthers, stepAvail, stepLocations, stepShare, allDone };
   }
 
   function restoreAttendeeSelections(state) {
@@ -457,13 +453,15 @@
   function rescheduledKey(slug) { return `meet_rescheduled_${slug}`; }
 
   const STATUS_LABELS = {
-    organiser: 'Enter organiser details',
-    attendee: 'Enter attendee details',
+    organiser: 'Entering organiser details',
+    attendee: 'Entering attendee details',
     scheduled: 'Scheduled',
     rescheduled: 'Rescheduled',
     past: 'Past',
     summarised: 'Summarised',
   };
+
+  const STATUS_TIP = 'Status progresses as the meeting is set up: entering details → Scheduled (organiser accepted a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the accepted time and location.';
 
   function meetingStatusKind(m, state) {
     if (!m.attendees.length) return 'organiser';
@@ -479,23 +477,26 @@
   function renderMeetingStatus(m, state) {
     const kind = meetingStatusKind(m, state);
     const label = STATUS_LABELS[kind];
-    let extra;
+    let timeHtml;
+    let locHtml;
     if (kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised') {
-      extra = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span><span class="meta">Location: ${locationInlineHtml(m, m.confirmed_location)}</span>`;
+      timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span>`;
+      locHtml = `<span class="meta">Location: ${locationInlineHtml(m, m.confirmed_location)}</span>`;
     } else {
-      const proposed = bestProposedSlot(m);
-      let hint = 'No overlap marked yet';
-      if (proposed?.kind === 'everyone') {
-        hint = `Earliest everyone can make: ${formatSlotLocal(proposed.slot)}`;
-      } else if (proposed?.kind === 'organiser_plus_one') {
-        hint = `Most people (${proposed.count}) can make: ${formatSlotLocal(proposed.slot)}`;
-      }
-      extra = `<span class="meta">${escapeHtml(hint)}</span>`;
+      const pendingSlot = effectiveConfirmSlot(state, m);
+      const pendingLoc = effectiveConfirmLocation(state, m);
+      timeHtml = pendingSlot
+        ? `<span class="meta">Time (proposed): ${formatTimePair(pendingSlot)}</span>`
+        : '<span class="meta">No date and time selected</span>';
+      locHtml = pendingLoc
+        ? `<span class="meta">Location (proposed): ${locationInlineHtml(m, pendingLoc)}</span>`
+        : '<span class="meta">No location selected</span>';
     }
-    return `<div class="status-strip">
+    return `<div class="status-strip" title="${escapeHtml(STATUS_TIP)}">
       <span class="status-label">Status:</span>
       <span class="status-value">${escapeHtml(label)}</span>
-      ${extra}
+      ${timeHtml}
+      ${locHtml}
     </div>`;
   }
 
@@ -514,13 +515,12 @@
             <div class="help-col">
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
               <ol class="help-steps">
-                <li><strong>Meeting options</strong> — set the title, meeting length, calendar slot duration, timezone, and optionally a description for attendees. Save when done.</li>
-                <li><strong>Attendees</strong> — add yourself first. Choose "Myself", enter your name, and optionally set a passcode (lets you find this meeting from the home page later). You become the organiser.</li>
-                <li><strong>My availability</strong> — mark every time slot when you are free by clicking or dragging on the calendar grid. Press <em>Save my availability</em>.</li>
-                <li><strong>Locations</strong> — optionally propose one or more meeting locations (online or physical).</li>
-                <li><strong>Share the link</strong> — press <em>Copy meeting link</em> at the top of the page and send it to your attendees. Anyone with the link can join.</li>
-                <li>Once attendees have marked their availability, open <strong>Set confirmed meeting details</strong> to see overlaps.</li>
-                <li>When ready, choose a start slot and location there, then accept the proposed start as the scheduled time. The status changes to <em>Scheduled</em>.</li>
+                <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
+                <li><strong>Meeting options</strong> — title, meeting length, calendar slot duration, timezone, description. Visible to everyone; only organisers can change. Save when done.</li>
+                <li><strong>My availability</strong> — mark free slots on the calendar. Press <em>Save my availability</em>.</li>
+                <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
+                <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
+                <li>Open <strong>Set confirmed meeting details</strong> to pick a start and location, then accept as scheduled. Status becomes <em>Scheduled</em>.</li>
               </ol>
             </div>
             <div class="help-col">
@@ -552,26 +552,40 @@
 
   function renderGettingStartedTab(m, state, attendee) {
     const setup = setupChecklistState(m, state, attendee);
+    const go = (tab, label) => `<button type="button" class="btn-nav compact-btn setup-inline-go" data-action="tab" data-tab="${tab}">${escapeHtml(label)}</button>`;
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Getting started</h2>
         <p class="meta">A step-by-step checklist for setting up this meeting. This stays available whenever you need it.</p>
         <ol class="setup-steps">
           <li>
-            <strong>${setup.step1 ? '✓ ' : ''}Set meeting options</strong> — Edit the title and Description, meeting length, Time slot length, Allow weekends and Recurrence.
-            <br><button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="options" style="margin-top:0.35rem">Go to Meeting options →</button>
+            <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
+            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
+            First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
-            <strong>${setup.step2 ? '✓ ' : ''}Add yourself as an attendee</strong> — you will become the default organiser.
-            <br><button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees" style="margin-top:0.35rem">Go to Attendees →</button>
+            <strong>${setup.stepOptions ? '✓ ' : ''}Set Meeting Options</strong> —
+            Organiser status required. Edit the meeting’s title, description and length, booking granularity (grid slot duration), weekends and any recurrence.
+            ${go('options', 'Go to Meeting options →')}
           </li>
           <li>
-            <strong>${setup.step3 ? '✓ ' : ''}Mark your availability</strong> — open My availability and click the slots when you are free. Optionally propose a location on Locations.
-            <br><button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="calendar" style="margin-top:0.35rem">Go to My availability →</button>
+            <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
+            (Optionally) ${go('attendees', 'Go to Attendees')} and <strong>Add others as Proposed Attendees</strong> —
+            Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
           </li>
           <li>
-            <strong>${setup.step4 ? '✓ ' : ''}Share the link</strong> — Copy meeting link and send it to all attendees so they can open this meeting and enter availability.
-            <br><span class="row" style="margin-top:0.35rem;flex-wrap:wrap;gap:0.35rem">
+            <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
+            ${go('calendar', 'Go to My availability')} and select the slots when you are free.
+          </li>
+          <li>
+            <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
+            ${go('locations', 'Go to Locations')} — Propose locations (Online and/or Physical) for attendees to vote on.
+            Any attendee can propose locations. Organisers can (re-)select a confirmed location at any time.
+          </li>
+          <li>
+            <strong>${setup.stepShare ? '✓ ' : ''}Share the link</strong> —
+            Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
+            <span class="row setup-share-row">
               <button type="button" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               <button type="button" class="btn-cancel compact-btn" data-action="ack-link-shared" title="Mark this step done if you have already sent the link by other means">I've shared the link</button>
             </span>
@@ -587,7 +601,9 @@
   // ─── Overview tab ────────────────────────────────────────────────────────────
 
   function renderOverviewTab(m, state, attendee) {
-    const sorted = sortSuggestions(m, 'date').slice(0, 5);
+    const allSuggestions = sortSuggestions(m, 'count');
+    const suggestionTotal = allSuggestions.length;
+    const sorted = allSuggestions.slice(0, 10);
     const desc = (m.organizer_intro || '').trim();
     const signedIn = !!attendee;
     const isOrg = !!attendee?.is_organizer;
@@ -627,35 +643,35 @@
 
     const attendeePrompt = `
       <details class="attendee-prompt overview-help"${state.overviewHelpOpen ? ' open' : ''}>
-        <summary class="section-title" title="Tap or click to expand/collapse">What to do next</summary>
+        <summary class="section-title" title="Tap or click the triangle to expand/collapse">What to do next</summary>
         ${stepsHtml}
       </details>`;
 
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
-        <p class="meta">Tap or click headings to expand.</p>
+        <p class="meta">Tap or click headings with a ▸ triangle to expand.</p>
         ${attendeePrompt}
         ${desc ? `<h3 class="section-title">Description for attendees</h3><div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : '<h3 class="section-title">Description for attendees</h3><p class="meta">No description yet — add one in Meeting options.</p>'}
-        <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click to expand/collapse">Agenda and decisions <button type="button" class="btn-cancel compact-btn" data-action="edit-agenda-decisions" title="Modify agenda and/or decisions" style="margin-left:0.4rem">✎</button></summary>
+        <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set with Agenda, Attachments and Records)</span></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Agenda, Attachments and Records</strong> to set it.</p>'}
           ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Agenda, Attachments and Records</strong> to set them.</p>'}
           ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
         </details>
-        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
           ${renderOverviewAttendeeTable(m)}
         </details>
-        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Start times with best attendance</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top ${Math.min(10, suggestionTotal)} of ${suggestionTotal} choices. Start times with best attendance</summary>
           ${sorted.length
-            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
+            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>
+               <p class="meta">Confirm one with <strong>Set confirmed meeting details</strong>. Colour key: light green = all free full duration; amber = all for part duration; purple = some available; dark green border = currently selected start.</p>`
             : '<p class="meta">No overlap times yet — go to Set confirmed meeting details to choose a start slot.</p>'}
-          <p class="meta">Colour key: see <strong>Set confirmed meeting details</strong>.</p>
         </details>
-        <details class="overview-block"><summary class="section-title" title="Tap or click to expand/collapse">Proposed locations (by popularity)</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top ${Math.min(3, m.locations.length)} proposed locations (by popularity from ${m.locations.length} choice${m.locations.length === 1 ? '' : 's'})</summary>
           ${renderLocationPopularitySummary(m)}
         </details>
-        ${recordsOpen && m.attachments.length ? `<details class="overview-block" open><summary class="section-title" title="Tap or click to expand/collapse">Attachments and records (${m.attachments.length})</summary>
-          ${m.attachments.map(renderAttachment).join('')}
+        ${recordsOpen && m.attachments.length ? `<details class="overview-block" open><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments and records (${m.attachments.length})</summary>
+          ${m.attachments.map((a) => renderAttachment(a, attendee)).join('')}
         </details>` : ''}
       </section>`;
   }
@@ -669,8 +685,9 @@
     });
     const ranked = m.locations
       .map((loc) => ({ loc, votes: counts.get(loc.id) || 0 }))
-      .sort((a, b) => b.votes - a.votes || a.loc.label.localeCompare(b.loc.label));
-    return `<ul class="list-plain">${ranked.map((item) => `<li>${escapeHtml(item.loc.label)} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`;
+      .sort((a, b) => b.votes - a.votes || a.loc.label.localeCompare(b.loc.label))
+      .slice(0, 3);
+    return `<ul class="list-plain">${ranked.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`;
   }
 
   function renderOverviewAttendeeTable(m) {
@@ -708,24 +725,20 @@
         <p class="meta">Mark when <strong>you</strong> are free. Drag or tap slots to select a range. Save anytime with <em>Save my availability</em>. Clicking or tapping a previously selected slot deselects it — don't forget to save again after changing your selection.</p>
         <div class="row meta-line">
           <span class="badge" title="Change recurrence in Meeting options">${escapeHtml(m.recurrence_label)}</span>
-          <span class="meta">Use Meeting options to change.</span>
-          <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
+          <span class="meta">Organisers can change recurrence in Meeting options.</span>
         </div>
-        <p class="meta">Calendar hours in <strong>${escapeHtml(mtz)}</strong> · Your timezone: <strong>${escapeHtml(tz)}</strong></p>
+        <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         ${saveRow}
-        <div class="calendar-toolbar">
-          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
-          <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="btn-nav" data-action="next-days" title="Show next day">→</button>
-        </div>
+        ${renderCalendarNavToolbar(days, { canGoBack, canGoForward: true, todayStr })}
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
             ${days.map((d, i) => {
               const dateStr = toDateIso(d);
               const gap = dayHasGapBefore(days, i);
-              return `<div class="day-head${gap ? ' day-gap-before' : ''}${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
+              const isToday = dateStr === todayStr;
+              return `<div class="day-head${gap ? ' day-gap-before' : ''}${recurringSet.has(dateStr) ? ' recurring' : ''}${isToday ? ' is-today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
             }).join('')}
           </div>
           <div class="cal-body">
@@ -737,6 +750,18 @@
         </div>
         ${saveRow}
       </section>`;
+  }
+
+  function renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr }) {
+    return `
+      <div class="calendar-toolbar calendar-toolbar-sticky">
+        <button type="button" class="btn-nav" data-action="go-today" title="Jump so today is the first visible day">Today</button>
+        <button type="button" class="btn-nav" data-action="prev-week" title="Go back one week" ${canGoBack ? '' : 'disabled'}>« week</button>
+        <button type="button" class="btn-nav" data-action="prev-days" title="Go back one day" ${canGoBack ? '' : 'disabled'}>← day</button>
+        <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
+        <button type="button" class="btn-nav" data-action="next-days" title="Advance one day" ${canGoForward ? '' : 'disabled'}>day →</button>
+        <button type="button" class="btn-nav" data-action="next-week" title="Advance one week" ${canGoForward ? '' : 'disabled'}>week »</button>
+      </div>`;
   }
 
   function renderSaveRow(state) {
@@ -788,46 +813,52 @@
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <h2 class="section-title">Set confirmed meeting details</h2>
+        <div class="row">
+          ${renderAcceptScheduledButton(isOrg)}
+        </div>
         <p class="meta"><strong>Selecting a confirmed meeting time requires organiser status.</strong></p>
         <p class="meta">Meeting slots show initials of attendees who have marked availability on <strong>My availability</strong>.</p>
-        <p class="meta">Calendar hours in <strong>${escapeHtml(mtz)}</strong> · Your timezone: <strong>${escapeHtml(tz)}</strong></p>
+        <p class="meta">Meeting hours in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
         <div class="row group-legend">
           <span class="legend-chip full">Light green = all attendees full duration</span>
           <span class="legend-chip partial-full">Amber = all attendees for part duration</span>
           <span class="legend-chip partial">Purple = some attendees available</span>
           <span class="legend-chip selected">Dark green border = currently selected meeting start</span>
         </div>
-        <p class="meta">Click a slot to set the currently selected meeting start. Click it again to clear it. Times shown in your timezone and UTC.</p>
-        <div class="row">
-          <p class="meta"><strong>Currently selected meeting start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot above to set it'}</p>
-          <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
-        </div>
-        ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
-        <div class="calendar-toolbar">
-          <button type="button" class="btn-nav" data-action="prev-days" title="Show previous day" ${canGoBack ? '' : 'disabled'}>←</button>
-          <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="btn-nav" data-action="next-days" title="Show next day" ${canGoForward ? '' : 'disabled'}>→</button>
-        </div>
-        <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
-          <div class="cal-header">
-            <div class="time-gutter"></div>
-            ${days.map((d, i) => {
-              const gap = dayHasGapBefore(days, i);
-              return `<div class="day-head${gap ? ' day-gap-before' : ''}">${formatDayHeadDateStr(toDateIso(d), mtz)}</div>`;
-            }).join('')}
+        <details class="confirm-section" open>
+          <summary class="section-title">Proposed meeting time</summary>
+          <p class="meta">Click a slot to set the currently selected meeting start. Click it again to clear it. Times shown in your timezone and UTC.</p>
+          <div class="row">
+            <p class="meta"><strong>Currently selected meeting start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot below to set it'}</p>
+            <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
           </div>
-          <div class="cal-body">
-            ${hours.map((hm) => `
-              <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
-              ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
-            `).join('')}
+          ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
+          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr })}
+          <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
+            <div class="cal-header">
+              <div class="time-gutter"></div>
+              ${days.map((d, i) => {
+                const dateStr = toDateIso(d);
+                const gap = dayHasGapBefore(days, i);
+                const isToday = dateStr === todayStr;
+                return `<div class="day-head${gap ? ' day-gap-before' : ''}${isToday ? ' is-today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}</div>`;
+              }).join('')}
+            </div>
+            <div class="cal-body">
+              ${hours.map((hm) => `
+                <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
+                ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
+              `).join('')}
+            </div>
           </div>
-        </div>
-        <h3 class="section-title">Locations</h3>
-        <p class="meta"><strong>Currently selected location:</strong> ${selectedLocation ? locationInlineHtml(m, selectedLocation) : 'none selected yet — choose a location below'}</p>
-        <p class="meta">Organisers can click a location to set it as the currently selected location. Everyone can see who marked each location as workable.</p>
-        ${renderConfirmLocationChoices(m, state, isOrg, selectedLocation)}
-        <p class="meta">Locations can be set and voted for on the <strong>Locations</strong> tab.</p>
+        </details>
+        <details class="confirm-section" open>
+          <summary class="section-title">Proposed location</summary>
+          <p class="meta"><strong>Currently selected location:</strong> ${selectedLocation ? locationInlineHtml(m, selectedLocation) : 'none selected yet — choose a location below'}</p>
+          <p class="meta">Organisers can click a location to set it as the currently selected location. Everyone can see who marked each location as workable.</p>
+          ${renderConfirmLocationChoices(m, state, isOrg, selectedLocation)}
+          <p class="meta">Locations can be proposed and voted for on the <strong>Locations</strong> tab.</p>
+        </details>
         <div class="row">
           ${renderAcceptScheduledButton(isOrg)}
         </div>
@@ -983,14 +1014,20 @@
   // ─── Locations tab ───────────────────────────────────────────────────────────
 
   function renderLocationsTab(m, state, attendee) {
+    const selectedLoc = effectiveConfirmLocation(state, m);
     return `
       <section class="panel stack" id="meeting-locations-pane">
         <h2 class="section-title">Locations</h2>
         <p class="meta"><strong>Select from locations proposed and save choice. Propose new location(s) if you need to.</strong></p>
+        <div class="row group-legend loc-legend">
+          <span class="legend-chip">Proposed location</span>
+          <span class="legend-chip chip-demo active">Works for me (selected)</span>
+          <span class="legend-chip selected">Selected by organiser</span>
+        </div>
         <h3 class="section-title">Proposed locations</h3>
-        <p class="meta">Click a location to save it as workable for you (blue). Click again to remove it. You can select multiple.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
-        ${attendee ? '<p class="meta">Clicking/tapping a location toggles its selection and saves your choice(s).</p>' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
+        <p class="meta">Clicking/tapping a location toggles its selection and saves your choice(s). Initials show attendees who are OK with each destination.</p>
+        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc, selectedLoc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
+        ${attendee ? '' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
         <details class="propose-location-block" open><summary>Propose a location</summary>
           <p class="meta">Anyone can propose a location. Add as many options as you like. Deleting a proposed location requires organiser status.</p>
           ${renderAddLocationForm(state)}
@@ -998,16 +1035,17 @@
       </section>`;
   }
 
-  function renderLocationItem(m, state, attendee, loc) {
+  function renderLocationItem(m, state, attendee, loc, selectedLoc) {
     const selected = state.selectedLocations.has(loc.id);
+    const organiserPicked = selectedLoc === loc.id;
     const voters = attendeesForLocation(m, loc.id);
     const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
     return `<div class="location-item">
-      <button type="button" class="chip${selected ? ' active' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
-        title="${selected ? 'Click to deselect, then save preferences' : 'Click to select as workable, then save preferences'}">
+      <button type="button" class="chip${selected ? ' active' : ''}${organiserPicked ? ' selected-start' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
+        title="${selected ? 'Click to deselect as workable for you' : 'Click to select as workable for you'}">
         ${escapeHtml(locationChipLabel(loc))}${initials ? ` <span class="label-hint">(${escapeHtml(initials)})</span>` : ''}
       </button>
-      ${attendee?.is_organizer ? `<button type="button" class="btn-cancel compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal">Remove</button>` : ''}
+      ${attendee?.is_organizer ? `<button type="button" class="btn-cancel compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal (organiser)">Remove</button>` : ''}
     </div>`;
   }
 
@@ -1099,10 +1137,10 @@
           </form>
         </details>
         <h3 class="section-title">Attachments</h3>
-        ${urlAttachments.length ? urlAttachments.map(renderAttachment).join('') : '<p class="meta">No attachments yet.</p>'}
+        ${urlAttachments.length ? urlAttachments.map((a) => renderAttachment(a, attendee, state)).join('') : '<p class="meta">No attachments yet.</p>'}
         <h3 class="section-title">Records</h3>
         <p class="meta">Recordings, transcripts, and AI summaries after the meeting.</p>
-        ${textRecords.length ? textRecords.map(renderAttachment).join('') : '<p class="meta">No records yet.</p>'}
+        ${textRecords.length ? textRecords.map((a) => renderAttachment(a, attendee, state)).join('') : '<p class="meta">No records yet.</p>'}
         <details><summary>Add attachment</summary>
           ${renderAddAttachmentForm()}
         </details>
@@ -1222,17 +1260,15 @@
 
     const body = `
         ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-          ${!attendee.has_pin ? '<span class="badge warn" title="No passcode set">Passcode: not set</span>' : '<span class="badge" title="Passcode set">Passcode: set</span>'}
-          <button type="button" class="compact-btn" data-action="set-pin" title="Set a passcode so you can find this meeting later and protect your attendee identity">${attendee.has_pin ? 'Set new passcode' : 'Set passcode'}</button>
-          <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
           <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your display name, initials, contact, and passcode">Edit my details</button>
+          <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
         </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact">
           <table class="data-table attendee-table">
-            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount + 1}">None yet</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1273,23 +1309,26 @@
     const modeRow = signedIn ? '' : `
         <fieldset class="add-mode-row">
           <legend class="label-hint">Adding</legend>
-          <div class="mode-options">
-            <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
-            <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
+          <div class="add-mode-with-guide">
+            <div class="mode-options mode-options-stack">
+              <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
+              <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
+            </div>
+            <p class="meta add-field-guide">Display name: any text including email. Initials: optional (defaults from name). Contact: optional — email, phone, or a comma-separated list. Passcode: optional — ${PASSCODE_TIP}</p>
           </div>
         </fieldset>`;
     const pinRow = signedIn ? '' : `
-          <label class="field-pin">Passcode <span class="label-hint">(optional — helps find meetings from home and protects your attendee identity)</span>
-            <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="20" title="${escapeHtml(PASSCODE_TIP)}">
+          <label class="field-pin">Passcode <span class="label-hint">(optional)</span>
+            <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="22" size="22" title="${escapeHtml(PASSCODE_TIP)}">
           </label>`;
     const extras = signedIn ? '' : `
         <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link with them. They claim their row using <strong>This is me</strong>.</p>`;
     const intro = signedIn
-      ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>. Use this form to add <strong>someone else</strong>.</p>`
+      ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>. Use this form to add <strong>someone else</strong>. Display name: any text. Initials/contact optional (contact may be comma-separated).</p>`
       : '<p class="meta">Add yourself as an attendee, or propose someone else.</p>';
     return `
         <div class="add-attendee-block">
-          <h3 class="section-title">Add new attendee</h3>
+          <h3 class="section-title">${signedIn ? 'Add another attendee' : 'Add new attendee'}</h3>
           ${intro}
           <form class="inline-form add-attendee-form" data-form="add-attendee">
             ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
@@ -1302,18 +1341,19 @@
                 <input class="input-initials" name="initials" maxlength="4">
               </label>
               <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-                <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" inputmode="email" autocomplete="email">
+                <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" autocomplete="email">
               </label>
               ${pinRow}
             </div>
             ${extras}
-            <button type="submit">Add attendee</button>
+            <button type="submit">${signedIn ? 'Add another attendee' : 'Add attendee'}</button>
           </form>
         </div>`;
   }
 
   function renderEditAttendeeForm(a, state) {
     const hasPinAlready = a.has_pin;
+    const changingPin = !!state.changingPin;
     return `
         <form class="inline-form edit-attendee-form" data-form="edit-attendee">
           <h3 class="section-title">Edit my details</h3>
@@ -1326,16 +1366,18 @@
               <input class="input-initials" name="initials" maxlength="4" value="${escapeHtml(a.initials || '')}">
             </label>
             <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-              <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" value="${escapeHtml(a.contact || '')}">
+              <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" value="${escapeHtml(a.contact || '')}">
             </label>
           </div>
           <div class="pin-change-block">
             <h4 class="section-title">${hasPinAlready ? 'Change passcode' : 'Set passcode'}</h4>
-            ${hasPinAlready ? `<label>Current passcode <input name="current_pin" type="text" maxlength="20" autocomplete="current-password" title="${escapeHtml(PASSCODE_TIP)}"></label>` : ''}
+            <p class="meta">You are already signed in — current passcode is not required. Leave blank to keep your existing passcode.</p>
             ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove passcode instead of setting a new one</label>` : ''}
-            <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode' : 'Passcode'} <span class="label-hint">(2–20 characters)</span>
-              <input name="new_pin" type="text" maxlength="20" autocomplete="new-password" title="${escapeHtml(PASSCODE_TIP)}">
-            </label>
+            <div class="pin-inline-row">
+              <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode' : 'Passcode'}
+                <input name="new_pin" type="text" maxlength="22" size="14" autocomplete="new-password" title="${escapeHtml(PASSCODE_TIP)}" placeholder="${hasPinAlready && !changingPin ? 'leave blank to keep' : ''}">
+              </label>
+            </div>
           </div>
           <div class="row">
             <button type="submit">Save my details</button>
@@ -1348,13 +1390,8 @@
     const isSelf = current?.id === a.id;
     const dupOfSelf = current && a.id !== current.id
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
-    const pinBadge = a.has_pin
-      ? '<span class="badge" title="Passcode set">Passcode: set</span>'
-      : '<span class="badge warn" title="No passcode set">Passcode: not set</span>';
-    const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
+    const pinCell = a.has_pin ? 'Set' : 'Not set';
     const actions = [];
-
-    // Row-level self edit is intentionally omitted to avoid duplicate edit actions.
 
     if (!signedIn) {
       actions.push(`<button type="button" class="btn-nav compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee row">${isSelf ? 'You' : 'This is me'}</button>`);
@@ -1367,10 +1404,11 @@
       : '';
 
     return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
-      <td>${escapeHtml(a.display_name)} ${pinBadge} ${orgBadge}</td>
+      <td>${escapeHtml(a.display_name)}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${renderContactCell(a)}</td>
       <td>${countSlotsFor(m, a.id)}</td>
+      <td>${pinCell}</td>
       ${organiserCell}
       <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
     </tr>`;
@@ -1396,7 +1434,7 @@
     const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
     return `
       <details class="merge-organiser-panel help-toggle">
-        <summary><span class="help-q">?</span> Merge duplicate attendees (organiser)</summary>
+        <summary><span class="help-q">?</span> Merge duplicate attendees (organiser) (Requires organizer status)</summary>
         <form class="inline-form row" data-form="merge-organiser">
           <label>Keep this row <select name="keep_id" required>${opts}</select></label>
           <label>Remove this row <select name="remove_id" required>${opts}</select></label>
@@ -1408,10 +1446,18 @@
 
   // ─── Location helpers ────────────────────────────────────────────────────────
 
+  function locationKindLabel(kind) {
+    return { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[kind] || kind;
+  }
+
   function locationChipLabel(loc) {
-    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
+    const kind = locationKindLabel(loc.kind);
+    const service = String(loc.label || '').trim();
     const detail = loc.detail ? ` — ${loc.detail}` : '';
-    return `${loc.label} (${kind})${detail}`;
+    if (service && service.toLowerCase() !== kind.toLowerCase() && service.toLowerCase() !== 'physical location') {
+      return `${kind} (${service})${detail}`;
+    }
+    return `${kind}${detail}`;
   }
 
   function locationInlineHtml(m, locationId) {
@@ -1419,12 +1465,18 @@
     const loc = m.locations.find((l) => l.id === locationId);
     if (!loc) return escapeHtml(locationId);
     const url = extractUrlFromDetail(loc.detail);
-    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
-    let html = `${escapeHtml(loc.label)} <span class="label-hint">(${escapeHtml(kind)})</span>`;
+    const kind = locationKindLabel(loc.kind);
+    const service = String(loc.label || '').trim();
+    let html = escapeHtml(kind);
+    if (service && service.toLowerCase() !== kind.toLowerCase() && service.toLowerCase() !== 'physical location') {
+      html += ` <span class="label-hint">(${escapeHtml(service)})</span>`;
+    }
     if (url && isWellFormedUrl(url)) {
       html += ` — <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+      const rest = String(loc.detail || '').replace(url, '').replace(/^[\s·]+/, '').trim();
+      if (rest) html += ` <span class="label-hint">(${escapeHtml(rest)})</span>`;
     } else if (loc.detail) {
-      html += ` <span class="label-hint">(${escapeHtml(loc.detail)})</span>`;
+      html += ` — ${escapeHtml(loc.detail)}`;
     }
     return html;
   }
@@ -1557,10 +1609,31 @@
       </div>`;
   }
 
-  function renderAttachment(att) {
-    if (att.type === 'text') return `<div class="attachment"><strong>${escapeHtml(att.label)}</strong><pre class="attachment-body">${escapeHtml(att.body || '')}</pre></div>`;
+  function renderAttachment(att, attendee = null, state = null) {
+    const canEdit = !!attendee;
+    const editing = state?.editingAttachmentId === att.id;
+    if (editing && canEdit) {
+      return `
+        <form class="inline-form attachment-edit-form" data-form="edit-attachment">
+          <input type="hidden" name="attachment_id" value="${escapeHtml(att.id)}">
+          <label>Label <input name="label" required value="${escapeHtml(att.label)}"></label>
+          ${att.type === 'text'
+            ? `<label>Text <textarea name="body" rows="4">${escapeHtml(att.body || '')}</textarea></label>`
+            : `<label>Link <input name="url" type="url" value="${escapeHtml(att.url || 'https://')}" autocapitalize="off"></label>`}
+          <div class="row">
+            <button type="submit">Save attachment</button>
+            <button type="button" class="btn-cancel" data-action="cancel-edit-attachment">Cancel</button>
+          </div>
+        </form>`;
+    }
+    const actions = canEdit ? `
+      <button type="button" class="compact-btn" data-action="edit-attachment" data-attachment-id="${escapeHtml(att.id)}">Edit</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="delete-attachment" data-attachment-id="${escapeHtml(att.id)}">Delete</button>` : '';
+    if (att.type === 'text') {
+      return `<div class="attachment"><strong>${escapeHtml(att.label)}</strong>${actions}<pre class="attachment-body">${escapeHtml(att.body || '')}</pre></div>`;
+    }
     const href = normalizeExternalUrl(att.url);
-    return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a> <span class="label-hint">(opens in a new window)</span></div>`;
+    return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a> <span class="label-hint">(opens in a new window)</span>${actions}</div>`;
   }
 
   function formatTimePair(iso) {
@@ -1661,6 +1734,25 @@
           throw new Error('Please enter a validly formatted link starting with https://');
         }
         data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type, url, body: fd.get('body') });
+      } else if (kind === 'edit-attachment') {
+        const rawUrl = String(fd.get('url') || '').trim();
+        const body = fd.get('body');
+        const payload = {
+          action: 'update_attachment',
+          slug: state.slug,
+          attachment_id: fd.get('attachment_id'),
+          label: fd.get('label'),
+        };
+        if (rawUrl !== '') {
+          const url = normalizeExternalUrl(rawUrl);
+          if (rawUrl === 'https://' || !isWellFormedUrl(url)) {
+            throw new Error('Please enter a validly formatted link starting with https://');
+          }
+          payload.url = url;
+        }
+        if (body !== null) payload.body = body;
+        data = await apiPost(payload);
+        state.editingAttachmentId = null;
       } else if (kind === 'confirm') {
         if (!fd.get('confirmed_location')) {
           throw new Error('Select a location before agreeing meeting details');
@@ -1683,15 +1775,7 @@
         if (newPinRaw !== '' && newPin === '') {
           throw new Error('Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).');
         }
-        const currentPin = sanitizePasscode(fd.get('current_pin'));
         const clearPin = fd.get('clear_pin') === 'on';
-        const hasPinFlow = !!form.querySelector('[name="current_pin"]');
-        if (hasPinFlow && clearPin && !currentPin) {
-          throw new Error('Enter your current passcode to remove it');
-        }
-        if (hasPinFlow && !clearPin && newPin === '') {
-          throw new Error('Enter a new passcode, or tick "Remove passcode instead of setting a new one"');
-        }
         const payload = {
           action: 'update_attendee', slug: state.slug,
           acting_attendee_id: state.attendeeId,
@@ -1700,9 +1784,9 @@
           contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
         };
-        if (newPin !== '' || clearPin || hasPinFlow) {
+        if (clearPin || newPin !== '') {
           payload.new_pin = newPin;
-          payload.current_pin = currentPin;
+          payload.skip_current_pin = true;
           if (clearPin) payload.clear_pin = true;
         }
         data = await apiPost(payload);
@@ -1796,7 +1880,15 @@
       return;
     }
 
-    if (action === 'toggle-slot') { toggleSlot(state, btn.dataset.slot); render(root, state); return; }
+    if (action === 'toggle-slot') {
+      if (state.dragHandledClick) {
+        state.dragHandledClick = false;
+        return;
+      }
+      toggleSlot(state, btn.dataset.slot);
+      render(root, state);
+      return;
+    }
 
     if (action === 'toggle-location') {
       if (!state.attendeeId) {
@@ -1836,6 +1928,18 @@
       render(root, state);
       return;
     }
+    if (action === 'prev-week') {
+      const min = calendarMinStart(state.meet);
+      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends);
+      if (state.viewStart < min) state.viewStart = min;
+      render(root, state);
+      return;
+    }
+    if (action === 'go-today') {
+      state.viewStart = calendarMinStart(state.meet);
+      render(root, state);
+      return;
+    }
     if (action === 'next-days') {
       if (state.activeTab === 'group') {
         const lastAvail = lastAvailabilityDay(state.meet);
@@ -1849,6 +1953,16 @@
         }
       }
       let next = shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends);
+      if (state.activeTab === 'group') {
+        const lastAvail = lastAvailabilityDay(state.meet);
+        if (lastAvail && startOfDay(next) > startOfDay(lastAvail)) next = startOfDay(lastAvail);
+      }
+      state.viewStart = next;
+      render(root, state);
+      return;
+    }
+    if (action === 'next-week') {
+      let next = shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends);
       if (state.activeTab === 'group') {
         const lastAvail = lastAvailabilityDay(state.meet);
         if (lastAvail && startOfDay(next) > startOfDay(lastAvail)) next = startOfDay(lastAvail);
@@ -2000,13 +2114,32 @@
 
     if (action === 'set-pin') {
       state.editingAttendeeId = state.attendeeId;
+      state.changingPin = true;
       state.attendeePanelOpen = true;
       render(root, state);
-      requestAnimationFrame(() => {
-        const current = root.querySelector('.edit-attendee-form input[name="current_pin"]');
-        if (current) current.focus();
-        else root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus();
-      });
+      requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus());
+      return;
+    }
+
+    if (action === 'edit-attachment') {
+      state.editingAttachmentId = btn.dataset.attachmentId;
+      render(root, state);
+      return;
+    }
+    if (action === 'cancel-edit-attachment') {
+      state.editingAttachmentId = null;
+      render(root, state);
+      return;
+    }
+    if (action === 'delete-attachment') {
+      if (!confirm('Delete this attachment?')) return;
+      try {
+        const data = await apiPost({ action: 'remove_attachment', slug: state.slug, attachment_id: btn.dataset.attachmentId });
+        state.meet = data.meet;
+        if (state.editingAttachmentId === btn.dataset.attachmentId) state.editingAttachmentId = null;
+        render(root, state);
+        toast('Attachment deleted');
+      } catch (err) { toast(err.message, true); }
       return;
     }
 
@@ -2125,6 +2258,7 @@
     const slot = e.target.closest('[data-action="toggle-slot"]');
     if (!slot || !state.attendeeId) return;
     state.dragging = true;
+    state.dragHandledClick = true;
     state.dragSelect = !state.selectedSlots.has(slot.dataset.slot);
     if (state.dragSelect) state.selectedSlots.add(slot.dataset.slot);
     else state.selectedSlots.delete(slot.dataset.slot);
@@ -2133,6 +2267,10 @@
 
   function handlePointerOver(e, root, state) {
     if (!state.dragging) return;
+    if (typeof e.buttons === 'number' && e.buttons === 0) {
+      state.dragging = false;
+      return;
+    }
     const slot = e.target.closest('[data-action="toggle-slot"]');
     if (!slot) return;
     if (state.dragSelect) state.selectedSlots.add(slot.dataset.slot);
@@ -2345,17 +2483,32 @@
   function validateContact(raw) {
     const v = String(raw || '').trim();
     if (!v) return '';
-    if (v.includes('@') && !isWellFormedEmail(v)) throw new Error('Contact must be a valid email or a phone number without @');
+    const parts = v.split(',').map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (part.includes('@') && !isWellFormedEmail(part)) {
+        throw new Error('Contact must be a valid email and/or phone number (comma-separated OK)');
+      }
+    }
     return v;
   }
   function contactHref(c) {
     const v = String(c || '').trim();
     if (!v) return '#';
+    if (v.includes(',')) return '#';
     if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : '#';
     return `tel:${v}`;
   }
   function renderContactCell(a) {
     if (!a.contact) return '—';
+    const parts = String(a.contact).split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return parts.map((part) => {
+        if (part.includes('@') && !isWellFormedEmail(part)) return `${escapeHtml(part)} <span class="badge warn" title="Not a valid email">check</span>`;
+        const href = contactHref(part);
+        if (href === '#') return escapeHtml(part);
+        return `<a href="${escapeHtml(href)}">${escapeHtml(part)}</a>`;
+      }).join(', ');
+    }
     if (a.contact.includes('@') && !isWellFormedEmail(a.contact)) return `${escapeHtml(a.contact)} <span class="badge warn" title="Not a valid email">check</span>`;
     const href = contactHref(a.contact);
     if (href === '#') return escapeHtml(a.contact);

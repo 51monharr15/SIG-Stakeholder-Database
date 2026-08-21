@@ -69,6 +69,12 @@ try {
             case 'add_attachment':
                 handleAddAttachment($store, $slug, $input);
                 break;
+            case 'update_attachment':
+                handleUpdateAttachment($store, $slug, $input);
+                break;
+            case 'remove_attachment':
+                handleRemoveAttachment($store, $slug, $input);
+                break;
             case 'confirm':
                 handleConfirm($store, $slug, $input);
                 break;
@@ -91,6 +97,7 @@ try {
     }
     Response::error($e->getMessage(), $code);
 } catch (\Throwable $e) {
+    error_log('meet api.php: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     Response::error('Server error', 500);
 }
 
@@ -674,6 +681,64 @@ function handleAddAttachment(MeetStore $store, string $slug, array $input): void
     Response::json(['ok' => true, 'attachment' => $attachment, 'meet' => $store->publicView($meet)]);
 }
 
+function handleUpdateAttachment(MeetStore $store, string $slug, array $input): void
+{
+    $attachmentId = trim((string) ($input['attachment_id'] ?? ''));
+    $label = trim((string) ($input['label'] ?? ''));
+    if ($attachmentId === '' || $label === '') {
+        Response::error('attachment_id and label required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($attachmentId, $label, $input) {
+        $found = false;
+        foreach ($m['attachments'] as &$att) {
+            if (($att['id'] ?? '') !== $attachmentId) {
+                continue;
+            }
+            $found = true;
+            $att['label'] = $label;
+            if (($att['type'] ?? '') === 'url' && array_key_exists('url', $input)) {
+                $att['url'] = normalizeAttachmentUrl(trim((string) $input['url']));
+            }
+            if (($att['type'] ?? '') === 'text' && array_key_exists('body', $input)) {
+                $att['body'] = (string) $input['body'];
+            }
+            break;
+        }
+        unset($att);
+        if (!$found) {
+            throw new \RuntimeException('Attachment not found', 404);
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
+function handleRemoveAttachment(MeetStore $store, string $slug, array $input): void
+{
+    $attachmentId = trim((string) ($input['attachment_id'] ?? ''));
+    if ($attachmentId === '') {
+        Response::error('attachment_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($attachmentId) {
+        $before = count($m['attachments']);
+        $m['attachments'] = array_values(array_filter(
+            $m['attachments'],
+            static fn ($att) => ($att['id'] ?? '') !== $attachmentId
+        ));
+        if (count($m['attachments']) === $before) {
+            throw new \RuntimeException('Attachment not found', 404);
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
 function normalizeAttachmentUrl(string $url): string
 {
     $url = trim($url);
@@ -801,7 +866,9 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
         requireActingOrganizer($meet, $actingId);
     }
 
-    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials, $newPin, $currentPin, $clearPin) {
+    $skipCurrentPin = isset($input['skip_current_pin']) && (bool) $input['skip_current_pin'] && $targetId === $actingId;
+
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials, $newPin, $currentPin, $clearPin, $skipCurrentPin) {
         $idx = attendeeIndexById($m['attendees'], $targetId);
         if ($idx === null) {
             throw new \RuntimeException('Attendee not found', 404);
@@ -812,7 +879,8 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
 
         if ($newPin !== '' || $clearPin) {
             $att = &$m['attendees'][$idx];
-            if (attendeeHasPin($att)) {
+            // When the signed-in user edits their own row, do not require re-entering the current passcode.
+            if (attendeeHasPin($att) && !$skipCurrentPin) {
                 if (!verifyAttendeePin($att, $currentPin)) {
                     throw new \RuntimeException('Current PIN is incorrect', 403);
                 }
@@ -835,8 +903,10 @@ function validateContactField(string $contact): string
     if ($contact === '') {
         return '';
     }
-    if (str_contains($contact, '@') && filter_var($contact, FILTER_VALIDATE_EMAIL) === false) {
-        Response::error('Contact must be a valid email (e.g. name@example.com) or a phone number without @');
+    foreach (array_map('trim', explode(',', $contact)) as $part) {
+        if ($part !== '' && str_contains($part, '@') && filter_var($part, FILTER_VALIDATE_EMAIL) === false) {
+            Response::error('Contact must be a valid email and/or phone number (comma-separated OK)');
+        }
     }
     return $contact;
 }

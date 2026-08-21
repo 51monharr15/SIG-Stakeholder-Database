@@ -60,8 +60,8 @@ A passcode protects your attendee row and lets you find meetings from the home p
 
 ### Status values
 
-- **Enter organiser details** — no attendees yet.
-- **Enter attendee details** — attendees present; time/location not yet accepted.
+- **Entering organiser details** — no attendees yet.
+- **Entering attendee details** — attendees present; time/location not yet accepted.
 - **Scheduled** — organiser accepted a start time and location.
 - **Rescheduled** — organiser changed a previously scheduled time or location.
 - **Past** — current time is after the scheduled start.
