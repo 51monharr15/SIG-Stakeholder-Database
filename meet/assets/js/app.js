@@ -429,23 +429,27 @@
     const scrollY = window.scrollY;
     const scrollTarget = state.scrollAfterRender || null;
     state.scrollAfterRender = null;
+    const narrow = isNarrowScreen();
+    const compactHeader = narrow && !state.headerExpanded;
 
     root.innerHTML = `
       <div class="meet-shell">
-        <div class="sticky-top">
+        <div class="sticky-top${compactHeader ? ' sticky-top-compact' : ''}">
           <div class="sticky-top-inner">
             <div class="sticky-head row">
-              <h1 class="meet-title">${escapeHtml(m.title)}</h1>
-              <div class="row">
+              <h1 class="meet-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</h1>
+              <div class="row sticky-head-actions">
+                ${narrow ? `<button type="button" class="compact-btn" data-action="toggle-header" title="${compactHeader ? 'Show link, status details, and full header' : 'Use compact header'}">${compactHeader ? 'More ▾' : 'Less ▴'}</button>` : ''}
                 <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
                 <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
-            ${state.helpOpen ? renderHelpPanel(m, attendee) : ''}
-            <div class="share-row row share-row-top">
+            ${compactHeader ? renderMeetingStatusCompact(m, state) : ''}
+            ${!compactHeader && state.helpOpen ? renderHelpPanel(m, attendee) : ''}
+            ${!compactHeader ? `<div class="share-row row share-row-top">
               <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
-            </div>
-            ${renderMeetingStatus(m, state)}
+            </div>` : ''}
+            ${!compactHeader ? renderMeetingStatus(m, state) : ''}
             <nav class="dashboard-nav" aria-label="Meeting sections">
               ${renderDashboardNav(m, state, attendee)}
             </nav>
@@ -529,6 +533,14 @@
     }
     const wasRescheduled = state.wasRescheduled || localStorage.getItem(rescheduledKey(state.slug)) === 'yes';
     return wasRescheduled ? 'rescheduled' : 'scheduled';
+  }
+
+  function renderMeetingStatusCompact(m, state) {
+    const label = STATUS_LABELS[meetingStatusKind(m, state)];
+    return `<div class="status-strip status-strip-compact" title="${escapeHtml(STATUS_TIP)}">
+      <span class="status-label">Status:</span>
+      <span class="status-value">${escapeHtml(label)}</span>
+    </div>`;
   }
 
   function renderMeetingStatus(m, state) {
@@ -2110,7 +2122,12 @@
       return;
     }
 
-    if (action === 'toggle-help') { state.helpOpen = !state.helpOpen; render(root, state); return; }
+    if (action === 'toggle-help') {
+      state.helpOpen = !state.helpOpen;
+      if (state.helpOpen && isNarrowScreen()) state.headerExpanded = true;
+      render(root, state);
+      return;
+    }
     if (action === 'edit-agenda-decisions') {
       state.openNotesEditor = true;
       setTab(state, 'agenda');

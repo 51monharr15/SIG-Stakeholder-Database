@@ -188,6 +188,22 @@ button.btn-disabled {
   border-top: 1px solid var(--line);
 }
 
+.sticky-top-compact .sticky-top-inner {
+  padding-top: 0.5rem;
+  padding-bottom: 0.45rem;
+}
+
+.status-strip-compact {
+  margin: 0.25rem 0 0;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.sticky-top-compact .dashboard-nav {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+}
+
 .dash-btn {
   border-radius: var(--btn-radius);
   padding: 0.28rem 0.65rem;
@@ -384,8 +400,17 @@ button.linkish {
 .overview-panel .section-title { margin-top: 0.75rem; }
 .overview-panel .section-title:first-of-type { margin-top: 0; }
 
-.meet-title { margin: 0; font-size: 1.25rem; }
-.sticky-head { justify-content: space-between; align-items: flex-start; }
+.meet-title {
+  margin: 0;
+  font-size: 1.25rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sticky-head { justify-content: space-between; align-items: flex-start; min-width: 0; gap: 0.5rem; }
+.sticky-head-actions { flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 .share-row { margin: 0.5rem 0; gap: 0.4rem; }
 .share-input {
@@ -412,6 +437,24 @@ button.linkish {
     font-size: 0.72rem;
     padding: 0.3rem 0.45rem;
     white-space: nowrap;
+  }
+  .sticky-head .compact-btn[data-action="toggle-header"] {
+    font-size: 0.72rem;
+    padding: 0.3rem 0.45rem;
+  }
+  .dashboard-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    gap: 0.25rem;
+    padding-bottom: 0.15rem;
+  }
+  .dash-btn {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    padding: 0.24rem 0.5rem;
   }
   .site-footer { padding: 0.4rem 0; font-size: 0.8rem; }
 }
