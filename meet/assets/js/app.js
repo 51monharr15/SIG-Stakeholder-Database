@@ -265,6 +265,23 @@
     return slotPart;
   }
 
+  function minutesBetweenTimes(startStr, endStr) {
+    const start = parseTime(startStr);
+    const end = parseTime(endStr);
+    let mins = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+    if (mins <= 0) mins += 24 * 60;
+    return mins;
+  }
+
+  function slotCellTip(m, baseTip) {
+    const { steps, valid, gran } = meetingSlotSteps(m);
+    if (valid && steps > 1) {
+      return `${baseTip} · ${steps} consecutive ${formatDurationLabel(gran)} slots = full meeting`;
+    }
+    if (valid) return `${baseTip} · one slot = full meeting`;
+    return baseTip;
+  }
+
   function tabFromUrl() {
     const t = new URLSearchParams(window.location.search).get('view');
     if (t === 'notes' || t === 'records') return 'agenda';
@@ -473,9 +490,9 @@
     { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
     { id: 'agenda',     label: 'Meeting Resources', tip: 'Meeting description, agenda, decisions, notes, attachments, and post-meeting records.' },
-    { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
-    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length, calendar slot size (must divide meeting length), bookable dates and hours, timezone. Organiser only.' },
-    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks the confirmed start time and location(s).' },
+    { id: 'calendar',   label: 'My availability',   tip: 'Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use ◀ ▶ beside dates to move by weekday.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length), AM/PM presets, bookable dates and hours. Organiser only.' },
+    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks start time (partial overlap OK) and location(s). Use ◀ ▶ beside dates to move by weekday.' },
   ];
 
   function allValidTabs(m, attendee) {
@@ -688,7 +705,7 @@
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
               <ol class="help-steps">
                 <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
-                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability), bookable dates and daily hours, timezone. Slot size must divide meeting length evenly. Save when done.</li>
+                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours, timezone. Save when done.</li>
                 <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments.</li>
                 <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save my availability</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
@@ -751,7 +768,7 @@
           </li>
           <li>
             <strong>${setup.stepOptions ? '✓ ' : ''}Set Calendar Options</strong> —
-            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Also set earliest/latest dates, daily hours, weekends, and recurrence if needed.
+            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence if needed.
             ${go('options', 'Go to Calendar Options')}
           </li>
           <li>
@@ -765,7 +782,7 @@
           </li>
           <li>
             <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
-            ${go('calendar', 'Go to My availability')} and select the slots when you are free.
+            ${go('calendar', 'Go to My availability')} and select slots when you are free — use ◀ ▶ beside the dates to move by weekday. Select enough consecutive slots to cover the full meeting if you can.
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
@@ -961,7 +978,7 @@
         <div class="time-gutter cal-nav-gutter" title="Move backward or forward by one weekday. Today jumps to the current date when there is room.">
           <div class="cal-nav">
             <button type="button" class="btn-nav cal-nav-btn" data-action="prev-days" title="Previous weekday" ${canGoBack ? '' : 'disabled'} aria-label="Previous weekday">◀</button>
-            <button type="button" class="btn-nav cal-nav-btn cal-nav-today" data-action="go-today" title="Jump so today is the first visible day">Today</button>
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-today" data-action="go-today" title="Jump so today is the first visible day (shown when there is room)">Today</button>
             <button type="button" class="btn-nav cal-nav-btn" data-action="next-days" title="Next weekday" ${canGoForward ? '' : 'disabled'} aria-label="Next weekday">▶</button>
           </div>
         </div>
@@ -1000,9 +1017,9 @@
     const tip = names
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    const nameHint = '';
+    const cellTip = slotCellTip(m, tip);
     return `<button type="button" class="slot${slotSelectedByUser(state, m, slotIso, attendee?.id) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
-      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
+      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(cellTip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
     </button>`;
@@ -1520,6 +1537,20 @@
             <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
           <p class="meta options-duration-hint"><strong>Meeting length</strong> (${formatDurationLabel(m.duration_minutes)}) is the whole meeting. <strong>Calendar slot size</strong> (${formatDurationLabel(m.slot_granularity_minutes)}) is one cell — use a smaller slot if people may attend for only part of the meeting. Slot size must divide meeting length evenly (e.g. 3 h meeting with 1 h slots → select 3 consecutive slots for full attendance).${meetingSlotSteps(m).valid && meetingSlotSteps(m).steps > 1 ? ` Currently ${meetingSlotSteps(m).steps} slot(s) per full meeting.` : ''}${!meetingSlotSteps(m).valid ? ' <strong>Current settings do not divide evenly — please fix before saving.</strong>' : ''}</p>
+          <details class="session-presets-block">
+            <summary title="Half-day shortcuts for meeting length">Half-day presets (AM / PM)</summary>
+            <p class="meta">Default AM <strong>09:00–12:00</strong>, PM <strong>12:00–16:00</strong>. Adjust the times if your organisation uses different half-days (e.g. AM until 13:00, PM 15:00–18:00). Buttons set <em>meeting length</em> and snap <em>grid hours</em> to that session — change slot size if needed, then save.</p>
+            <div class="form-grid session-times-grid">
+              <label title="Start of morning (AM) session">AM from<input type="time" name="am_start" value="${escapeHtml(m.am_start || '09:00')}"></label>
+              <label title="End of morning (AM) session">AM until<input type="time" name="am_end" value="${escapeHtml(m.am_end || '12:00')}"></label>
+              <label title="Start of afternoon (PM) session">PM from<input type="time" name="pm_start" value="${escapeHtml(m.pm_start || '12:00')}"></label>
+              <label title="End of afternoon (PM) session">PM until<input type="time" name="pm_end" value="${escapeHtml(m.pm_end || '16:00')}"></label>
+            </div>
+            <div class="row session-preset-btns">
+              <button type="button" class="btn-nav compact-btn" data-action="preset-duration-am" title="Set meeting length to the AM session and snap grid hours to the AM window">Use AM length (${formatDurationLabel(minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00'))})</button>
+              <button type="button" class="btn-nav compact-btn" data-action="preset-duration-pm" title="Set meeting length to the PM session and snap grid hours to the PM window">Use PM length (${formatDurationLabel(minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00'))})</button>
+            </div>
+          </details>
           <details class="timezone-block">
             <summary>Calendar hours timezone <span class="label-hint">(defaults to yours: ${escapeHtml(tz)})</span></summary>
             <p class="meta">These times will be displayed for each person in their local time zone and UTC. The timezone below only affects which timezone the "earliest/latest" hours are defined in, so everyone marks the same slots.</p>
@@ -1529,9 +1560,9 @@
           </details>
           <div class="form-grid">
             <label title="Earliest date this meeting is open for scheduling.">Earliest bookable meeting start<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
-            <label title="Earliest start time shown on the calendar grid, each day.">Allow bookings from <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+            <label title="Earliest start time shown on the calendar grid each day (meeting timezone).">Allow bookings from <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
             <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">Require bookings to be on or before <span class="label-hint">(optional — blank = open-ended)</span><input type="date" name="range_end" value="${escapeHtml(optionsRangeEnd(m))}"></label>
-            <label title="Latest end time shown on the calendar grid, each day.">Allow bookings up until end time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+            <label title="Latest end time shown on the calendar grid each day (meeting timezone).">Allow bookings up until <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
           </div>
           <details>
             <summary class="recurrence-summary">Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
@@ -2032,6 +2063,8 @@
           duration_minutes: duration,
           slot_granularity_minutes: slotGran,
           day_start: fd.get('day_start'), day_end: fd.get('day_end'),
+          am_start: fd.get('am_start'), am_end: fd.get('am_end'),
+          pm_start: fd.get('pm_start'), pm_end: fd.get('pm_end'),
           range_start: rangeStart, range_end: rangeEnd,
           timezone: normalizeTimezone(fd.get('timezone')),
           show_weekends: fd.get('show_weekends') === 'on',
@@ -2230,6 +2263,33 @@
       return;
     }
     if (action === 'toggle-header') { state.headerExpanded = !state.headerExpanded; render(root, state); return; }
+
+    if (action === 'preset-duration-am' || action === 'preset-duration-pm') {
+      const form = btn.closest('form[data-form="update-settings"]');
+      if (!form) return;
+      const isAm = action === 'preset-duration-am';
+      const startName = isAm ? 'am_start' : 'pm_start';
+      const endName = isAm ? 'am_end' : 'pm_end';
+      const start = form.querySelector(`[name="${startName}"]`)?.value;
+      const end = form.querySelector(`[name="${endName}"]`)?.value;
+      if (!start || !end) {
+        toast('Set AM/PM session times first', true);
+        return;
+      }
+      const mins = minutesBetweenTimes(start, end);
+      if (mins < 1) {
+        toast('Session end must be after start', true);
+        return;
+      }
+      const durInput = form.querySelector('[name="duration_input"]');
+      if (durInput) durInput.value = formatDurationForInput(mins);
+      const dayStart = form.querySelector('[name="day_start"]');
+      const dayEnd = form.querySelector('[name="day_end"]');
+      if (dayStart) dayStart.value = start;
+      if (dayEnd) dayEnd.value = end;
+      toast(`${isAm ? 'AM' : 'PM'} length set to ${formatDurationLabel(mins)} — check slot size divides evenly, then save`);
+      return;
+    }
 
     if (action === 'edit-intro') { state.editingIntro = btn.dataset.field; render(root, state); return; }
     if (action === 'cancel-intro') { state.editingIntro = null; render(root, state); return; }

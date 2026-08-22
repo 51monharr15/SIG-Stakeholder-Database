@@ -35,8 +35,12 @@ final class MeetFile
             'location_preferences' => [],
             'notes' => '',
             'show_weekends' => false,
-            'day_start' => '08:00',
-            'day_end' => '20:00',
+            'day_start' => '09:00',
+            'day_end' => '16:00',
+            'am_start' => '09:00',
+            'am_end' => '12:00',
+            'pm_start' => '12:00',
+            'pm_end' => '16:00',
             'timezone' => '',
             'organizer_intro' => '',
             'page_times_intro' => '',
@@ -105,6 +109,7 @@ final class MeetFile
             'duration_minutes', 'slot_granularity_minutes',
             'range_start', 'range_end',
             'show_weekends', 'day_start', 'day_end', 'timezone',
+            'am_start', 'am_end', 'pm_start', 'pm_end',
         ];
         foreach ($header as $key) {
             if (!array_key_exists($key, $meet) || $meet[$key] === null || $meet[$key] === '') {
@@ -383,8 +388,12 @@ final class MeetFile
         $meet['location_preferences'] = $meet['location_preferences'] ?? [];
         $meet['recurrence'] = $meet['recurrence'] ?? ['type' => 'none'];
         $meet['show_weekends'] = (bool) ($meet['show_weekends'] ?? false);
-        $meet['day_start'] = $meet['day_start'] ?? '08:00';
-        $meet['day_end'] = $meet['day_end'] ?? '20:00';
+        $meet['day_start'] = $meet['day_start'] ?? '09:00';
+        $meet['day_end'] = $meet['day_end'] ?? '16:00';
+        $meet['am_start'] = $meet['am_start'] ?? '09:00';
+        $meet['am_end'] = $meet['am_end'] ?? '12:00';
+        $meet['pm_start'] = $meet['pm_start'] ?? '12:00';
+        $meet['pm_end'] = $meet['pm_end'] ?? '16:00';
         $meet['timezone'] = Timezone::normalize((string) ($meet['timezone'] ?? ''));
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';

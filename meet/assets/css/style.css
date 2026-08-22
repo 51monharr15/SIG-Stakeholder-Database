@@ -917,6 +917,20 @@ button.linkish {
   font-size: 0.88rem;
 }
 
+.session-presets-block {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.session-times-grid {
+  margin-top: 0.35rem;
+}
+
+.session-preset-btns {
+  margin-top: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .day-head.is-today {
   background: #ecfdf5;
   font-weight: 700;

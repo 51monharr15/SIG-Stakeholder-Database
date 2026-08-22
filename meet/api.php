@@ -530,6 +530,7 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         'title', 'duration_minutes', 'slot_granularity_minutes', 'day_start', 'day_end',
         'timezone', 'show_weekends', 'organizer_intro', 'page_times_intro', 'page_after_intro',
         'range_start', 'range_end', 'recurrence',
+        'am_start', 'am_end', 'pm_start', 'pm_end',
     ];
     $needsOrganizer = false;
     foreach ($organizerFields as $field) {
@@ -547,6 +548,7 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
             'title', 'notes', 'range_start', 'range_end',
             'duration_minutes', 'slot_granularity_minutes',
             'day_start', 'day_end', 'timezone',
+            'am_start', 'am_end', 'pm_start', 'pm_end',
             'organizer_intro', 'page_times_intro', 'page_after_intro',
         ];
         foreach ($fields as $field) {
