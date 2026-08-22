@@ -745,7 +745,7 @@
         <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
           ${topLocations.length
             ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
-            : renderLocationPopularitySummary(m)}
+            : '<p class="meta">No locations proposed yet.</p>'}
         </details>
         ${recordsOpen && m.attachments.length ? `<details class="overview-block" open><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments and records (${m.attachments.length})</summary>
           ${m.attachments.map((a) => renderAttachment(a, attendee)).join('')}
@@ -957,8 +957,8 @@
             <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
           </div>
           ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
-          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky: false })}
-          <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
+          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky: true })}
+          <div class="calendar group-calendar calendar-after-sticky-toolbar" style="--cal-cols:${days.length || dayCount}">
             <div class="cal-header">
               <div class="time-gutter"></div>
               ${days.map((d, i) => {
