@@ -703,9 +703,12 @@
   // ─── Overview tab ────────────────────────────────────────────────────────────
 
   function renderOverviewTab(m, state, attendee) {
-    const allSuggestions = sortSuggestions(m, 'count');
+    const allSuggestions = overviewTimeSuggestions(m);
     const suggestionTotal = allSuggestions.length;
     const sorted = allSuggestions.slice(0, 10);
+    const locationRanked = overviewLocationRankings(m);
+    const locationTotal = locationRanked.length;
+    const topLocations = locationRanked.slice(0, 3);
     const kind = meetingStatusKind(m, state);
     const agendaOpen = kind !== 'past' && kind !== 'summarised';
     const recordsOpen = kind === 'past' || kind === 'summarised';
@@ -733,14 +736,16 @@
         <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
           ${renderOverviewAttendeeTable(m)}
         </details>
-        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top ${Math.min(10, suggestionTotal)} of ${suggestionTotal} choices. Start times with best attendance</summary>
+        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
           ${sorted.length
-            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>
-               <p class="meta">Confirm one with <strong>Set confirmed meeting details</strong>. Colour key: light green = all free full duration; amber = all for part duration; purple = some available; dark green border = currently selected start.</p>`
-            : '<p class="meta">No overlap times yet — go to Set confirmed meeting details to choose a start slot.</p>'}
+            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatOverviewTimeSuggestion(m, s)}</li>`).join('')}</ul>
+               <p class="meta">Confirm one with <strong>Set confirmed meeting details</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap.</p>`
+            : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Set confirmed meeting details</strong>.</p>'}
         </details>
-        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top ${Math.min(3, m.locations.length)} proposed locations (by popularity from ${m.locations.length} choice${m.locations.length === 1 ? '' : 's'})</summary>
-          ${renderLocationPopularitySummary(m)}
+        <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
+          ${topLocations.length
+            ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
+            : renderLocationPopularitySummary(m)}
         </details>
         ${recordsOpen && m.attachments.length ? `<details class="overview-block" open><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments and records (${m.attachments.length})</summary>
           ${m.attachments.map((a) => renderAttachment(a, attendee)).join('')}
@@ -750,16 +755,56 @@
 
   function renderLocationPopularitySummary(m) {
     if (!m.locations.length) return '<p class="meta">No locations proposed yet.</p>';
+    const ranked = overviewLocationRankings(m).slice(0, 3);
+    return `<ul class="list-plain">${ranked.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`;
+  }
+
+  function overviewLocationRankings(m) {
+    if (!m.locations.length) return [];
     const prefs = m.location_preferences || {};
     const counts = new Map(m.locations.map((loc) => [loc.id, 0]));
     Object.values(prefs).forEach((ids) => {
       (ids || []).forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
     });
-    const ranked = m.locations
+    return m.locations
       .map((loc) => ({ loc, votes: counts.get(loc.id) || 0 }))
-      .sort((a, b) => b.votes - a.votes || a.loc.label.localeCompare(b.loc.label))
-      .slice(0, 3);
-    return `<ul class="list-plain">${ranked.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`;
+      .sort((a, b) => b.votes - a.votes || a.loc.label.localeCompare(b.loc.label));
+  }
+
+  /** Merge full and partial overlap starts for Overview (partial-only was omitted before). */
+  function overviewTimeSuggestions(m) {
+    const total = m.attendees.length;
+    const bySlot = new Map();
+    for (const s of m.suggestions?.slots || []) {
+      bySlot.set(s.slot, { slot: s.slot, fullCount: s.count, partialCount: 0, kind: 'full' });
+    }
+    for (const s of m.suggestions?.partial_slots || []) {
+      if (bySlot.has(s.slot)) continue;
+      bySlot.set(s.slot, {
+        slot: s.slot,
+        fullCount: (s.attendees_full || []).length,
+        partialCount: (s.attendees_partial || []).length,
+        kind: 'partial',
+      });
+    }
+    return [...bySlot.values()].sort((a, b) => {
+      if (b.fullCount !== a.fullCount) return b.fullCount - a.fullCount;
+      if (b.partialCount !== a.partialCount) return b.partialCount - a.partialCount;
+      return a.slot.localeCompare(b.slot);
+    });
+  }
+
+  function formatOverviewTimeSuggestion(m, s) {
+    const total = m.attendees.length;
+    if (s.kind === 'full' || s.fullCount === total) {
+      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} available for full meeting duration`;
+    }
+    if (s.fullCount > 0) {
+      const partialNote = s.partialCount ? `; ${s.partialCount} partial` : '';
+      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} for full duration${partialNote}`;
+    }
+    const marked = s.fullCount + s.partialCount;
+    return `${formatTimePair(s.slot)} — ${marked} of ${total} marked (partial overlap)`;
   }
 
   function renderOverviewAttendeeTable(m) {
