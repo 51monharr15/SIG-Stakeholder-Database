@@ -22,8 +22,10 @@
     'America/Denver', 'America/Los_Angeles', 'America/Toronto',
   ];
   const TZ_REGION_ORDER = ['Shortlist', 'UTC', 'Africa', 'America', 'Antarctica', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Other'];
-  const INTRO_PLACEHOLDER = 'Add a short description for attendees — use Meeting options.';
+  const INTRO_PLACEHOLDER = 'Add a short description for attendees — shown in the status bar and Overview.';
   const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+  function isNarrowScreen() { return window.innerWidth < 700; }
+  function autoDetailsOpen(defaultOpen = true) { return !isNarrowScreen() && defaultOpen; }
   const page = document.body.dataset.page;
 
   function sanitizePasscode(raw) {
@@ -348,17 +350,27 @@
     const stepSelf = !!attendee;
     const stepOptions = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes'
       || !!(m.title?.trim());
+    const stepResources = !!(m.organizer_intro?.trim() || m.agenda?.length || m.decisions?.length
+      || (m.notes || '').trim() || m.attachments?.length);
     const stepOthers = (m.attendees?.length || 0) > 1;
     const stepAvail = !!attendee && countSlotsFor(m, attendee.id) > 0;
     const stepLocations = (m.locations?.length || 0) > 0;
+    const stepConfirm = !!m.confirmed_slot;
     const stepShare = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes'
       || (m.attendees?.length || 0) > 1;
     const allDone = stepSelf && stepOptions && stepAvail && stepShare;
-    return { isOrg, stepSelf, stepOptions, stepOthers, stepAvail, stepLocations, stepShare, allDone };
+    return {
+      isOrg, stepSelf, stepOptions, stepResources, stepOthers, stepAvail, stepLocations,
+      stepConfirm, stepShare, allDone,
+    };
   }
 
   function restoreAttendeeSelections(state) {
     if (!state.attendeeId) return;
+    state.selectedSlots.clear();
+    for (const [iso, ids] of Object.entries(state.meet.availability || {})) {
+      if ((ids || []).includes(state.attendeeId)) state.selectedSlots.add(iso);
+    }
     const saved = localStorage.getItem(slotsKey(state.slug, state.attendeeId));
     if (saved) {
       try { JSON.parse(saved).forEach((s) => state.selectedSlots.add(s)); } catch (_) {}
@@ -387,9 +399,9 @@
     { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
     { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
-    { id: 'agenda',     label: 'Agenda, Attachments and Records', tip: 'Agenda items, decisions, notes, and post-meeting attachments/records.' },
+    { id: 'agenda',     label: 'Meeting Resources', tip: 'Meeting description, agenda, decisions, notes, attachments, and post-meeting records.' },
     { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
-    { id: 'options',    label: 'Meeting options',    tip: 'Meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Earliest/latest dates, meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change.' },
     { id: 'group',      label: 'Set confirmed meeting details', tip: 'Selecting a confirmed meeting time requires organiser status.' },
   ];
 
@@ -526,6 +538,7 @@
     let locHtml;
     const locs = effectiveConfirmLocations(state, m);
     const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
+    const recurrenceLabel = escapeHtml(m.recurrence_label || 'One-off');
     if (scheduled) {
       timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span>`;
     } else {
@@ -534,6 +547,7 @@
         ? `<span class="meta">Time (proposed): ${formatTimePair(pendingSlot)}</span>`
         : '<span class="meta">No date and time selected</span>';
     }
+    const recurrenceHtml = `<span class="meta">Recurrence: ${recurrenceLabel}</span>`;
     const parts = [];
     if (locs.online) {
       parts.push(`${scheduled ? 'Online' : 'Online (proposed)'}: ${locationInlineHtml(m, locs.online)}`);
@@ -548,8 +562,23 @@
       <span class="status-label">Status:</span>
       <span class="status-value">${escapeHtml(label)}</span>
       ${timeHtml}
+      ${recurrenceHtml}
       ${locHtml}
+      ${renderStatusDescription(m)}
     </div>`;
+  }
+
+  function renderStatusDescription(m) {
+    const desc = (m.organizer_intro || '').trim();
+    const plain = desc ? desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    const preview = plain ? plain.slice(0, 72) + (plain.length > 72 ? '…' : '') : 'Set in meeting resources.';
+    const body = desc
+      ? `<div class="meet-intro-body status-desc-body">${sanitizeHtml(desc)}</div>`
+      : '<p class="meta">No description yet — set one in <strong>Meeting Resources</strong>.</p>';
+    return `<details class="status-desc"${autoDetailsOpen(false) ? ' open' : ''}>
+      <summary class="meta status-desc-summary">Description: ${escapeHtml(preview)}</summary>
+      ${body}
+    </details>`;
   }
 
   // ─── Help panel ──────────────────────────────────────────────────────────────
@@ -568,7 +597,8 @@
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
               <ol class="help-steps">
                 <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
-                <li><strong>Meeting options</strong> — title, meeting length, calendar slot duration, timezone, description. Visible to everyone; only organisers can change. Save when done.</li>
+                <li><strong>Calendar Options</strong> — earliest/latest dates, meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change. Save when done.</li>
+                <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments.</li>
                 <li><strong>My availability</strong> — mark free slots on the calendar. Press <em>Save my availability</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
                 <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
@@ -602,13 +632,26 @@
 
   // ─── Getting started tab ─────────────────────────────────────────────────────
 
+  function goTabLink(tab, linkText) {
+    return `<button type="button" class="setup-tab-link" data-action="tab" data-tab="${tab}">${escapeHtml(linkText)}</button>`;
+  }
+
+  function formSaveHeader(buttonHtml) {
+    if (!buttonHtml) return '';
+    return `<div class="form-save-header row">${buttonHtml}</div>`;
+  }
+
   function renderGettingStartedTab(m, state, attendee) {
     const setup = setupChecklistState(m, state, attendee);
-    const go = (tab, label) => `<button type="button" class="btn-nav compact-btn setup-inline-go" data-action="tab" data-tab="${tab}">${escapeHtml(label)}</button>`;
+    const go = (tab, label) => goTabLink(tab, label);
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Getting started</h2>
-        <p class="meta">A step-by-step checklist for setting up this meeting. This stays available whenever you need it.</p>
+        <details class="getting-started-intro"${autoDetailsOpen(true) ? ' open' : ''}>
+          <summary class="section-title">Instructions for organisers and attendees</summary>
+          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>, and review proposed times.</p>
+          <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a>.</p>
+        </details>
         <ol class="setup-steps">
           <li>
             <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
@@ -616,9 +659,13 @@
             First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
-            <strong>${setup.stepOptions ? '✓ ' : ''}Set Meeting Options</strong> —
-            Organiser status required. Edit the meeting’s title, description and length, booking granularity (grid slot duration), weekends and any recurrence.
-            ${go('options', 'Go to Meeting options →')}
+            <strong>${setup.stepOptions ? '✓ ' : ''}Set Calendar Options</strong> —
+            Organiser status required. Edit the meeting’s Earliest/Latest dates, Duration, Booking granularity (grid slot duration), Weekends and any recurrence.
+            ${go('options', 'Go to Calendar Options')}
+          </li>
+          <li>
+            <strong>${setup.stepResources ? '✓ ' : ''}(Optional)</strong>
+            ${go('agenda', 'Go to Meeting Resources')} — Set/edit title, description, agenda, attachments, etc.
           </li>
           <li>
             <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
@@ -635,6 +682,11 @@
             Any attendee can propose locations. Organisers can (re-)select a confirmed location at any time.
           </li>
           <li>
+            <strong>${setup.stepConfirm ? '✓ ' : ''}Set Confirmed Meeting Details</strong> —
+            Organiser status required. Pick an agreed meeting date, time and location(s). (Can be amended.)
+            ${go('group', 'Go to Set confirmed meeting details')}
+          </li>
+          <li>
             <strong>${setup.stepShare ? '✓ ' : ''}Share the link</strong> —
             Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
             <span class="row setup-share-row">
@@ -644,9 +696,7 @@
           </li>
         </ol>
         ${setup.allDone ? '<p class="meta"><strong>Setup complete.</strong> You can keep using this checklist any time, or move on to Overview and the other tabs.</p>' : '<p class="meta">This checklist stays visible at all times.</p>'}
-        <div class="row">
-          <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="overview">Go to Overview →</button>
-        </div>
+        <p class="meta">${go('overview', 'Go to Overview')}</p>
       </section>`;
   }
 
@@ -656,58 +706,28 @@
     const allSuggestions = sortSuggestions(m, 'count');
     const suggestionTotal = allSuggestions.length;
     const sorted = allSuggestions.slice(0, 10);
-    const desc = (m.organizer_intro || '').trim();
-    const signedIn = !!attendee;
-    const isOrg = !!attendee?.is_organizer;
     const kind = meetingStatusKind(m, state);
     const agendaOpen = kind !== 'past' && kind !== 'summarised';
     const recordsOpen = kind === 'past' || kind === 'summarised';
     const availabilityCount = m.attendees.filter((a) => countSlotsFor(m, a.id) > 0).length;
-
-    let stepsHtml;
-    if (isOrg) {
-      stepsHtml = `<ul class="help-steps">
-          <li>Review <strong>Meeting options</strong> for duration, timezone, and recurrence.</li>
-          <li>Open <strong>Attendees</strong> to confirm who is invited and organiser roles.</li>
-          <li>Open <strong>My availability</strong> and mark your own slots.</li>
-          <li>Allow time for attendees to mark their availability.</li>
-          <li>Open <strong>Set confirmed meeting details</strong> to review overlap and pick a proposed start slot.</li>
-          <li>Open <strong>Locations</strong> to review and select location preference.</li>
-          <li>Accept the proposed start as the scheduled time when ready.</li>
-        </ul>`;
-    } else if (signedIn) {
-      stepsHtml = `<ul class="help-steps">
-          <li>Open <strong>My availability</strong> and mark every time slot when you are free. Save when done.</li>
-          <li>Open <strong>Locations</strong> — review proposed venues and select the ones that work for you.</li>
-          <li>Open <strong>Set confirmed meeting details</strong> to see overlap and discuss best start times.</li>
-          <li>Optionally open <strong>Attendees</strong> to review who is coming and add anyone missing.</li>
-          <li>These steps can be done in any order and repeated as the meeting evolves.</li>
-        </ul>`;
-    } else {
-      stepsHtml = `<ul class="help-steps">
-          <li><strong>Claim an identity</strong> or add yourself on <strong>Attendees</strong>.</li>
-          <li>Then mark your availability on <strong>My availability</strong>.</li>
-          <li>Review <strong>Locations</strong> and select the ones that work for you.</li>
-          <li>View <strong>Agenda, Attachments and Records</strong> for meeting details.</li>
-          <li>Check <strong>Set confirmed meeting details</strong> for the proposed or scheduled time.</li>
-        </ul>`;
-    }
-
-    const attendeePrompt = `
-      <details class="attendee-prompt overview-help"${state.overviewHelpOpen ? ' open' : ''}>
-        <summary class="section-title" title="Tap or click the triangle to expand/collapse">What to do next</summary>
-        ${stepsHtml}
-      </details>`;
+    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
+    const pendingSlot = effectiveConfirmSlot(state, m);
+    const timeSummary = scheduled && m.confirmed_slot
+      ? formatTimePair(m.confirmed_slot)
+      : (pendingSlot ? `${formatTimePair(pendingSlot)} (proposed)` : 'None selected yet');
 
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Overview</h2>
         <p class="meta">Tap or click headings with a ▸ triangle to expand.</p>
-        ${attendeePrompt}
-        ${desc ? `<h3 class="section-title">Description for attendees</h3><div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : '<h3 class="section-title">Description for attendees</h3><p class="meta">No description yet — add one in Meeting options.</p>'}
-        <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set with Agenda, Attachments and Records)</span></summary>
-          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Agenda, Attachments and Records</strong> to set it.</p>'}
-          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Agenda, Attachments and Records</strong> to set them.</p>'}
+        <details class="overview-block"${autoDetailsOpen(true) ? ' open' : ''}>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Proposed times</summary>
+          <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'}:</strong> ${timeSummary}</p>
+          <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
+        </details>
+        <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to set it.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Meeting Resources</strong> to set them.</p>'}
           ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
         </details>
         <details class="overview-block"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
@@ -768,21 +788,20 @@
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
-    const saveRow = renderSaveRow(state);
     const todayStr = meetingTodayStr(m);
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
 
     return `
       <section class="panel stack calendar-panel">
-        <p class="meta">Mark when <strong>you</strong> are free. Drag or tap slots to select a range. Save anytime with <em>Save my availability</em>. Clicking or tapping a previously selected slot deselects it — don't forget to save again after changing your selection.</p>
-        <div class="row meta-line">
-          <span class="badge" title="Change recurrence in Meeting options">${escapeHtml(m.recurrence_label)}</span>
-          <span class="meta">Organisers can change recurrence in Meeting options.</span>
-        </div>
-        <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
+        <details class="calendar-instructions"${autoDetailsOpen(true) ? ' open' : ''}>
+          <summary class="section-title">Mark when you are free</summary>
+          <p class="meta">Drag or tap slots to select a range. Save anytime with <em>Save my availability</em>. Clicking or tapping a previously selected slot deselects it — don't forget to save again after changing your selection.</p>
+          <p class="meta slot-legend-note"><strong>Slots show initials</strong> of who has chosen that time. A <strong>+</strong> means more people than fit in the cell.</p>
+          <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
+        </details>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
-        ${saveRow}
-        ${renderCalendarNavToolbar(days, { canGoBack, canGoForward: true, todayStr })}
+        ${renderSaveRow(state, { showBottomButton: false })}
+        ${renderCalendarNavToolbar(days, { canGoBack, canGoForward: true, todayStr, sticky: true })}
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           <div class="cal-header">
             <div class="time-gutter"></div>
@@ -800,13 +819,13 @@
             `).join('')}
           </div>
         </div>
-        ${saveRow}
+        ${renderSaveRow(state, { showTopDuplicate: false })}
       </section>`;
   }
 
-  function renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr }) {
+  function renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky = false }) {
     return `
-      <div class="calendar-toolbar calendar-toolbar-sticky">
+      <div class="calendar-toolbar${sticky ? ' calendar-toolbar-sticky' : ''}">
         <button type="button" class="btn-nav" data-action="go-today" title="Jump so today is the first visible day">Today</button>
         <button type="button" class="btn-nav" data-action="prev-week" title="Go back one week" ${canGoBack ? '' : 'disabled'}>« week</button>
         <button type="button" class="btn-nav" data-action="prev-days" title="Go back one day" ${canGoBack ? '' : 'disabled'}>← day</button>
@@ -816,28 +835,35 @@
       </div>`;
   }
 
-  function renderSaveRow(state) {
+  function renderSaveRow(state, { showTopDuplicate = true, showBottomButton = true } = {}) {
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
-    return `<div class="row save-row calendar-save-row">
-      <button type="button" data-action="save-availability" title="Save your currently selected availability slots">Save my availability</button>
-      <span class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</span>
-    </div>`;
+    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots">Save my availability</button>`;
+    let html = '';
+    if (showTopDuplicate) html += formSaveHeader(saveBtn);
+    if (showBottomButton) {
+      html += `<div class="row save-row calendar-save-row">${saveBtn}<span class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</span></div>`;
+    } else if (showTopDuplicate) {
+      html += `<p class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</p>`;
+    }
+    return html;
   }
 
   function renderSlotCell(m, state, dateStr, hm, attendee, mtz, gapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
-    const ids = m.availability[slotIso] || [];
+    const ids = availabilityIdsAt(m, slotIso);
     const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
     const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
     const names = ids.map((id) => attendeeName(m, id)).join(', ');
     const tip = names
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
+    const nameHint = names && isTouchUi ? `<span class="slot-names">${escapeHtml(names)}</span>` : '';
+    return `<button type="button" class="slot${slotSelectedByUser(state, m, slotIso, attendee?.id) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
       data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
+      ${nameHint}
     </button>`;
   }
 
@@ -865,11 +891,12 @@
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <h2 class="section-title">Set confirmed meeting details</h2>
-        <div class="row">
-          ${renderAcceptScheduledButton(isOrg)}
+        <div class="row confirm-actions-row">
+          ${renderAcceptTimeButton(isOrg)}
+          ${renderAcceptLocationButton(isOrg)}
         </div>
-        <p class="meta"><strong>Selecting a confirmed meeting time requires organiser status.</strong></p>
-        <p class="meta">Meeting slots show initials of attendees who have marked availability on <strong>My availability</strong>.</p>
+        <p class="meta"><strong>Selecting a confirmed meeting time requires organiser status.</strong> Locations are optional — accept start and location(s) separately.</p>
+        <p class="meta slot-legend-note">Meeting slots show <strong>initials</strong> of attendees who marked availability on <strong>My availability</strong>. A <strong>+</strong> means more people than fit in the cell.</p>
         <p class="meta">Meeting hours in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
         <div class="row group-legend">
           <span class="legend-chip full">Light green = all attendees full duration</span>
@@ -877,7 +904,7 @@
           <span class="legend-chip partial">Purple = some attendees available</span>
           <span class="legend-chip selected">Dark green border = currently selected meeting start</span>
         </div>
-        <details class="confirm-section" open>
+        <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed meeting time</summary>
           <p class="meta">Click a slot to set the currently selected meeting start. Click it again to clear it. Times shown in your timezone and UTC.</p>
           <div class="row">
@@ -885,7 +912,7 @@
             <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
           </div>
           ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
-          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr })}
+          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky: false })}
           <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
             <div class="cal-header">
               <div class="time-gutter"></div>
@@ -904,25 +931,33 @@
             </div>
           </div>
         </details>
-        <details class="confirm-section" open>
+        <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed locations</summary>
-          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location (click again to clear). Hybrid proposals set both. Accept requires both an Online and a Physical confirmation.</p>
+          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location (click again to clear). Hybrid proposals set both. Locations are optional.</p>
           <p class="meta"><strong>Online:</strong> ${selectedLocations.online ? locationInlineHtml(m, selectedLocations.online) : 'none selected'}</p>
           <p class="meta"><strong>Physical:</strong> ${selectedLocations.physical ? locationInlineHtml(m, selectedLocations.physical) : 'none selected'}</p>
           ${renderConfirmLocationChoices(m, state, isOrg, selectedLocations)}
           <p class="meta">Locations can be proposed and voted for on the <strong>Locations</strong> tab.</p>
         </details>
-        <div class="row">
-          ${renderAcceptScheduledButton(isOrg)}
+        <div class="row confirm-actions-row">
+          ${renderAcceptTimeButton(isOrg)}
+          ${renderAcceptLocationButton(isOrg)}
         </div>
       </section>`;
   }
 
-  function renderAcceptScheduledButton(isOrg) {
+  function renderAcceptTimeButton(isOrg) {
     if (isOrg) {
-      return `<button type="button" data-action="confirm-details" title="Accept the currently selected start time and both Online and Physical confirmed locations">Accept proposed start as scheduled start time</button>`;
+      return `<button type="button" data-action="confirm-time" title="Accept the currently selected start time as the scheduled start">Accept proposed start as scheduled start time</button>`;
     }
-    return `<button type="button" data-action="confirm-details" disabled title="Disabled because selecting a confirmed meeting time requires organiser status.">Accept proposed start as scheduled start time</button>`;
+    return `<button type="button" data-action="confirm-time" disabled title="Disabled because selecting a confirmed meeting time requires organiser status.">Accept proposed start as scheduled start time</button>`;
+  }
+
+  function renderAcceptLocationButton(isOrg) {
+    if (isOrg) {
+      return `<button type="button" data-action="confirm-locations" title="Accept the currently selected Online and/or Physical locations (optional)">Accept proposed location(s)</button>`;
+    }
+    return `<button type="button" data-action="confirm-locations" disabled title="Disabled because selecting confirmed locations requires organiser status.">Accept proposed location(s)</button>`;
   }
 
   function effectiveConfirmSlot(state, m) {
@@ -967,8 +1002,7 @@
       const slotIso = slotIsoFromMeetingDate(toDateIso(day), hm, mtz);
       if (slotIso === selected) return true;
       if (fullMap.has(slotIso) || partialMap.has(slotIso)) return true;
-      const ids = m.availability?.[slotIso] || [];
-      return ids.length > 0;
+      return availabilityIdsAt(m, slotIso).length > 0;
     });
   }
 
@@ -978,8 +1012,7 @@
       const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
       if (slotIso === selected) return true;
       if (fullMap.has(slotIso) || partialMap.has(slotIso)) return true;
-      const ids = m.availability?.[slotIso] || [];
-      return ids.length > 0;
+      return availabilityIdsAt(m, slotIso).length > 0;
     });
   }
 
@@ -1008,7 +1041,7 @@
   }
 
   function attendeesUnavailableForSlot(m, slotIso) {
-    const ids = new Set(m.availability?.[slotIso] || []);
+    const ids = new Set(availabilityIdsAt(m, slotIso));
     return m.attendees.filter((a) => !ids.has(a.id));
   }
 
@@ -1017,7 +1050,7 @@
     let cls = 'empty';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
     let initials = '';
-    const atSlotIds = m.availability?.[slotIso] || [];
+    const atSlotIds = availabilityIdsAt(m, slotIso);
     const allAtSlot = m.attendees.length > 0 && atSlotIds.length === m.attendees.length;
     if (fullMap.has(slotIso)) {
       const s = fullMap.get(slotIso);
@@ -1196,7 +1229,7 @@
     const physOpts = m.locations.filter((l) => ['physical', 'hybrid', 'other'].includes(l.kind));
     return `
       <details${isUpdate ? '' : ' open'}><summary>${isUpdate ? 'Update agreed time &amp; location (organiser)' : 'Agree meeting time &amp; location (organiser)'}</summary>
-        <p class="meta">Choose a time from <strong>Set confirmed meeting details</strong> by clicking a slot, or enter a UTC time below. Confirm both an Online and a Physical location (a Hybrid proposal can fill both).</p>
+        <p class="meta">Choose a time from <strong>Set confirmed meeting details</strong> by clicking a slot, or enter a UTC time below. Online and Physical locations are optional.</p>
         <form class="inline-form" data-form="confirm" id="confirm-form">
           <label>Proposed meeting start time
             ${renderProposedStartBlock(m, slotVal)}
@@ -1237,25 +1270,33 @@
   function renderAgendaTab(m, state, attendee) {
     const urlAttachments = m.attachments.filter((a) => a.type !== 'text');
     const textRecords = m.attachments.filter((a) => a.type === 'text');
+    const canEditDesc = !!attendee;
+    const saveMetaBtn = `<button type="submit" form="meeting-resources-form">Save meeting resources</button>`;
     return `
       <section class="panel stack" id="meeting-agenda-pane">
-        <h2 class="section-title">Agenda, Attachments and Records</h2>
-        <p class="meta">Agenda items and decisions needed before the meeting, preparatory notes, and — after the meeting — attachments, transcripts, and summaries.</p>
-        <h3 class="section-title">Notes &amp; agenda</h3>
-        ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
-        ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-        ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
-        <details class="notes-edit-details"${state.openNotesEditor ? ' open' : ''}><summary>Edit agenda / decisions / notes</summary>
-          <form class="inline-form" data-form="update-meta">
+        <h2 class="section-title">Meeting Resources</h2>
+        <p class="meta">Meeting description, agenda, decisions, preparatory notes, attachments, and post-meeting records.</p>
+        ${formSaveHeader(saveMetaBtn)}
+        <form class="inline-form" data-form="update-meta" id="meeting-resources-form">
+          <h3 class="section-title">Description for attendees</h3>
+          <label><span class="label-hint">(simple HTML — also shown in the status bar at the top)</span>
+            ${canEditDesc ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
+            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}"${canEditDesc ? '' : ' readonly'}>${escapeHtml(m.organizer_intro || '')}</textarea>
+          </label>
+          <h3 class="section-title">Notes &amp; agenda</h3>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
+          ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
+          <details class="notes-edit-details"${state.openNotesEditor ? ' open' : ''}><summary>Edit agenda / decisions / notes</summary>
             <label>Agenda <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
             <label>Decisions required <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
             <label>Notes <span class="label-hint">(simple HTML)</span>
               ${formatToolbar('notes', { withHelp: false })}
               <textarea name="notes" rows="3">${escapeHtml(m.notes || '')}</textarea>
             </label>
-            <button type="submit">Save</button>
-          </form>
-        </details>
+          </details>
+          ${canEditDesc ? `<button type="submit">Save meeting resources</button>` : '<p class="meta">Sign in on Attendees to edit meeting resources.</p>'}
+        </form>
         <h3 class="section-title">Attachments</h3>
         ${urlAttachments.length ? urlAttachments.map((a) => renderAttachment(a, attendee, state)).join('') : '<p class="meta">No attachments yet.</p>'}
         <h3 class="section-title">Records</h3>
@@ -1294,11 +1335,12 @@
   function renderOptionsTab(m, state, attendee) {
     const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
+    const saveBtn = canEdit ? '<button type="submit">Save calendar options</button>' : '';
     return `
       <section class="panel stack">
-        <h2 class="section-title">Meeting options</h2>
+        <h2 class="section-title">Calendar Options</h2>
         ${canEdit
-          ? '<p class="meta">Don\'t forget to <strong>Save meeting options</strong> after amending details.</p>'
+          ? '<p class="meta">Don\'t forget to <strong>Save calendar options</strong> after amending details.</p>'
           : '<p class="meta"><strong>View only.</strong> Only a meeting organiser can change these settings.</p>'}
         ${canEdit && !m.attendees.length ? '<p class="meta"><strong>Setup:</strong> Save your options below. Then return to Getting started or go straight to Attendees to add yourself as the first attendee.</p>' : ''}
         ${canEdit && !m.attendees.length ? `<div class="row">
@@ -1306,15 +1348,11 @@
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
         </div>` : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
+          ${formSaveHeader(saveBtn)}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
           </div>
-          <h3 class="section-title">Description for attendees</h3>
-          <label><span class="label-hint">(simple HTML — shown on Overview)</span>
-            ${canEdit ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
-            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
-          </label>
           <div class="form-grid">
             <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
             <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots.">Calendar slot duration (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
@@ -1339,7 +1377,7 @@
             <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
           </details>
           </fieldset>
-          ${canEdit ? '<button type="submit">Save meeting options</button>' : ''}
+          ${saveBtn}
         </form>
       </section>`;
   }
@@ -1384,7 +1422,8 @@
           <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
         </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
-        <div class="table-wrap table-wrap-compact">
+        <p class="meta attendee-table-hint">On narrow screens, scroll the table sideways to reach <strong>This is me</strong> and other actions.</p>
+        <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
             <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
             <tbody>
@@ -1757,7 +1796,13 @@
   }
 
   function formatTimePair(iso) {
-    return `<strong>${escapeHtml(formatSlotLocal(iso))}</strong> equals ${escapeHtml(formatSlotUtc(iso))}`;
+    return `<strong>${escapeHtml(formatSlotLocal(iso))}</strong> (${escapeHtml(formatSlotUtc(iso))})`;
+  }
+
+  function slotSelectedByUser(state, m, slotIso, attendeeId) {
+    if (state.selectedSlots.has(slotIso)) return true;
+    if (!attendeeId) return false;
+    return availabilityIdsAt(m, slotIso).includes(attendeeId);
   }
 
   function bestProposedSlot(m) {
@@ -1829,11 +1874,16 @@
           range_start: rangeStart, range_end: rangeEnd,
           timezone: normalizeTimezone(fd.get('timezone')),
           show_weekends: fd.get('show_weekends') === 'on',
-          organizer_intro: fd.get('organizer_intro'),
           recurrence: buildRecurrenceFromForm(fd),
         });
       } else if (kind === 'update-meta') {
-        data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
+        const payload = {
+          action: 'update_meta', slug: state.slug,
+          agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes'),
+        };
+        if (fd.get('organizer_intro') != null) payload.organizer_intro = fd.get('organizer_intro');
+        if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
+        data = await apiPost(payload);
       } else if (kind === 'add-location') {
         const built = buildLocationPayload(fd);
         const duplicate = (state.meet.locations || []).some((loc) => {
@@ -1909,9 +1959,6 @@
       } else if (kind === 'confirm') {
         const online = String(fd.get('confirmed_location_online') || '').trim();
         const physical = String(fd.get('confirmed_location_physical') || '').trim();
-        if (!online || !physical) {
-          throw new Error('Select both an Online and a Physical location before agreeing meeting details');
-        }
         data = await apiPost({
           action: 'confirm',
           slug: state.slug,
@@ -1978,9 +2025,10 @@
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
       else if (kind === 'update-settings') {
         toast(state.attendeeId
-          ? 'Meeting options saved.'
-          : 'Meeting options saved. Next: add yourself as attendee (or return to Getting started).');
+          ? 'Calendar options saved.'
+          : 'Calendar options saved. Next: add yourself as attendee (or return to Getting started).');
       }
+      else if (kind === 'update-meta') toast('Meeting resources saved');
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
@@ -2207,20 +2255,15 @@
       toast('Confirmed location selection updated');
       return;
     }
-    if (action === 'confirm-details') {
+    if (action === 'confirm-time') {
       const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
       if (!me?.is_organizer) {
         toast('Only organisers can accept the proposed start as the scheduled start time', true);
         return;
       }
       const slot = effectiveConfirmSlot(state, state.meet);
-      const locs = effectiveConfirmLocations(state, state.meet);
       if (!slot) {
         toast('Choose a start slot first on the calendar above', true);
-        return;
-      }
-      if (!locs.online || !locs.physical) {
-        toast('Confirm both an Online and a Physical location before accepting (use a Hybrid proposal to set both at once)', true);
         return;
       }
       const wasAlreadyConfirmed = !!state.meet.confirmed_slot;
@@ -2230,19 +2273,40 @@
           slug: state.slug,
           acting_attendee_id: state.attendeeId,
           confirmed_slot: slot,
-          confirmed_location_online: locs.online,
-          confirmed_location_physical: locs.physical,
         });
         state.meet = data.meet;
         state.pendingConfirmSlot = null;
-        state.pendingConfirmLocationPhysical = null;
-        state.pendingConfirmLocationOnline = null;
         if (wasAlreadyConfirmed) {
           state.wasRescheduled = true;
           localStorage.setItem(rescheduledKey(state.slug), 'yes');
         }
         render(root, state);
-        toast('Meeting scheduled');
+        toast('Meeting start time scheduled');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
+    if (action === 'confirm-locations') {
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (!me?.is_organizer) {
+        toast('Only organisers can accept proposed locations', true);
+        return;
+      }
+      const locs = effectiveConfirmLocations(state, state.meet);
+      try {
+        const data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_location_online: locs.online || '',
+          confirmed_location_physical: locs.physical || '',
+        });
+        state.meet = data.meet;
+        state.pendingConfirmLocationPhysical = null;
+        state.pendingConfirmLocationOnline = null;
+        render(root, state);
+        toast('Confirmed location(s) saved');
       } catch (err) {
         toast(err.message, true);
       }

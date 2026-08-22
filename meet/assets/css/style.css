@@ -563,6 +563,83 @@ button.linkish {
   vertical-align: baseline;
 }
 
+.setup-tab-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0.15rem;
+  color: var(--accent, #2563eb);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  vertical-align: baseline;
+}
+
+.setup-tab-link:hover { color: #1d4ed8; }
+
+.form-save-header {
+  justify-content: flex-end;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.form-save-header:empty { display: none; }
+
+.confirm-actions-row {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-desc {
+  flex: 1 1 100%;
+  margin-top: 0.15rem;
+}
+
+.status-desc-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.status-desc-summary::-webkit-details-marker { display: none; }
+
+.status-desc-body {
+  margin-top: 0.35rem;
+  font-size: 0.88rem;
+}
+
+.slot-legend-note { margin-top: 0.25rem; }
+
+.slot-names {
+  display: block;
+  font-size: 0.62rem;
+  line-height: 1.1;
+  opacity: 0.85;
+  margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attendee-table-hint {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .attendee-table-hint { display: block; }
+
+  .attendee-table-wrap .data-table th:last-child,
+  .attendee-table-wrap .data-table td.attendee-actions {
+    position: sticky;
+    right: 0;
+    background: var(--panel, #fff);
+    box-shadow: -4px 0 8px rgba(0, 0, 0, 0.06);
+    z-index: 1;
+  }
+
+  .attendee-table-wrap .data-table tr.is-self td.attendee-actions {
+    background: var(--accent-soft);
+  }
+}
+
 .setup-share-row {
   display: inline-flex;
   flex-wrap: wrap;
