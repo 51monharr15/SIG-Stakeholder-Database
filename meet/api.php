@@ -585,7 +585,7 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
     $kind = trim((string) ($input['kind'] ?? 'other'));
     $detail = trim((string) ($input['detail'] ?? ''));
     if ($kind === 'video' && $detail === '') {
-        Response::error('Online locations need a meeting link URL.');
+        $detail = 'Link to be added';
     }
 
     $meet = $store->loadBySlug($slug);
@@ -621,7 +621,7 @@ function handleUpdateLocation(MeetStore $store, string $slug, array $input): voi
         Response::error('kind required');
     }
     if ($kind === 'video' && $detail === '') {
-        Response::error('Online locations need a meeting link URL.');
+        $detail = 'Link to be added';
     }
 
     $meet = $store->loadBySlug($slug);

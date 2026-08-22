@@ -61,7 +61,7 @@ final class Recurrence
         $weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
         return match ($type) {
-            'none' => 'One-off (no recurrence)',
+            'none' => 'One-off',
             'daily' => 'Every ' . max(1, (int) ($recurrence['interval'] ?? 1)) . ' day(s)',
             'weekly' => self::describeWeekly($recurrence, $weekdayNames),
             'monthly_day' => 'The ' . self::ordinalDay((int) ($recurrence['day'] ?? 1)) . ' of ' . self::monthsLabel((int) ($recurrence['interval'] ?? 1)),

@@ -454,7 +454,15 @@ button.linkish {
   .dash-btn {
     flex-shrink: 0;
     font-size: 0.75rem;
-    padding: 0.24rem 0.5rem;
+    padding: 0.2rem 0.45rem;
+    margin: 0;
+  }
+  .dashboard-nav {
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+  }
+  .calendar-toolbar .cal-range-label {
+    display: none;
   }
   .site-footer { padding: 0.4rem 0; font-size: 0.8rem; }
 }
@@ -606,9 +614,92 @@ button.linkish {
   text-overflow: ellipsis;
 }
 
-.day-head.is-today {
-  background: #ecfdf5;
+/* Help panel — outside sticky header so page scroll works immediately */
+.help-panel-outer {
+  margin: 0 0 0.75rem;
+}
+
+.help-panel-outer .help-panel {
+  margin: 0;
+}
+
+.signed-in-banner {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+.header-help-btn,
+.header-toggle-btn,
+.sticky-head-actions .compact-btn {
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.confirm-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.meeting-link-block {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.meeting-link-block > summary {
+  cursor: pointer;
+}
+
+.col-me {
+  width: 2.25rem;
+  text-align: center;
+  padding-left: 0.35rem !important;
+  padding-right: 0.35rem !important;
+}
+
+.claim-tick-btn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  width: 1.75rem;
+  height: 1.75rem;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.claim-tick.on {
+  color: var(--good);
   font-weight: 700;
+}
+
+.add-mode-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.mode-options-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.attachment-text > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.attachment-inner {
+  margin-top: 0.35rem;
+}
+
+.overview-title .label-hint {
+  font-weight: normal;
+  font-size: 0.88rem;
 }
 
 .setup-steps .setup-inline-go {
@@ -677,19 +768,23 @@ button.linkish {
 }
 
 @media (max-width: 700px) {
-  .attendee-table-hint { display: block; }
-
-  .attendee-table-wrap .data-table th:last-child,
-  .attendee-table-wrap .data-table td.attendee-actions {
-    position: sticky;
-    right: 0;
-    background: var(--panel, #fff);
-    box-shadow: -4px 0 8px rgba(0, 0, 0, 0.06);
-    z-index: 1;
+  .dash-btn {
+    padding: 0.2rem 0.45rem;
+    margin: 0;
   }
 
-  .attendee-table-wrap .data-table tr.is-self td.attendee-actions {
-    background: var(--accent-soft);
+  .dashboard-nav {
+    gap: 0.2rem;
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+  }
+
+  .calendar-toolbar .cal-range-label {
+    display: none;
+  }
+
+  .attendee-table-hint {
+    display: none;
   }
 }
 
@@ -761,6 +856,14 @@ button.linkish {
   padding: 0.35rem 0.2rem;
   border-radius: 6px;
   background: #f8fafc;
+  position: sticky;
+  top: calc(var(--sticky-h, 0px) + 2.75rem);
+  z-index: 3;
+}
+
+.day-head.is-today {
+  background: #ecfdf5;
+  font-weight: 700;
 }
 
 .day-head.recurring { background: #fff7ed; color: var(--warn); }

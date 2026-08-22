@@ -141,8 +141,8 @@
       attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
       helpOpen: false,
-      locOnline: true,
-      locPhysical: false,
+      locType: 'online',
+      lastNarrow: isNarrowScreen(),
     };
 
     try {
@@ -177,6 +177,12 @@
       if (!state.meet) return;
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+      const narrow = isNarrowScreen();
+      if (narrow !== state.lastNarrow) {
+        state.lastNarrow = narrow;
+        render(root, state);
+        return;
+      }
       const dc = visibleDayCount();
       if (dc === state.lastDayCount) return;
       state.lastDayCount = dc;
@@ -439,22 +445,20 @@
             <div class="sticky-head row">
               <h1 class="meet-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</h1>
               <div class="row sticky-head-actions">
-                ${narrow ? `<button type="button" class="compact-btn" data-action="toggle-header" title="${compactHeader ? 'Show link, status details, and full header' : 'Use compact header'}">${compactHeader ? 'More ▾' : 'Less ▴'}</button>` : ''}
-                <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
+                ${narrow ? `<button type="button" class="compact-btn header-toggle-btn" data-action="toggle-header" title="Collapse/Expand for narrow screens">${compactHeader ? 'More ▾' : 'Less ▴'}</button>` : ''}
+                <button type="button" class="compact-btn header-help-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
                 <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
+            ${attendee ? renderSignedInBanner(attendee) : ''}
             ${compactHeader ? renderMeetingStatusCompact(m, state) : ''}
-            ${!compactHeader && state.helpOpen ? renderHelpPanel(m, attendee) : ''}
-            ${!compactHeader ? `<div class="share-row row share-row-top">
-              <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
-            </div>` : ''}
             ${!compactHeader ? renderMeetingStatus(m, state) : ''}
             <nav class="dashboard-nav" aria-label="Meeting sections">
               ${renderDashboardNav(m, state, attendee)}
             </nav>
           </div>
         </div>
+        ${state.helpOpen ? `<div class="help-panel-outer">${renderHelpPanel(m, attendee)}</div>` : ''}
         <div class="meet-content">
           ${state.activeTab === 'getting-started' ? renderGettingStartedTab(m, state, attendee) : ''}
           ${state.activeTab === 'overview'  ? renderOverviewTab(m, state, attendee) : ''}
@@ -500,6 +504,14 @@
   }
 
   // ─── Dashboard nav ───────────────────────────────────────────────────────────
+
+  function renderSignedInBanner(attendee) {
+    const role = attendee.is_organizer ? 'Organiser' : 'Attendee';
+    return `<p class="meta signed-in-banner">Currently signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> (${role})
+      <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your details">Edit</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser">Switch user</button>
+    </p>`;
+  }
 
   function renderDashboardNav(m, state, attendee) {
     return TAB_DEFS
@@ -621,7 +633,7 @@
               <h3 class="help-heading">Joining a meeting (attendee)</h3>
               <ol class="help-steps">
                 <li>Open the meeting link you were sent. You will see the meeting title and current status.</li>
-                <li>Go to <strong>Attendees</strong>. If you are already listed, press <em>This is me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
+                <li>Go to <strong>Attendees</strong>. If you are already listed, tick <em>Me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
                 <li>Open <strong>My availability</strong> and mark every slot when you are free. Press <em>Save my availability</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
                 <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
                 <li>Open <strong>Set confirmed meeting details</strong> to see how times overlap and what is proposed/scheduled.</li>
@@ -631,7 +643,7 @@
             </div>
           </div>
           <div class="help-footer">
-            <p class="meta">The <strong>Copy meeting link</strong> button at the top copies the meeting URL. Save it — the random code in the link is the only way back to this meeting unless you set a passcode. The <em>Find my meetings</em> option on the home page lets you look up meetings by name and passcode.</p>
+            <p class="meta">The <strong>Copy meeting link</strong> button copies the meeting link. Save the link — it is the only way back to this meeting unless you set a passcode. The <em>Find my meetings</em> option on the home page lets you look up a meeting but requires a registered name and matching passcode.</p>
           </div>
           <div class="help-panel-footer-close row">
             <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="Close help panel">Close / Collapse</button>
@@ -680,8 +692,8 @@
             ${go('agenda', 'Go to Meeting Resources')} — Set/edit title, description, agenda, attachments, etc.
           </li>
           <li>
-            <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
-            (Optionally) ${go('attendees', 'Go to Attendees')} and <strong>Add others as Proposed Attendees</strong> —
+            <strong>${setup.stepOthers ? '✓ ' : ''}(Optional)</strong>
+            ${go('attendees', 'Go to Attendees')} — Add others as proposed attendees.
             Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
           </li>
           <li>
@@ -733,8 +745,7 @@
 
     return `
       <section class="panel stack overview-panel">
-        <h2 class="section-title">Overview</h2>
-        <p class="meta">Tap or click headings with a ▸ triangle to expand.</p>
+        <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▸ headings to expand</span></h2>
         <details class="overview-block"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Proposed times</summary>
           <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'}:</strong> ${timeSummary}</p>
@@ -915,12 +926,11 @@
     const tip = names
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    const nameHint = names && isTouchUi ? `<span class="slot-names">${escapeHtml(names)}</span>` : '';
+    const nameHint = '';
     return `<button type="button" class="slot${slotSelectedByUser(state, m, slotIso, attendee?.id) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
       data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
-      ${nameHint}
     </button>`;
   }
 
@@ -948,9 +958,17 @@
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <h2 class="section-title">Set confirmed meeting details</h2>
+        <p class="meta">Use the options below to propose a time and a place.</p>
+        <details class="meeting-link-block">
+          <summary class="meta">Meeting link</summary>
+          <div class="share-row row">
+            <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
+            <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
+          </div>
+        </details>
         <div class="row confirm-actions-row">
-          ${renderAcceptTimeButton(isOrg)}
-          ${renderAcceptLocationButton(isOrg)}
+          ${renderAcceptTimeButton(isOrg, state, m)}
+          ${renderAcceptLocationButton(isOrg, state, m)}
         </div>
         <p class="meta"><strong>Selecting a confirmed meeting time requires organiser status.</strong> Locations are optional — accept start and location(s) separately.</p>
         <p class="meta slot-legend-note">Meeting slots show <strong>initials</strong> of attendees who marked availability on <strong>My availability</strong>. A <strong>+</strong> means more people than fit in the cell.</p>
@@ -990,31 +1008,48 @@
         </details>
         <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed locations</summary>
-          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location (click again to clear). Hybrid proposals set both. Locations are optional.</p>
+          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location independently (click again to clear). Locations are optional.</p>
           <p class="meta"><strong>Online:</strong> ${selectedLocations.online ? locationInlineHtml(m, selectedLocations.online) : 'none selected'}</p>
           <p class="meta"><strong>Physical:</strong> ${selectedLocations.physical ? locationInlineHtml(m, selectedLocations.physical) : 'none selected'}</p>
           ${renderConfirmLocationChoices(m, state, isOrg, selectedLocations)}
           <p class="meta">Locations can be proposed and voted for on the <strong>Locations</strong> tab.</p>
         </details>
         <div class="row confirm-actions-row">
-          ${renderAcceptTimeButton(isOrg)}
-          ${renderAcceptLocationButton(isOrg)}
+          ${renderAcceptTimeButton(isOrg, state, m)}
+          ${renderAcceptLocationButton(isOrg, state, m)}
         </div>
       </section>`;
   }
 
-  function renderAcceptTimeButton(isOrg) {
-    if (isOrg) {
-      return `<button type="button" data-action="confirm-time" title="Accept the currently selected start time as the scheduled start">Accept proposed start as scheduled start time</button>`;
+  function renderAcceptTimeButton(isOrg, state, m) {
+    const slot = effectiveConfirmSlot(state, m);
+    const label = slot
+      ? `Accept start: ${formatSlotLocal(slot)}`
+      : 'Accept start: None proposed';
+    if (!isOrg) {
+      return `<button type="button" class="confirm-action-btn" data-action="confirm-time" disabled title="Organiser status required">${escapeHtml(label)}</button>`;
     }
-    return `<button type="button" data-action="confirm-time" disabled title="Disabled because selecting a confirmed meeting time requires organiser status.">Accept proposed start as scheduled start time</button>`;
+    return `<button type="button" class="confirm-action-btn" data-action="confirm-time"${slot ? '' : ' disabled'} title="${slot ? 'Accept this start as the scheduled time' : 'Select a start slot below first'}">${escapeHtml(label)}</button>`;
   }
 
-  function renderAcceptLocationButton(isOrg) {
-    if (isOrg) {
-      return `<button type="button" data-action="confirm-locations" title="Accept the currently selected Online and/or Physical locations (optional)">Accept proposed location(s)</button>`;
+  function renderAcceptLocationButton(isOrg, state, m) {
+    const locs = effectiveConfirmLocations(state, m);
+    const parts = [];
+    if (locs.online) {
+      const loc = m.locations.find((l) => l.id === locs.online);
+      parts.push(loc ? locationChipLabel(loc) : 'Online');
     }
-    return `<button type="button" data-action="confirm-locations" disabled title="Disabled because selecting confirmed locations requires organiser status.">Accept proposed location(s)</button>`;
+    if (locs.physical) {
+      const loc = m.locations.find((l) => l.id === locs.physical);
+      parts.push(loc ? locationChipLabel(loc) : 'Physical');
+    }
+    const label = parts.length
+      ? `Accept locations: ${parts.join('; ')}`
+      : 'Accept locations: None proposed';
+    if (!isOrg) {
+      return `<button type="button" class="confirm-action-btn" data-action="confirm-locations" disabled title="Organiser status required">${escapeHtml(label)}</button>`;
+    }
+    return `<button type="button" class="confirm-action-btn" data-action="confirm-locations"${parts.length ? '' : ' disabled'} title="${parts.length ? 'Accept selected location(s)' : 'Select location(s) below first'}">${escapeHtml(label)}</button>`;
   }
 
   function effectiveConfirmSlot(state, m) {
@@ -1215,35 +1250,37 @@
     const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
     const editing = state.editingLocationId === loc.id;
     if (editing && attendee) {
-      return renderEditLocationForm(loc);
+      return renderEditLocationForm(loc, attendee);
     }
     return `<div class="location-item">
       <button type="button" class="chip${selected ? ' active' : ''}${organiserPicked ? ' selected-start' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
         title="${selected ? 'Click to deselect as workable for you' : 'Click to select as workable for you'}">
         ${escapeHtml(locationChipLabel(loc))}${initials ? ` <span class="label-hint">(${escapeHtml(initials)})</span>` : ''}
       </button>
-      ${attendee ? `<button type="button" class="compact-btn" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit this location proposal">Edit</button>` : ''}
-      ${attendee?.is_organizer ? `<button type="button" class="btn-cancel compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal (organiser)">Remove</button>` : ''}
+      ${attendee ? `<button type="button" class="compact-btn" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit or remove this location">Edit or remove</button>` : ''}
     </div>`;
   }
 
-  function renderEditLocationForm(loc) {
-    const online = loc.kind === 'video' || loc.kind === 'hybrid' || loc.kind === 'phone';
-    const physical = loc.kind === 'physical' || loc.kind === 'hybrid';
-    const url = online ? (extractUrlFromDetail(loc.detail) || 'https://') : '';
-    const physDetail = physical
-      ? String(loc.detail || '').replace(extractUrlFromDetail(loc.detail) || '', '').replace(/^[\s·]+/, '').trim()
-      : '';
+  function renderEditLocationForm(loc, attendee) {
+    const editKind = ['physical', 'other'].includes(loc.kind) ? 'physical' : 'video';
+    const url = extractUrlFromDetail(loc.detail) || 'https://';
+    const physDetail = String(loc.detail || '').replace(extractUrlFromDetail(loc.detail) || '', '').replace(/^[\s·]+/, '').trim();
+    const canDelete = !!attendee?.is_organizer;
     return `
       <form class="inline-form edit-location-form" data-form="edit-location">
         <input type="hidden" name="location_id" value="${escapeHtml(loc.id)}">
-        <input type="hidden" name="kind" value="${escapeHtml(loc.kind)}">
+        <label>Type
+          <select name="kind">
+            <option value="video"${editKind === 'video' ? ' selected' : ''}>Online</option>
+            <option value="physical"${editKind === 'physical' ? ' selected' : ''}>Physical</option>
+          </select>
+        </label>
         <label>Label <input name="label" required value="${escapeHtml(loc.label)}"></label>
-        ${online ? `<label>Meeting link <input name="online_url" type="url" value="${escapeHtml(url)}" autocapitalize="off" spellcheck="false"></label>` : ''}
-        ${physical ? `<label>Location details <input name="physical_address" value="${escapeHtml(physDetail || (!online ? (loc.detail || '') : ''))}"></label>` : ''}
-        ${!online && !physical ? `<label>Details <input name="detail" value="${escapeHtml(loc.detail || '')}"></label>` : ''}
+        <label class="loc-edit-online"${editKind === 'video' ? '' : ' hidden'}>Meeting link <input name="online_url" type="url" value="${escapeHtml(editKind === 'video' ? url : 'https://')}" autocapitalize="off" spellcheck="false"></label>
+        <label class="loc-edit-physical"${editKind === 'physical' ? '' : ' hidden'}>Location details <input name="physical_address" value="${escapeHtml(editKind === 'physical' ? (physDetail || loc.detail || '') : '')}"></label>
         <div class="row">
           <button type="submit">Save location</button>
+          ${canDelete ? `<button type="button" class="btn-cancel" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}">Delete location</button>` : ''}
           <button type="button" class="btn-cancel" data-action="cancel-edit-location">Cancel</button>
         </div>
       </form>`;
@@ -1355,13 +1392,13 @@
           ${canEditDesc ? `<button type="submit">Save meeting resources</button>` : '<p class="meta">Sign in on Attendees to edit meeting resources.</p>'}
         </form>
         <h3 class="section-title">Attachments</h3>
+        <details class="add-attachment-details"><summary>Add attachment</summary>
+          ${renderAddAttachmentForm()}
+        </details>
         ${urlAttachments.length ? urlAttachments.map((a) => renderAttachment(a, attendee, state)).join('') : '<p class="meta">No attachments yet.</p>'}
         <h3 class="section-title">Records</h3>
         <p class="meta">Recordings, transcripts, and AI summaries after the meeting.</p>
         ${textRecords.length ? textRecords.map((a) => renderAttachment(a, attendee, state)).join('') : '<p class="meta">No records yet.</p>'}
-        <details><summary>Add attachment</summary>
-          ${renderAddAttachmentForm()}
-        </details>
       </section>`;
   }
 
@@ -1468,23 +1505,18 @@
       ? (attendee.is_organizer
         ? 'Use the Organiser column to assign organiser rights. Remove duplicate rows using Merge below if needed.'
         : 'Use Remove duplicate (keep me) if you appear more than once.')
-      : 'Press <strong>This is me</strong> on your row if you are already listed, or fill in the form below to add yourself.';
+      : 'Tick <strong>Me</strong> on your row if you are already listed, or fill in the form below to add yourself.';
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
-    const colCount = 5 + (showOrganiserCol ? 1 : 0);
+    const colCount = 6 + (showOrganiserCol ? 1 : 0);
 
     const body = `
-        ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>
-          <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your display name, initials, contact, and passcode">Edit my details</button>
-          <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser and choose another attendee">Switch user</button>
-        </p>` : ''}
         ${listHint ? `<p class="meta">${listHint}</p>` : ''}
-        <p class="meta attendee-table-hint">On narrow screens, scroll the table sideways to reach <strong>This is me</strong> and other actions.</p>
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
+            <thead><tr><th class="col-me" title="Sign in as this row">Me</th><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}</tr></thead>
             <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount + 1}">None yet</td></tr>`}
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1523,22 +1555,19 @@
 
   function renderAddAttendeeForm(signedIn, attendee) {
     const modeRow = signedIn ? '' : `
-        <fieldset class="add-mode-row">
-          <legend class="label-hint">Adding</legend>
-          <div class="add-mode-with-guide">
-            <div class="mode-options mode-options-stack">
-              <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
-              <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
-            </div>
-            <p class="meta add-field-guide">Display name: any text including email. Initials: optional (defaults from name). Contact: optional — email, phone, or a comma-separated list. Passcode: optional — ${PASSCODE_TIP}</p>
+        <div class="add-mode-row add-mode-inline">
+          <div class="mode-options mode-options-inline">
+            <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
+            <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
           </div>
-        </fieldset>`;
+          <p class="meta add-field-guide">Display name: any text including email. Initials: optional (defaults from name). Contact: optional — email, phone, or a comma-separated list. Passcode: optional — ${PASSCODE_TIP}</p>
+        </div>`;
     const pinRow = signedIn ? '' : `
           <label class="field-pin">Passcode <span class="label-hint">(optional)</span>
             <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="22" size="22" title="${escapeHtml(PASSCODE_TIP)}">
           </label>`;
     const extras = signedIn ? '' : `
-        <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link with them. They claim their row using <strong>This is me</strong>.</p>`;
+        <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link with them. They tick <strong>Me</strong> on their row to sign in.</p>`;
     const intro = signedIn
       ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>. Use this form to add <strong>someone else</strong>. Display name: any text. Initials/contact optional (contact may be comma-separated).</p>`
       : '<p class="meta">Add yourself as an attendee, or propose someone else.</p>';
@@ -1607,12 +1636,15 @@
     const dupOfSelf = current && a.id !== current.id
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
     const pinCell = a.has_pin ? 'Set' : 'Not set';
-    const actions = [];
-
+    let meCell;
     if (!signedIn) {
-      actions.push(`<button type="button" class="btn-nav compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee row">${isSelf ? 'You' : 'This is me'}</button>`);
-    } else if (current && a.id !== current.id && dupOfSelf) {
-      actions.push(`<button type="button" class="btn-nav compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate row into your attendee row">Remove duplicate (keep me)</button>`);
+      meCell = `<td class="col-me"><button type="button" class="claim-tick-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee" aria-label="Sign in as ${escapeHtml(a.display_name)}">☐</button></td>`;
+    } else if (isSelf) {
+      meCell = `<td class="col-me"><span class="claim-tick on" title="You">✓</span></td>`;
+    } else if (current && dupOfSelf) {
+      meCell = `<td class="col-me"><button type="button" class="claim-tick-btn merge-tick" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate into your row">☐</button></td>`;
+    } else {
+      meCell = '<td class="col-me"></td>';
     }
 
     const organiserCell = showOrganiserCol
@@ -1620,13 +1652,13 @@
       : '';
 
     return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
+      ${meCell}
       <td>${escapeHtml(a.display_name)}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${renderContactCell(a)}</td>
       <td>${countSlotsFor(m, a.id)}</td>
       <td>${pinCell}</td>
       ${organiserCell}
-      <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
     </tr>`;
   }
 
@@ -1647,13 +1679,17 @@
   }
 
   function renderOrganiserMergePanel(m) {
-    const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
+    const keepId = m.attendees[0]?.id || '';
+    const removeId = m.attendees.length > 1 ? m.attendees[1].id : keepId;
+    const optHtml = (selectedId) => m.attendees.map((a, i) =>
+      `<option value="${escapeHtml(a.id)}"${a.id === selectedId ? ' selected' : ''}>${i + 1}. ${escapeHtml(attendeeLabel(a))}</option>`
+    ).join('');
     return `
       <details class="merge-organiser-panel help-toggle">
-        <summary><span class="help-q">?</span> Merge duplicate attendees (organiser) (Requires organizer status)</summary>
+        <summary><span class="help-q">?</span> Merge duplicate attendees (organiser)</summary>
         <form class="inline-form row" data-form="merge-organiser">
-          <label>Keep this row <select name="keep_id" required>${opts}</select></label>
-          <label>Remove this row <select name="remove_id" required>${opts}</select></label>
+          <label>Keep row 1 <select name="keep_id" required>${optHtml(keepId)}</select></label>
+          <label>Remove row 2 <select name="remove_id" required>${optHtml(removeId)}</select></label>
           <button type="submit">Merge</button>
         </form>
         <p class="meta help-body">Availability from the removed row is combined into the kept row. You do not need their passcode as organiser.</p>
@@ -1711,19 +1747,17 @@
   }
 
   function renderAddLocationForm(state) {
-    const online = !!state.locOnline;
-    const physical = !!state.locPhysical;
+    const locType = state.locType || 'online';
+    const isOnline = locType === 'online';
     return `
       <form class="inline-form add-location-form" data-form="add-location">
-        <div class="span-full">
-          <span class="label-hint">Meeting type</span>
-          <div class="loc-type-checks">
-            <label class="checkbox-label"><input type="checkbox" name="loc_online" ${online ? 'checked' : ''}> Online</label>
-            <label class="checkbox-label"><input type="checkbox" name="loc_physical" ${physical ? 'checked' : ''}> Physical</label>
-          </div>
-          <p class="meta">Tick both for hybrid (online and in person).</p>
-        </div>
-        <div data-loc-fields="online" class="loc-fields"${online ? '' : ' hidden'}>
+        <label>Location type
+          <select name="loc_type">
+            <option value="online"${isOnline ? ' selected' : ''}>Online</option>
+            <option value="physical"${!isOnline ? ' selected' : ''}>Physical</option>
+          </select>
+        </label>
+        <div data-loc-fields="online" class="loc-fields"${isOnline ? '' : ' hidden'}>
           <label>Service
             <select name="online_service">
               <option value="Zoom">Zoom</option>
@@ -1736,35 +1770,27 @@
             <input name="online_url" type="url" value="https://" placeholder="https://" autocapitalize="off" autocomplete="url" spellcheck="false">
           </label>
         </div>
-        <div data-loc-fields="physical" class="loc-fields"${physical ? '' : ' hidden'}>
+        <div data-loc-fields="physical" class="loc-fields"${!isOnline ? '' : ' hidden'}>
           <label>Location details <input name="physical_address" placeholder="Venue name, address, room, phone, or joining note"></label>
         </div>
-        <p class="meta span-full">Save adds another option to the list — you can propose several.</p>
-        <button type="submit"${!online && !physical ? ' disabled' : ''}>Save New Location</button>
+        <p class="meta span-full">Propose online and physical locations independently — save each one separately. You can propose several of each.</p>
+        <button type="submit">Save new location</button>
       </form>`;
   }
 
   function buildLocationPayload(fd) {
-    const online = fd.get('loc_online') === 'on';
-    const physical = fd.get('loc_physical') === 'on';
-    if (!online && !physical) throw new Error('Select Online and/or Physical before saving');
-
+    const locType = String(fd.get('loc_type') || 'online');
+    const addr = String(fd.get('physical_address') || '').trim();
     const rawUrl = String(fd.get('online_url') || '').trim();
     const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
-    if (online && url && !isWellFormedUrl(url)) {
-      throw new Error('Please enter a validly formatted link starting with https://');
-    }
-    const addr = String(fd.get('physical_address') || '').trim();
     const service = String(fd.get('online_service') || 'Online').trim() || 'Online';
 
-    if (online && physical) {
-      if (!addr) throw new Error('Enter physical location details before saving');
-      const detail = url ? `${url} · ${addr}` : addr;
-      return { label: `${service} + venue`, kind: 'hybrid', detail };
-    }
-    if (physical) {
+    if (locType === 'physical') {
       if (!addr) throw new Error('Enter physical location details before saving');
       return { label: 'Physical location', kind: 'physical', detail: addr };
+    }
+    if (url && !isWellFormedUrl(url)) {
+      throw new Error('Please enter a validly formatted link starting with https://');
     }
     return { label: service, kind: 'video', detail: url || 'Link to be added' };
   }
@@ -1846,7 +1872,13 @@
       <button type="button" class="compact-btn" data-action="edit-attachment" data-attachment-id="${escapeHtml(att.id)}">Edit</button>
       <button type="button" class="btn-cancel compact-btn" data-action="delete-attachment" data-attachment-id="${escapeHtml(att.id)}">Delete</button>` : '';
     if (att.type === 'text') {
-      return `<div class="attachment"><strong>${escapeHtml(att.label)}</strong>${actions}<pre class="attachment-body">${escapeHtml(att.body || '')}</pre></div>`;
+      return `<details class="attachment attachment-text"${state?.openAttachmentId === att.id ? ' open' : ''}>
+        <summary class="attachment-summary">${escapeHtml(att.label)}</summary>
+        <div class="attachment-inner">
+          ${actions}
+          <pre class="attachment-body">${escapeHtml(att.body || '')}</pre>
+        </div>
+      </details>`;
     }
     const href = normalizeExternalUrl(att.url);
     return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a> <span class="label-hint">(opens in a new window)</span>${actions}</div>`;
@@ -1951,31 +1983,21 @@
         if (duplicate) throw new Error('That location already exists. Edit details or add a unique option.');
         data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
         form.reset();
-        state.locOnline = true;
-        state.locPhysical = false;
+        state.locType = 'online';
       } else if (kind === 'edit-location') {
         const locId = String(fd.get('location_id') || '');
         const existing = (state.meet.locations || []).find((l) => l.id === locId);
         if (!existing) throw new Error('Location not found');
-        const locKind = String(fd.get('kind') || existing.kind || 'other');
+        const locKind = String(fd.get('kind') || 'video');
         let detail = '';
         if (locKind === 'video' || locKind === 'phone') {
           const rawUrl = String(fd.get('online_url') || '').trim();
           const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
           if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
           detail = url || 'Link to be added';
-        } else if (locKind === 'hybrid') {
-          const rawUrl = String(fd.get('online_url') || '').trim();
-          const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
-          if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
-          const addr = String(fd.get('physical_address') || '').trim();
-          if (!addr) throw new Error('Enter physical location details before saving');
-          detail = url ? `${url} · ${addr}` : addr;
-        } else if (fd.get('physical_address') != null) {
+        } else {
           detail = String(fd.get('physical_address') || '').trim();
           if (!detail) throw new Error('Enter physical location details before saving');
-        } else {
-          detail = String(fd.get('detail') || '').trim();
         }
         data = await apiPost({
           action: 'update_location',
@@ -2520,11 +2542,16 @@
       if (hidden) hidden.value = e.target.value;
       return;
     }
-    if (e.target.name === 'loc_online' || e.target.name === 'loc_physical') {
-      const form = e.target.closest('form');
-      state.locOnline = !!form?.querySelector('[name="loc_online"]')?.checked;
-      state.locPhysical = !!form?.querySelector('[name="loc_physical"]')?.checked;
+    if (e.target.name === 'loc_type') {
+      state.locType = e.target.value === 'physical' ? 'physical' : 'online';
       render(root, state);
+      return;
+    }
+    if (e.target.name === 'kind' && e.target.closest('.edit-location-form')) {
+      const form = e.target.closest('form');
+      const isVideo = e.target.value === 'video';
+      form?.querySelector('.loc-edit-online')?.toggleAttribute('hidden', !isVideo);
+      form?.querySelector('.loc-edit-physical')?.toggleAttribute('hidden', isVideo);
       return;
     }
     if (e.target.name === 'attachment_type') {
@@ -2685,7 +2712,7 @@
 
   function recurrenceOptions(current) {
     return [
-      ['none', 'One-off (find one time, then agree)'],
+      ['none', 'One-off'],
       ['weekly', 'Weekly on chosen day(s)'],
       ['monthly_day', 'Same date each month (e.g. the 19th)'],
       ['monthly_nth_weekday', 'Same weekday each month (e.g. 3rd Monday)'],
