@@ -198,6 +198,73 @@
     return 3;
   }
 
+  /** Parse meeting length or slot size: plain minutes, 90m, 1.5h, 2,5h (comma decimal). */
+  function parseDurationInput(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const normalized = s.replace(/,/g, '.');
+    let m = normalized.match(/^(\d+(?:\.\d+)?)\s*h(?:r|ours?)?$/i);
+    if (m) {
+      const mins = Math.round(parseFloat(m[1]) * 60);
+      return mins > 0 ? mins : null;
+    }
+    m = normalized.match(/^(\d+(?:\.\d+)?)\s*m(?:in(?:ute)?s?)?$/i);
+    if (m) {
+      const mins = Math.round(parseFloat(m[1]));
+      return mins > 0 ? mins : null;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const mins = Math.round(parseFloat(normalized));
+      return mins > 0 ? mins : null;
+    }
+    return null;
+  }
+
+  function formatDurationLabel(minutes) {
+    const m = Math.max(0, Math.round(Number(minutes) || 0));
+    if (m <= 0) return '0 min';
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    if (h && r) return `${h} h ${r} min`;
+    if (h) return `${h} h`;
+    return `${m} min`;
+  }
+
+  function formatDurationForInput(minutes) {
+    return String(Math.max(1, Math.round(Number(minutes) || 60)));
+  }
+
+  function meetingSlotSteps(m) {
+    const duration = Math.max(1, Number(m.duration_minutes) || 60);
+    const gran = Math.max(1, Number(m.slot_granularity_minutes) || 30);
+    const valid = duration % gran === 0;
+    const steps = valid ? duration / gran : Math.max(1, Math.ceil(duration / gran));
+    return { duration, gran, steps, valid };
+  }
+
+  function validateDurationSlotPair(duration, slot) {
+    if (!duration || duration < 1) {
+      return 'Enter a meeting length (plain minutes, or e.g. 60, 1.5h, 2,5h).';
+    }
+    if (!slot || slot < 1) {
+      return 'Enter a calendar slot size (plain minutes, or e.g. 30, 15m).';
+    }
+    if (duration % slot !== 0) {
+      return `Calendar slot (${formatDurationLabel(slot)}) must divide meeting length (${formatDurationLabel(duration)}) evenly.`;
+    }
+    return null;
+  }
+
+  function calendarNavHint(m) {
+    const { duration, gran, steps, valid } = meetingSlotSteps(m);
+    const slotPart = valid && steps > 1
+      ? ` Select ${steps} consecutive ${formatDurationLabel(gran)} slot(s) to cover the full ${formatDurationLabel(duration)} meeting.`
+      : valid
+        ? ` Each slot is ${formatDurationLabel(gran)} — one slot covers the full meeting.`
+        : '';
+    return slotPart;
+  }
+
   function tabFromUrl() {
     const t = new URLSearchParams(window.location.search).get('view');
     if (t === 'notes' || t === 'records') return 'agenda';
@@ -407,8 +474,8 @@
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
     { id: 'agenda',     label: 'Meeting Resources', tip: 'Meeting description, agenda, decisions, notes, attachments, and post-meeting records.' },
     { id: 'calendar',   label: 'My availability',   tip: 'Mark the times when you are free on the calendar grid.' },
-    { id: 'options',    label: 'Calendar Options',    tip: 'Earliest/latest dates, meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change.' },
-    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Selecting a confirmed meeting time requires organiser status.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length, calendar slot size (must divide meeting length), bookable dates and hours, timezone. Organiser only.' },
+    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks the confirmed start time and location(s).' },
   ];
 
   function allValidTabs(m, attendee) {
@@ -621,12 +688,12 @@
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
               <ol class="help-steps">
                 <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
-                <li><strong>Calendar Options</strong> — earliest/latest dates, meeting length, calendar slot duration, timezone, recurrence. Visible to everyone; only organisers can change. Save when done.</li>
+                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability), bookable dates and daily hours, timezone. Slot size must divide meeting length evenly. Save when done.</li>
                 <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments.</li>
-                <li><strong>My availability</strong> — mark free slots on the calendar. Press <em>Save my availability</em>.</li>
+                <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save my availability</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
                 <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
-                <li>Open <strong>Set confirmed meeting details</strong> to pick a start and location, then accept as scheduled. Status becomes <em>Scheduled</em>.</li>
+                <li><strong>Set confirmed meeting details</strong> — <em>Group calendar</em>: everyone’s marks on one grid. Organiser picks start and location(s), then accepts. Partial overlap is OK.</li>
               </ol>
             </div>
             <div class="help-col">
@@ -634,9 +701,9 @@
               <ol class="help-steps">
                 <li>Open the meeting link you were sent. You will see the meeting title and current status.</li>
                 <li>Go to <strong>Attendees</strong>. If you are already listed, tick <em>Me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
-                <li>Open <strong>My availability</strong> and mark every slot when you are free. Press <em>Save my availability</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
+                <li>Open <strong>My availability</strong> and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press <em>Save my availability</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
                 <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
-                <li>Open <strong>Set confirmed meeting details</strong> to see how times overlap and what is proposed/scheduled.</li>
+                <li>Open <strong>Set confirmed meeting details</strong> to see the <em>Group calendar</em> — how times overlap and what is proposed or scheduled.</li>
                 <li>Check the top status line for the current scheduled time and location.</li>
                 <li>Repeat any of these steps as the meeting evolves — there is no fixed order.</li>
               </ol>
@@ -684,7 +751,7 @@
           </li>
           <li>
             <strong>${setup.stepOptions ? '✓ ' : ''}Set Calendar Options</strong> —
-            Organiser status required. Edit the meeting’s Earliest/Latest dates, Duration, Booking granularity (grid slot duration), Weekends and any recurrence.
+            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Also set earliest/latest dates, daily hours, weekends, and recurrence if needed.
             ${go('options', 'Go to Calendar Options')}
           </li>
           <li>
@@ -749,6 +816,7 @@
         <details class="overview-block"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Proposed times</summary>
           <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'}:</strong> ${timeSummary}</p>
+          <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
           <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
         </details>
         <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
@@ -819,12 +887,13 @@
 
   function formatOverviewTimeSuggestion(m, s) {
     const total = m.attendees.length;
+    const durLabel = formatDurationLabel(m.duration_minutes);
     if (s.kind === 'full' || s.fullCount === total) {
-      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} available for full meeting duration`;
+      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} free for full meeting (${durLabel})`;
     }
     if (s.fullCount > 0) {
       const partialNote = s.partialCount ? `; ${s.partialCount} partial` : '';
-      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} for full duration${partialNote}`;
+      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} for full ${durLabel}${partialNote}`;
     }
     const marked = s.fullCount + s.partialCount;
     return `${formatTimePair(s.slot)} — ${marked} of ${total} marked (partial overlap)`;
@@ -858,61 +927,66 @@
     const recurringSet = new Set(m.recurrence_dates || []);
     const todayStr = meetingTodayStr(m);
     const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
+    const canGoForward = true;
+    const slotHint = calendarNavHint(m);
 
     return `
       <section class="panel stack calendar-panel">
         <details class="calendar-instructions"${autoDetailsOpen(true) ? ' open' : ''}>
-          <summary class="section-title">Mark when you are free</summary>
-          <p class="meta">Drag or tap slots to select a range. Save anytime with <em>Save my availability</em>. Clicking or tapping a previously selected slot deselects it — don't forget to save again after changing your selection.</p>
-          <p class="meta slot-legend-note"><strong>Slots show initials</strong> of who has chosen that time. A <strong>+</strong> means more people than fit in the cell.</p>
+          <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
+          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Save with <em>Save my availability</em>. Tap a selected slot again to deselect — save again after changes.</p>
+          <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
+          <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell.</p>
+          <p class="meta">Use <strong>◀ ▶</strong> in the date row (left of the grid) to move backward or forward by one weekday. Dates stay visible while you scroll.</p>
           <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
         </details>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
-        ${renderSaveRow(state, { showBottomButton: false })}
-        ${renderCalendarNavToolbar(days, { canGoBack, canGoForward: true, todayStr, sticky: true })}
+        ${renderSaveRow(state, m, { showBottomButton: false })}
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
-          <div class="cal-header">
-            <div class="time-gutter"></div>
-            ${days.map((d, i) => {
-              const dateStr = toDateIso(d);
-              const gap = dayHasGapBefore(days, i);
-              const isToday = dateStr === todayStr;
-              return `<div class="day-head${gap ? ' day-gap-before' : ''}${recurringSet.has(dateStr) ? ' recurring' : ''}${isToday ? ' is-today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
-            }).join('')}
-          </div>
+          ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz })}
           <div class="cal-body">
             ${hours.map((hm) => `
-              <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
+              <div class="time-label" title="Time in ${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
               ${days.map((day, i) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
         </div>
-        ${renderSaveRow(state, { showTopDuplicate: false })}
+        ${renderSaveRow(state, m, { showTopDuplicate: false })}
       </section>`;
   }
 
-  function renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky = false }) {
+  function renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz }) {
     return `
-      <div class="calendar-toolbar${sticky ? ' calendar-toolbar-sticky' : ''}">
-        <button type="button" class="btn-nav" data-action="go-today" title="Jump so today is the first visible day">Today</button>
-        <button type="button" class="btn-nav" data-action="prev-week" title="Go back one week" ${canGoBack ? '' : 'disabled'}>« week</button>
-        <button type="button" class="btn-nav" data-action="prev-days" title="Go back one day" ${canGoBack ? '' : 'disabled'}>← day</button>
-        <strong class="cal-range-label">${formatDayRangeLabel(days)}</strong>
-        <button type="button" class="btn-nav" data-action="next-days" title="Advance one day" ${canGoForward ? '' : 'disabled'}>day →</button>
-        <button type="button" class="btn-nav" data-action="next-week" title="Advance one week" ${canGoForward ? '' : 'disabled'}>week »</button>
+      <div class="cal-header cal-header-nav">
+        <div class="time-gutter cal-nav-gutter" title="Move backward or forward by one weekday. Today jumps to the current date when there is room.">
+          <div class="cal-nav">
+            <button type="button" class="btn-nav cal-nav-btn" data-action="prev-days" title="Previous weekday" ${canGoBack ? '' : 'disabled'} aria-label="Previous weekday">◀</button>
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-today" data-action="go-today" title="Jump so today is the first visible day">Today</button>
+            <button type="button" class="btn-nav cal-nav-btn" data-action="next-days" title="Next weekday" ${canGoForward ? '' : 'disabled'} aria-label="Next weekday">▶</button>
+          </div>
+        </div>
+        ${days.map((d, i) => {
+          const dateStr = toDateIso(d);
+          const gap = dayHasGapBefore(days, i);
+          const isToday = dateStr === todayStr;
+          const recur = recurringSet && recurringSet.has(dateStr);
+          return `<div class="day-head${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}" title="${escapeHtml(formatDayHeadDateStr(dateStr, mtz))}${isToday ? ' — today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recur ? '<br><small>recurring</small>' : ''}</div>`;
+        }).join('')}
       </div>`;
   }
 
-  function renderSaveRow(state, { showTopDuplicate = true, showBottomButton = true } = {}) {
+  function renderSaveRow(state, m, { showTopDuplicate = true, showBottomButton = true } = {}) {
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
-    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots">Save my availability</button>`;
+    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save my availability</button>`;
+    const count = state.selectedSlots.size;
+    const slotMeta = m ? calendarNavHint(m).trim() : '';
     let html = '';
     if (showTopDuplicate) html += formSaveHeader(saveBtn);
     if (showBottomButton) {
-      html += `<div class="row save-row calendar-save-row">${saveBtn}<span class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</span></div>`;
+      html += `<div class="row save-row calendar-save-row">${saveBtn}<span class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
     } else if (showTopDuplicate) {
-      html += `<p class="meta">${state.selectedSlots.size} slot(s) selected · ${hint}</p>`;
+      html += `<p class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
     }
     return html;
   }
@@ -958,49 +1032,39 @@
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <h2 class="section-title">Set confirmed meeting details</h2>
-        <p class="meta">Use the options below to propose a time and a place.</p>
+        <p class="meta"><strong>Group calendar</strong> — everyone’s availability on one grid (marks come from <strong>My availability</strong>). Meeting length is ${formatDurationLabel(m.duration_minutes)}; calendar slots are ${formatDurationLabel(m.slot_granularity_minutes)} each.${calendarNavHint(m)}</p>
+        <p class="meta">Organiser: pick a start below and press <em>Accept start</em>. You may choose times with partial overlap — full attendance for the whole meeting is not required. Locations are optional.</p>
         <details class="meeting-link-block">
-          <summary class="meta">Meeting link</summary>
+          <summary class="meta" title="Share this link so others can open the meeting">Meeting link</summary>
           <div class="share-row row">
             <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
-            <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
+            <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link to clipboard">Copy meeting link</button>
           </div>
         </details>
         <div class="row confirm-actions-row">
           ${renderAcceptTimeButton(isOrg, state, m)}
           ${renderAcceptLocationButton(isOrg, state, m)}
         </div>
-        <p class="meta"><strong>Selecting a confirmed meeting time requires organiser status.</strong> Locations are optional — accept start and location(s) separately.</p>
-        <p class="meta slot-legend-note">Meeting slots show <strong>initials</strong> of attendees who marked availability on <strong>My availability</strong>. A <strong>+</strong> means more people than fit in the cell.</p>
-        <p class="meta">Meeting hours in <strong>${escapeHtml(mtz)}</strong> (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.</p>
+        <p class="meta slot-legend-note"><strong>Initials</strong> in cells show who marked that slot on My availability. Use <strong>◀ ▶</strong> beside the dates to move by weekday.</p>
         <div class="row group-legend">
-          <span class="legend-chip full">Light green = all attendees full duration</span>
-          <span class="legend-chip partial-full">Amber = all attendees for part duration</span>
-          <span class="legend-chip partial">Purple = some attendees available</span>
-          <span class="legend-chip selected">Dark green border = currently selected meeting start</span>
+          <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees, full meeting</span>
+          <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, partial meeting</span>
+          <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees available</span>
+          <span class="legend-chip selected" title="Your current proposed start before Accept">Dark green border = selected start</span>
         </div>
         <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
-          <summary class="section-title">Proposed meeting time</summary>
-          <p class="meta">Click a slot to set the currently selected meeting start. Click it again to clear it. Times shown in your timezone and UTC.</p>
+          <summary class="section-title" title="Pick a meeting start from the Group calendar">Proposed meeting time</summary>
+          <p class="meta">Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC.</p>
           <div class="row">
             <p class="meta"><strong>Currently selected meeting start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot below to set it'}</p>
-            <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Toggle hidden empty hours">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
+            <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
           </div>
           ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
-          ${renderCalendarNavToolbar(days, { canGoBack, canGoForward, todayStr, sticky: true })}
-          <div class="calendar group-calendar calendar-after-sticky-toolbar" style="--cal-cols:${days.length || dayCount}">
-            <div class="cal-header">
-              <div class="time-gutter"></div>
-              ${days.map((d, i) => {
-                const dateStr = toDateIso(d);
-                const gap = dayHasGapBefore(days, i);
-                const isToday = dateStr === todayStr;
-                return `<div class="day-head${gap ? ' day-gap-before' : ''}${isToday ? ' is-today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}</div>`;
-              }).join('')}
-            </div>
+          <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
+            ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
             <div class="cal-body">
               ${hours.map((hm) => `
-                <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
+                <div class="time-label" title="Time in ${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
                 ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
               `).join('')}
             </div>
@@ -1192,13 +1256,12 @@
 
   /** Attendee ids who are free for the whole meeting window starting at slotIso. */
   function attendeesFullForStart(m, slotIso) {
-    const duration = Math.max(1, Number(m.duration_minutes) || 60);
-    const gran = Math.max(1, Number(m.slot_granularity_minutes) || 30);
-    const steps = Math.max(1, Math.ceil(duration / gran));
+    const { duration, gran, steps, valid } = meetingSlotSteps(m);
+    const stepCount = valid ? steps : Math.max(1, Math.ceil(duration / gran));
     const startMs = new Date(slotIso).getTime();
     if (Number.isNaN(startMs)) return [];
     const windowKeys = [];
-    for (let i = 0; i < steps; i++) {
+    for (let i = 0; i < stepCount; i++) {
       windowKeys.push(new Date(startMs + i * gran * 60000).toISOString());
     }
     return m.attendees
@@ -1313,7 +1376,7 @@
         <p class="meta">No time has been agreed yet. Once attendees have marked their availability, the organiser can choose a time and location here.</p>
         ${isOrg
           ? renderConfirmForm(m, state, slotVal, false)
-          : `<p class="meta">You can see proposed times on <strong>Group availability</strong>. The organiser will agree the final time and it will appear here.</p>`}
+          : `<p class="meta">You can see proposed times on <strong>Set confirmed meeting details</strong> (Group calendar). The organiser will agree the final time and it will appear here.</p>`}
       </section>`;
   }
 
@@ -1356,7 +1419,7 @@
     if (slotVal) {
       return `<p class="confirmed-time-display"><span class="label-hint">Proposed (not yet agreed):</span> ${formatTimePair(slotVal)}</p>`;
     }
-    return '<p class="meta">No time selected yet. Choose from Group availability or enter a UTC time below.</p>';
+    return '<p class="meta">No time selected yet. Choose a slot on the Group calendar (<strong>Set confirmed meeting details</strong>) or enter a UTC time below.</p>';
   }
 
   // ─── Agenda, Attachments and Records tab ─────────────────────────────────────
@@ -1448,10 +1511,15 @@
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
           </div>
           <div class="form-grid">
-            <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
-            <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots.">Calendar slot duration (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
+            <label title="Full meeting duration. Plain number = minutes. Also: 1.5h, 2,5h, 90m (comma decimal OK).">Meeting length
+              <input type="text" name="duration_input" value="${escapeHtml(formatDurationForInput(m.duration_minutes))}" placeholder="e.g. 60, 1.5h, 2,5h">
+            </label>
+            <label title="Calendar grid cell size — how finely attendees can mark partial availability. Must divide meeting length evenly.">Calendar slot size
+              <input type="text" name="slot_granularity_input" value="${escapeHtml(formatDurationForInput(m.slot_granularity_minutes))}" placeholder="e.g. 30, 15m">
+            </label>
+            <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
+          <p class="meta options-duration-hint"><strong>Meeting length</strong> (${formatDurationLabel(m.duration_minutes)}) is the whole meeting. <strong>Calendar slot size</strong> (${formatDurationLabel(m.slot_granularity_minutes)}) is one cell — use a smaller slot if people may attend for only part of the meeting. Slot size must divide meeting length evenly (e.g. 3 h meeting with 1 h slots → select 3 consecutive slots for full attendance).${meetingSlotSteps(m).valid && meetingSlotSteps(m).steps > 1 ? ` Currently ${meetingSlotSteps(m).steps} slot(s) per full meeting.` : ''}${!meetingSlotSteps(m).valid ? ' <strong>Current settings do not divide evenly — please fix before saving.</strong>' : ''}</p>
           <details class="timezone-block">
             <summary>Calendar hours timezone <span class="label-hint">(defaults to yours: ${escapeHtml(tz)})</span></summary>
             <p class="meta">These times will be displayed for each person in their local time zone and UTC. The timezone below only affects which timezone the "earliest/latest" hours are defined in, so everyone marks the same slots.</p>
@@ -1952,13 +2020,17 @@
         if (!canEditOptions(state.meet, me)) {
           throw new Error('Only a meeting organiser can change these settings.');
         }
+        const duration = parseDurationInput(fd.get('duration_input'));
+        const slotGran = parseDurationInput(fd.get('slot_granularity_input'));
+        const durationErr = validateDurationSlotPair(duration, slotGran);
+        if (durationErr) throw new Error(durationErr);
         const rangeStart = String(fd.get('range_start') || '').trim() || meetingTodayStr(state.meet);
         const rangeEnd = String(fd.get('range_end') || '').trim() || OPEN_ENDED_RANGE_END;
         data = await apiPost({
           action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId,
           title: fd.get('title'),
-          duration_minutes: Number(fd.get('duration_minutes')),
-          slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
+          duration_minutes: duration,
+          slot_granularity_minutes: slotGran,
           day_start: fd.get('day_start'), day_end: fd.get('day_end'),
           range_start: rangeStart, range_end: rangeEnd,
           timezone: normalizeTimezone(fd.get('timezone')),

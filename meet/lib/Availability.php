@@ -120,7 +120,9 @@ final class Availability
             return [];
         }
 
-        $steps = (int) max(1, ceil($durationMinutes / $granularityMinutes));
+        $steps = ($durationMinutes % $granularityMinutes === 0)
+            ? (int) ($durationMinutes / $granularityMinutes)
+            : (int) max(1, ceil($durationMinutes / $granularityMinutes));
         $slots = [];
         for ($i = 0; $i < $steps; $i++) {
             $dt = $start->modify('+' . ($i * $granularityMinutes) . ' minutes')->setTimezone(new \DateTimeZone('UTC'));

@@ -569,6 +569,12 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         if (!empty($input['recurrence']) && is_array($input['recurrence'])) {
             $m['recurrence'] = $input['recurrence'];
         }
+        $duration = (int) ($m['duration_minutes'] ?? 60);
+        $slot = (int) ($m['slot_granularity_minutes'] ?? 30);
+        $slotErr = MeetFile::validateDurationSlot($duration, $slot);
+        if ($slotErr !== null) {
+            throw new \RuntimeException($slotErr, 400);
+        }
         return $m;
     });
 

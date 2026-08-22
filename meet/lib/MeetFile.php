@@ -427,6 +427,22 @@ final class MeetFile
         return $meet;
     }
 
+    /** @return string|null Error message, or null if valid. */
+    public static function validateDurationSlot(int $duration, int $slot): ?string
+    {
+        if ($duration < 1) {
+            return 'Meeting length must be at least 1 minute.';
+        }
+        if ($slot < 1) {
+            return 'Calendar slot size must be at least 1 minute.';
+        }
+        if ($duration % $slot !== 0) {
+            return 'Calendar slot size must divide meeting length evenly.';
+        }
+
+        return null;
+    }
+
     private static function castScalar(string $key, string $value): mixed
     {
         if ($key === 'show_weekends') {
