@@ -1087,7 +1087,7 @@
   function renderAttendeeSlotsLocsCell(m, attendeeId) {
     const slots = countSlotsFor(m, attendeeId);
     const locs = countLocationPrefsFor(m, attendeeId);
-    return `<td class="att-slots-locs"><span title="Time slots marked">${slots}</span><span title="Locations marked OK with me">${locs}</span></td>`;
+    return `<td class="att-slots-locs" title="${slots} time slot(s), ${locs} location(s)">${slots}&nbsp;/&nbsp;${locs}</td>`;
   }
 
   function renderAttendeesTab(m, state, attendee) {

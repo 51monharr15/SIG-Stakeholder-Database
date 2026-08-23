@@ -1508,31 +1508,34 @@ details summary { cursor: pointer; }
   font-weight: 600;
 }
 
-.att-slots-locs-head,
-.att-slots-locs {
-  width: 4.5rem;
-  min-width: 4.5rem;
-  max-width: 4.5rem;
-  text-align: center;
-  vertical-align: middle;
-  line-height: 1.15;
-}
-
 .att-slots-locs-head {
+  width: 3.1rem;
+  min-width: 3.1rem;
+  max-width: 3.1rem;
+  text-align: center;
   vertical-align: bottom;
+  line-height: 1.1;
   padding-bottom: 0.25rem !important;
 }
 
-.att-slots-locs-head span,
-.att-slots-locs span {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 600;
+.att-slots-locs {
+  width: 3.1rem;
+  min-width: 3.1rem;
+  max-width: 3.1rem;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  padding-left: 0.25rem !important;
+  padding-right: 0.25rem !important;
 }
 
-.att-slots-locs span:last-child {
-  font-weight: 500;
-  color: var(--muted);
+.att-slots-locs-head span {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 .col-delete {
