@@ -532,6 +532,7 @@ function handleRemoveAttendee(MeetStore $store, string $slug, array $input): voi
 
     $meet = $store->update($meet['id'], function (array $m) use ($targetId) {
         removeAttendeeFromMeet($m, $targetId);
+        return $m;
     });
 
     Response::json([
