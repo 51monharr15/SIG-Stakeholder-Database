@@ -1269,6 +1269,140 @@ details summary { cursor: pointer; }
 }
 
 @media (max-width: 600px) {
-  .cal-header, .cal-body { grid-template-columns: 48px repeat(var(--cal-cols, 3), minmax(0, 1fr)); }
+  .cal-header, .cal-body { grid-template-columns: 42px repeat(var(--cal-cols, 3), minmax(0, 1fr)); }
   .share-row { flex-direction: column; align-items: stretch; }
+}
+
+.help-tooltip-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+}
+
+.pane-title-row {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.pane-lead {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.pane-title-with-hint .label-hint {
+  font-weight: normal;
+  font-size: 0.85em;
+}
+
+.attendee-identity-bar {
+  margin-bottom: 0.5rem;
+  gap: 0.35rem;
+}
+
+.mode-options-left {
+  justify-content: flex-start;
+}
+
+.sign-in-toggle {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.sign-in-toggle.on {
+  background: #ecfdf5;
+  border-color: var(--good);
+  color: var(--good);
+  font-weight: 700;
+}
+
+.duration-custom-field.is-hidden {
+  display: none;
+}
+
+.recurrence-future {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.locations-table {
+  width: 100%;
+  font-size: 0.88rem;
+}
+
+.locations-table td,
+.locations-table th {
+  vertical-align: top;
+  padding: 0.35rem 0.4rem;
+}
+
+.loc-works-btn,
+.loc-confirm-btn {
+  min-width: 2.25rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.loc-works-btn.on {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.loc-confirm-btn.on {
+  background: #ecfdf5;
+  border-color: var(--good);
+  color: var(--good);
+  font-weight: 700;
+}
+
+.loc-row.loc-confirmed {
+  background: #f0fdf4;
+}
+
+.loc-add-fields {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 0.35rem;
+}
+
+.legend-chip.loc-works.active {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+
+.legend-chip.loc-proposed {
+  background: #f8fafc;
+}
+
+.cal-nav-screen,
+.cal-nav-jump {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.05rem;
+}
+
+@media (max-width: 899px) {
+  .cal-nav-screen,
+  .cal-nav-jump {
+    display: none;
+  }
+}
+
+.day-head {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.12rem;
 }

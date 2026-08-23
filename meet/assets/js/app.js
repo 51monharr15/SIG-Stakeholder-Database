@@ -39,6 +39,7 @@
     return (p.length >= 2 && p.length <= 20) ? p : '';
   }
   const PASSCODE_TIP = '0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
+  const FIND_IDENTITY_KEY = 'meet_find_identity';
 
   document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
 
@@ -91,16 +92,37 @@
           return;
         }
         const countLabel = res.meetings.length === 1 ? '1 meeting found' : `${res.meetings.length} meetings found`;
+        sessionStorage.setItem(FIND_IDENTITY_KEY, JSON.stringify({
+          display_name: String(data.get('display_name') || '').trim(),
+          pin: passcode,
+        }));
         box.innerHTML = `<p class="meta">${countLabel}</p>
           <table class="meetings-found-table">
             <tbody>${res.meetings.map((m) => {
               const when = String(m.range_start || '').trim() || String(m.created || '').slice(0, 10) || '—';
+              const href = meetingUrl(m.slug);
               return `<tr>
                 <td class="meetings-found-date">${escapeHtml(when)}</td>
-                <td class="meetings-found-title"><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a></td>
+                <td class="meetings-found-title"><a href="${escapeHtml(href)}" data-meeting-slug="${escapeHtml(m.slug)}"${m.attendee_id ? ` data-attendee-id="${escapeHtml(m.attendee_id)}"` : ''}>${escapeHtml(m.title)}</a></td>
               </tr>`;
             }).join('')}</tbody>
           </table>`;
+        box.querySelectorAll('a[data-meeting-slug]').forEach((link) => {
+          link.addEventListener('click', () => {
+            const slug = link.dataset.meetingSlug;
+            const attendeeId = link.dataset.attendeeId || '';
+            const raw = sessionStorage.getItem(FIND_IDENTITY_KEY);
+            if (raw && slug) {
+              try {
+                const id = JSON.parse(raw);
+                sessionStorage.setItem(`meet_auto_claim_${slug}`, JSON.stringify({
+                  ...id,
+                  attendee_id: attendeeId,
+                }));
+              } catch (_) { /* ignore */ }
+            }
+          });
+        });
       } catch (err) {
         if (box) {
           box.hidden = false;
@@ -161,6 +183,7 @@
       restoreAttendeeSelections(state);
       state.viewStart = calendarMinStart(state.meet);
       await repairMeetingTimezone(state);
+      await tryAutoLoginFromFind(state);
       wireOperationsLink(slug);
       render(root, state);
     } catch (err) {
@@ -468,6 +491,35 @@
     (state.meet.location_preferences[state.attendeeId] || []).forEach((id) => state.selectedLocations.add(id));
   }
 
+  async function tryAutoLoginFromFind(state) {
+    if (state.attendeeId) return;
+    const raw = sessionStorage.getItem(`meet_auto_claim_${state.slug}`);
+    if (!raw) return;
+    sessionStorage.removeItem(`meet_auto_claim_${state.slug}`);
+    let identity;
+    try { identity = JSON.parse(raw); } catch (_) { return; }
+    let attendeeId = String(identity.attendee_id || '').trim();
+    if (!attendeeId) {
+      const nameKey = String(identity.display_name || '').trim().toLowerCase();
+      const match = state.meet.attendees.find((a) => a.display_name.trim().toLowerCase() === nameKey);
+      if (match) attendeeId = match.id;
+    }
+    if (!attendeeId) return;
+    const target = state.meet.attendees.find((a) => a.id === attendeeId);
+    if (!target) return;
+    try {
+      const data = await apiPost({
+        action: 'claim',
+        slug: state.slug,
+        attendee_id: attendeeId,
+        pin: identity.pin || undefined,
+      });
+      state.attendeeId = data.attendee_id;
+      localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+      restoreAttendeeSelections(state);
+    } catch (_) { /* user can sign in manually on Attendees */ }
+  }
+
   async function fetchMeet(slug) {
     const res = await fetch(`api.php?slug=${encodeURIComponent(slug)}`);
     const data = await res.json();
@@ -491,7 +543,7 @@
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
     { id: 'agenda',     label: 'Meeting Resources', tip: 'Meeting description, agenda, decisions, notes, attachments, and post-meeting records.' },
     { id: 'calendar',   label: 'My availability',   tip: 'Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use ◀ ▶ beside dates to move by weekday.' },
-    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length), AM/PM presets, bookable dates and hours. Organiser only.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length (minutes, hours, or AM/PM), calendar slot size (partial availability), bookable dates and hours. Organiser only.' },
     { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks start time (partial overlap OK) and location(s). Use ◀ ▶ beside dates to move by weekday.' },
   ];
 
@@ -591,10 +643,7 @@
 
   function renderSignedInBanner(attendee) {
     const role = attendee.is_organizer ? 'Organiser' : 'Attendee';
-    return `<p class="meta signed-in-banner">Currently signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> (${role})
-      <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your details">Edit</button>
-      <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser">Switch user</button>
-    </p>`;
+    return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">Currently signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> (${role})</p>`;
   }
 
   function renderDashboardNav(m, state, attendee) {
@@ -700,6 +749,7 @@
             <strong>How to use this meeting scheduler</strong>
             <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="Close help panel">Close</button>
           </div>
+          <p class="meta help-tooltip-note">Most fields have tooltips on hover (may not show on mobile).</p>
           <div class="help-columns">
             <div class="help-col">
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
@@ -757,7 +807,7 @@
         <h2 class="section-title">Getting started</h2>
         <details class="getting-started-intro"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Instructions for organisers and attendees</summary>
-          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>, and review proposed times.</p>
+          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — full details in <strong>How to use this</strong> above. Essential steps: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>. Optionally review everything!</p>
           <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a>.</p>
         </details>
         <ol class="setup-steps">
@@ -931,7 +981,11 @@
   // ─── Attendees tab ───────────────────────────────────────────────────────────
 
   function renderAttendeesTab(m, state, attendee) {
-    return `<section class="panel stack">${renderAttendeesSection(m, state, attendee, { standalone: true })}</section>`;
+    const identityBar = attendee ? `<div class="row attendee-identity-bar">
+      <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your display name, contact, or passcode">Edit identity</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser">Switch user</button>
+    </div>` : '';
+    return `<section class="panel stack">${identityBar}${renderAttendeesSection(m, state, attendee, { standalone: true })}</section>`;
   }
 
   // ─── Calendar tab ────────────────────────────────────────────────────────────
@@ -972,14 +1026,20 @@
       </section>`;
   }
 
-  function renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz }) {
+  function renderCalendarHeader(days, { canGoBack, canGoForward, canGoBackScreen, canGoForwardScreen, todayStr, m, recurringSet, mtz }) {
+    const screenBack = canGoBackScreen !== false && canGoBack;
+    const screenFwd = canGoForwardScreen !== false && canGoForward;
     return `
       <div class="cal-header cal-header-nav">
-        <div class="time-gutter cal-nav-gutter" title="Move backward or forward by one weekday. Today jumps to the current date when there is room.">
+        <div class="time-gutter cal-nav-gutter" title="◀▶ one weekday · «» one screen · ⇤⇥ jump to start/end">
           <div class="cal-nav">
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-jump" data-action="go-range-start" title="Jump to earliest visible dates" ${canGoBack ? '' : 'disabled'} aria-label="Start">⇤</button>
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-screen" data-action="prev-screen" title="Back one screen of dates" ${screenBack ? '' : 'disabled'} aria-label="Previous screen">«</button>
             <button type="button" class="btn-nav cal-nav-btn" data-action="prev-days" title="Previous weekday" ${canGoBack ? '' : 'disabled'} aria-label="Previous weekday">◀</button>
             <button type="button" class="btn-nav cal-nav-btn cal-nav-today" data-action="go-today" title="Jump so today is the first visible day (shown when there is room)">Today</button>
             <button type="button" class="btn-nav cal-nav-btn" data-action="next-days" title="Next weekday" ${canGoForward ? '' : 'disabled'} aria-label="Next weekday">▶</button>
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-screen" data-action="next-screen" title="Forward one screen of dates" ${screenFwd ? '' : 'disabled'} aria-label="Next screen">»</button>
+            <button type="button" class="btn-nav cal-nav-btn cal-nav-jump" data-action="go-range-end" title="Jump toward latest dates" ${canGoForward ? '' : 'disabled'} aria-label="End">⇥</button>
           </div>
         </div>
         ${days.map((d, i) => {
@@ -1089,11 +1149,8 @@
         </details>
         <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed locations</summary>
-          <p class="meta">Organisers can confirm <strong>up to one Online</strong> and <strong>up to one Physical</strong> location independently (click again to clear). Locations are optional.</p>
-          <p class="meta"><strong>Online:</strong> ${selectedLocations.online ? locationInlineHtml(m, selectedLocations.online) : 'none selected'}</p>
-          <p class="meta"><strong>Physical:</strong> ${selectedLocations.physical ? locationInlineHtml(m, selectedLocations.physical) : 'none selected'}</p>
-          ${renderConfirmLocationChoices(m, state, isOrg, selectedLocations)}
-          <p class="meta">Locations can be proposed and voted for on the <strong>Locations</strong> tab.</p>
+          <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> (optional — up to one Online and one Physical). Attendees propose and mark <strong>Works for me</strong> on the Locations tab.</p>
+          ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg })}
         </details>
         <div class="row confirm-actions-row">
           ${renderAcceptTimeButton(isOrg, state, m)}
@@ -1301,44 +1358,97 @@
 
   // ─── Locations tab ───────────────────────────────────────────────────────────
 
-  function renderLocationsTab(m, state, attendee) {
-    const selectedLocs = effectiveConfirmLocations(state, m);
-    return `
-      <section class="panel stack" id="meeting-locations-pane">
-        <h2 class="section-title">Locations</h2>
-        <p class="meta"><strong>Select from locations proposed and save choice. Propose new location(s) if you need to.</strong></p>
-        <div class="row group-legend loc-legend">
-          <span class="legend-chip">Proposed location</span>
-          <span class="legend-chip chip-demo active">Works for me (selected)</span>
-          <span class="legend-chip selected">Selected by organiser</span>
-        </div>
-        <h3 class="section-title">Proposed locations</h3>
-        <p class="meta">Clicking/tapping a location toggles its selection and saves your choice(s). Initials show attendees who are OK with each destination.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc, selectedLocs)).join('') : '<p class="meta">No locations proposed yet — use Propose a location below.</p>'}</div>
-        ${attendee ? '' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
-        <details class="propose-location-block" open><summary>Propose a location</summary>
-          <p class="meta">Anyone can propose a location. Add as many options as you like. Deleting a proposed location requires organiser status. Signed-in people can edit a proposal if the URL or details are wrong.</p>
-          ${renderAddLocationForm(state)}
-        </details>
-      </section>`;
+  function isOnlineLocKind(kind) {
+    return ['video', 'phone', 'hybrid'].includes(kind);
   }
 
-  function renderLocationItem(m, state, attendee, loc, selectedLocs) {
-    const selected = state.selectedLocations.has(loc.id);
-    const organiserPicked = selectedLocs.online === loc.id || selectedLocs.physical === loc.id;
-    const voters = attendeesForLocation(m, loc.id);
-    const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
-    const editing = state.editingLocationId === loc.id;
-    if (editing && attendee) {
-      return renderEditLocationForm(loc, attendee);
+  function isPhysicalLocKind(kind) {
+    return ['physical', 'hybrid', 'other'].includes(kind);
+  }
+
+  function renderLocationOnlineCell(loc) {
+    const url = extractUrlFromDetail(loc.detail);
+    const label = escapeHtml(loc.label);
+    if (url) {
+      const href = normalizeExternalUrl(url);
+      return `${label} — <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
     }
-    return `<div class="location-item">
-      <button type="button" class="chip${selected ? ' active' : ''}${organiserPicked ? ' selected-start' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
-        title="${selected ? 'Click to deselect as workable for you' : 'Click to select as workable for you'}">
-        ${escapeHtml(locationChipLabel(loc))}${initials ? ` <span class="label-hint">(${escapeHtml(initials)})</span>` : ''}
-      </button>
-      ${attendee ? `<button type="button" class="compact-btn" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit or remove this location">Edit or remove</button>` : ''}
-    </div>`;
+    return label;
+  }
+
+  function renderLocationPhysicalCell(loc) {
+    const detail = String(loc.detail || '').trim();
+    return detail ? `${escapeHtml(loc.label)} — ${escapeHtml(detail)}` : escapeHtml(loc.label);
+  }
+
+  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false } = {}) {
+    const selectedLocs = effectiveConfirmLocations(state, m);
+    const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirm</th>' : '';
+    const addRow = attendee ? `<tr class="loc-add-row">
+      <td colspan="2">
+        <form class="loc-add-form" data-form="add-location-row">
+          <div class="loc-add-fields">
+            <label title="Optional online meeting">Online <input name="online_label" placeholder="Label" maxlength="80"></label>
+            <label>Link <input name="online_url" type="text" placeholder="https://…" autocapitalize="off"></label>
+            <label title="Optional physical place">Physical <input name="physical_label" placeholder="Place name" maxlength="80"></label>
+            <label>Details <input name="physical_detail" placeholder="Address or room" maxlength="200"></label>
+          </div>
+          <button type="submit" class="compact-btn" title="Add one or both locations from this row">Add location(s)</button>
+        </form>
+      </td>
+      <td colspan="${showConfirm ? 3 : 2}" class="meta">Enter online and/or physical — toggling <strong>Works for me</strong> saves immediately.</td>
+    </tr>` : '';
+    const rows = m.locations.map((loc) => {
+      const voters = attendeesForLocation(m, loc.id);
+      const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
+      const worksSelected = attendee && state.selectedLocations.has(loc.id);
+      const channel = locationConfirmChannel(loc.kind);
+      const isConfirmed = channel === 'both'
+        ? selectedLocs.online === loc.id && selectedLocs.physical === loc.id
+        : channel === 'online'
+          ? selectedLocs.online === loc.id
+          : selectedLocs.physical === loc.id;
+      const worksCell = attendee
+        ? `<button type="button" class="loc-works-btn${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Click to remove your preference' : 'Works for me — click to save'}">${worksSelected ? 'Yes' : '—'}</button>`
+        : '—';
+      const confirmCell = showConfirm
+        ? (isOrg
+          ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Toggle organiser confirm">${isConfirmed ? '✓' : '○'}</button>`
+          : (isConfirmed ? '✓' : '—'))
+        : '';
+      const editBtn = attendee && state.editingLocationId !== loc.id
+        ? `<button type="button" class="compact-btn loc-edit-inline" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit or remove">Edit</button>`
+        : '';
+      return `<tr class="loc-row${isConfirmed ? ' loc-confirmed' : ''}">
+        <td>${isOnlineLocKind(loc.kind) ? renderLocationOnlineCell(loc) : '—'} ${editBtn}</td>
+        <td>${isPhysicalLocKind(loc.kind) ? renderLocationPhysicalCell(loc) : '—'}</td>
+        <td>${initials ? escapeHtml(initials) : '—'}</td>
+        <td class="loc-works-col">${worksCell}</td>
+        ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}
+      </tr>${state.editingLocationId === loc.id && attendee ? `<tr><td colspan="${showConfirm ? 5 : 4}">${renderEditLocationForm(loc, attendee)}</td></tr>` : ''}`;
+    }).join('');
+    return `<table class="data-table locations-table">
+      <thead><tr>
+        <th>Online</th><th>Physical</th><th title="Attendee initials who marked Works for me">OK with</th>
+        <th title="Toggle if this location works for you — saves immediately">Works for me</th>
+        ${confirmCol}
+      </tr></thead>
+      <tbody>${addRow}${rows || `<tr><td colspan="${showConfirm ? 5 : 4}" class="meta">No locations yet — use the row above to add one.</td></tr>`}</tbody>
+    </table>`;
+  }
+
+  function renderLocationsTab(m, state, attendee) {
+    return `
+      <section class="panel stack" id="meeting-locations-pane">
+        <p class="meta pane-lead"><strong>Select from locations proposed — Works for me saves your choice. Propose new location(s) in the table below.</strong></p>
+        <div class="row group-legend loc-legend">
+          <span class="legend-chip loc-proposed">Proposed</span>
+          <span class="legend-chip loc-works active">Works for me = Yes</span>
+          <span class="legend-chip selected">Confirmed by organiser</span>
+        </div>
+        ${renderLocationsTable(m, state, attendee)}
+        ${attendee ? '' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
+      </section>`;
   }
 
   function renderEditLocationForm(loc, attendee) {
@@ -1448,25 +1558,22 @@
     const saveMetaBtn = `<button type="submit" form="meeting-resources-form">Save meeting resources</button>`;
     return `
       <section class="panel stack" id="meeting-agenda-pane">
-        <h2 class="section-title">Meeting Resources</h2>
-        <p class="meta">Meeting description, agenda, decisions, preparatory notes, attachments, and post-meeting records.</p>
-        ${formSaveHeader(saveMetaBtn)}
+        <div class="pane-title-row row">
+          <p class="meta pane-lead">Description, agenda, decisions, notes (displayed on Overview and here), attachments, and post-meeting records.</p>
+          ${formSaveHeader(saveMetaBtn)}
+        </div>
         <form class="inline-form" data-form="update-meta" id="meeting-resources-form">
           <h3 class="section-title">Description for attendees</h3>
-          <label><span class="label-hint">(simple HTML — also shown in the status bar at the top)</span>
+          <label><span class="label-hint">(simple HTML — displayed in the status bar and Overview)</span>
             ${canEditDesc ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
             <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}"${canEditDesc ? '' : ' readonly'}>${escapeHtml(m.organizer_intro || '')}</textarea>
           </label>
-          <h3 class="section-title">Notes &amp; agenda</h3>
-          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
-          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-          ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
-          <details class="notes-edit-details"${state.openNotesEditor ? ' open' : ''}><summary>Edit agenda / decisions / notes</summary>
-            <label>Agenda <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
-            <label>Decisions required <span class="label-hint">(plain text, each line is displayed as a bullet)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
-            <label>Notes <span class="label-hint">(simple HTML)</span>
+          <details class="notes-edit-details notes-wysiwyg-block"${state.openNotesEditor || autoDetailsOpen(true) ? ' open' : ''}><summary>Agenda, decisions, and notes</summary>
+            <label>Agenda <span class="label-hint">(plain text, each line is displayed as a bullet on Overview)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
+            <label>Decisions required <span class="label-hint">(plain text, each line is displayed as a bullet on Overview)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
+            <label>Notes <span class="label-hint">(simple HTML — displayed on Overview and in this tab)</span>
               ${formatToolbar('notes', { withHelp: false })}
-              <textarea name="notes" rows="3">${escapeHtml(m.notes || '')}</textarea>
+              <textarea name="notes" rows="5">${escapeHtml(m.notes || '')}</textarea>
             </label>
           </details>
           ${canEditDesc ? `<button type="submit">Save meeting resources</button>` : '<p class="meta">Sign in on Attendees to edit meeting resources.</p>'}
@@ -1506,51 +1613,70 @@
 
   // ─── Meeting options tab ─────────────────────────────────────────────────────
 
+  function inferDurationMode(m) {
+    const amMins = minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00');
+    const pmMins = minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00');
+    if (Number(m.duration_minutes) === amMins) return 'am';
+    if (Number(m.duration_minutes) === pmMins) return 'pm';
+    return 'custom';
+  }
+
+  function durationModeBounds(mode, m) {
+    if (mode === 'am') {
+      return {
+        duration: minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00'),
+        day_start: m.am_start || '09:00',
+        day_end: m.am_end || '12:00',
+      };
+    }
+    if (mode === 'pm') {
+      return {
+        duration: minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00'),
+        day_start: m.pm_start || '12:00',
+        day_end: m.pm_end || '16:00',
+      };
+    }
+    return null;
+  }
+
   function renderOptionsTab(m, state, attendee) {
     const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
     const saveBtn = canEdit ? '<button type="submit">Save calendar options</button>' : '';
+    const durationMode = inferDurationMode(m);
     return `
       <section class="panel stack">
-        <h2 class="section-title">Calendar Options</h2>
-        ${canEdit
-          ? '<p class="meta">Don\'t forget to <strong>Save calendar options</strong> after amending details.</p>'
-          : '<p class="meta"><strong>View only.</strong> Only a meeting organiser can change these settings.</p>'}
-        ${canEdit && !m.attendees.length ? '<p class="meta"><strong>Setup:</strong> Save your options below. Then return to Getting started or go straight to Attendees to add yourself as the first attendee.</p>' : ''}
+        <div class="pane-title-row row">
+          <p class="meta pane-lead">Meeting length, calendar slot size, bookable dates and hours.${canEdit ? ' Save after changes.' : ' View only — organiser can edit.'}</p>
+          ${canEdit ? formSaveHeader(saveBtn) : ''}
+        </div>
         ${canEdit && !m.attendees.length ? `<div class="row">
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="getting-started">Back to Getting started</button>
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
         </div>` : ''}
         <form class="inline-form organizer-form" data-form="update-settings">
-          ${formSaveHeader(saveBtn)}
+          ${canEdit ? '' : formSaveHeader('')}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <div class="form-grid">
             <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
           </div>
           <div class="form-grid">
-            <label title="Full meeting duration. Plain number = minutes. Also: 1.5h, 2,5h, 90m (comma decimal OK).">Meeting length
+            <label title="Whole meeting, or AM/PM half-day (sets bookable hours to defaults)">Meeting length
+              <select name="duration_mode">
+                <option value="custom"${durationMode === 'custom' ? ' selected' : ''}>Minutes / hours</option>
+                <option value="am"${durationMode === 'am' ? ' selected' : ''}>AM (${formatDurationLabel(minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00'))})</option>
+                <option value="pm"${durationMode === 'pm' ? ' selected' : ''}>PM (${formatDurationLabel(minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00'))})</option>
+              </select>
+            </label>
+            <label class="duration-custom-field${durationMode === 'custom' ? '' : ' is-hidden'}" title="Plain minutes, 1.5h, 2,5h (comma decimal OK)">Duration value
               <input type="text" name="duration_input" value="${escapeHtml(formatDurationForInput(m.duration_minutes))}" placeholder="e.g. 60, 1.5h, 2,5h">
             </label>
-            <label title="Calendar grid cell size — how finely attendees can mark partial availability. Must divide meeting length evenly.">Calendar slot size
+            <label title="Granularity for partial availability — must divide meeting length evenly">Calendar slot size
               <input type="text" name="slot_granularity_input" value="${escapeHtml(formatDurationForInput(m.slot_granularity_minutes))}" placeholder="e.g. 30, 15m">
             </label>
             <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
           </div>
-          <p class="meta options-duration-hint"><strong>Meeting length</strong> (${formatDurationLabel(m.duration_minutes)}) is the whole meeting. <strong>Calendar slot size</strong> (${formatDurationLabel(m.slot_granularity_minutes)}) is one cell — use a smaller slot if people may attend for only part of the meeting. Slot size must divide meeting length evenly (e.g. 3 h meeting with 1 h slots → select 3 consecutive slots for full attendance).${meetingSlotSteps(m).valid && meetingSlotSteps(m).steps > 1 ? ` Currently ${meetingSlotSteps(m).steps} slot(s) per full meeting.` : ''}${!meetingSlotSteps(m).valid ? ' <strong>Current settings do not divide evenly — please fix before saving.</strong>' : ''}</p>
-          <details class="session-presets-block">
-            <summary title="Half-day shortcuts for meeting length">Half-day presets (AM / PM)</summary>
-            <p class="meta">Default AM <strong>09:00–12:00</strong>, PM <strong>12:00–16:00</strong>. Adjust the times if your organisation uses different half-days (e.g. AM until 13:00, PM 15:00–18:00). Buttons set <em>meeting length</em> and snap <em>grid hours</em> to that session — change slot size if needed, then save.</p>
-            <div class="form-grid session-times-grid">
-              <label title="Start of morning (AM) session">AM from<input type="time" name="am_start" value="${escapeHtml(m.am_start || '09:00')}"></label>
-              <label title="End of morning (AM) session">AM until<input type="time" name="am_end" value="${escapeHtml(m.am_end || '12:00')}"></label>
-              <label title="Start of afternoon (PM) session">PM from<input type="time" name="pm_start" value="${escapeHtml(m.pm_start || '12:00')}"></label>
-              <label title="End of afternoon (PM) session">PM until<input type="time" name="pm_end" value="${escapeHtml(m.pm_end || '16:00')}"></label>
-            </div>
-            <div class="row session-preset-btns">
-              <button type="button" class="btn-nav compact-btn" data-action="preset-duration-am" title="Set meeting length to the AM session and snap grid hours to the AM window">Use AM length (${formatDurationLabel(minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00'))})</button>
-              <button type="button" class="btn-nav compact-btn" data-action="preset-duration-pm" title="Set meeting length to the PM session and snap grid hours to the PM window">Use PM length (${formatDurationLabel(minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00'))})</button>
-            </div>
-          </details>
+          <p class="meta options-duration-hint"><strong>Calendar slot size</strong> (${formatDurationLabel(m.slot_granularity_minutes)}) is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''}</p>
           <details class="timezone-block">
             <summary>Calendar hours timezone <span class="label-hint">(defaults to yours: ${escapeHtml(tz)})</span></summary>
             <p class="meta">These times will be displayed for each person in their local time zone and UTC. The timezone below only affects which timezone the "earliest/latest" hours are defined in, so everyone marks the same slots.</p>
@@ -1564,10 +1690,9 @@
             <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">Require bookings to be on or before <span class="label-hint">(optional — blank = open-ended)</span><input type="date" name="range_end" value="${escapeHtml(optionsRangeEnd(m))}"></label>
             <label title="Latest end time shown on the calendar grid each day (meeting timezone).">Allow bookings up until <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
           </div>
-          <details>
-            <summary class="recurrence-summary">Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
-            <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
-            <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
+          <details class="recurrence-future" disabled>
+            <summary class="recurrence-summary">Recurrence is a future feature</summary>
+            <p class="meta">One-off scheduling only for now. Recurrence design is parked.</p>
           </details>
           </fieldset>
           ${saveBtn}
@@ -1602,18 +1727,17 @@
       : `Registered attendees (${m.attendees.length || 'none yet'})`;
     const listHint = signedIn
       ? (attendee.is_organizer
-        ? 'Use the Organiser column to assign organiser rights. Remove duplicate rows using Merge below if needed.'
-        : 'Use Remove duplicate (keep me) if you appear more than once.')
-      : 'Tick <strong>Me</strong> on your row if you are already listed, or fill in the form below to add yourself.';
+        ? 'Toggle Organiser rights for others. Duplicate rows can be merged — see below.'
+        : 'Duplicate rows can be merged — see below.')
+      : 'Toggle sign-in if you are listed (enter passcode if set), or fill in the Add Attendees form below.';
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
     const colCount = 6 + (showOrganiserCol ? 1 : 0);
 
     const body = `
-        ${listHint ? `<p class="meta">${listHint}</p>` : ''}
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th class="col-me" title="Sign in as this row">Me</th><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}</tr></thead>
+            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th>' : ''}</tr></thead>
             <tbody>
               ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
@@ -1628,14 +1752,14 @@
     if (standalone) {
       return `
       <div class="attendee-block stack attendee-block-standalone">
-        <h2 class="section-title">Attendees</h2>
+        <h2 class="section-title pane-title-with-hint">Attendees <span class="label-hint">— ${listHint}</span></h2>
         ${body}
       </div>`;
     }
 
     return `
       <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
-        <summary class="attendee-block-summary">${summaryLabel}</summary>
+        <summary class="attendee-block-summary">${summaryLabel} <span class="label-hint">— ${listHint}</span></summary>
         <div class="attendee-block-body stack">
         ${body}
         </div>
@@ -1654,8 +1778,8 @@
 
   function renderAddAttendeeForm(signedIn, attendee) {
     const modeRow = signedIn ? '' : `
-        <div class="add-mode-row add-mode-inline">
-          <div class="mode-options mode-options-inline">
+        <div class="add-mode-row add-mode-inline add-mode-left">
+          <div class="mode-options mode-options-inline mode-options-left">
             <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
             <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
           </div>
@@ -1736,14 +1860,11 @@
       && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
     const pinCell = a.has_pin ? 'Set' : 'Not set';
     let meCell;
-    if (!signedIn) {
-      meCell = `<td class="col-me"><button type="button" class="claim-tick-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}" title="Sign in as this attendee" aria-label="Sign in as ${escapeHtml(a.display_name)}">☐</button></td>`;
-    } else if (isSelf) {
-      meCell = `<td class="col-me"><span class="claim-tick on" title="You">✓</span></td>`;
-    } else if (current && dupOfSelf) {
-      meCell = `<td class="col-me"><button type="button" class="claim-tick-btn merge-tick" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate into your row">☐</button></td>`;
+    if (dupOfSelf && current) {
+      meCell = `<td class="col-me"><button type="button" class="sign-in-toggle merge-tick" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate into your row">○</button></td>`;
     } else {
-      meCell = '<td class="col-me"></td>';
+      const isOn = signedIn && isSelf;
+      meCell = `<td class="col-me"><button type="button" class="sign-in-toggle${isOn ? ' on' : ''}" data-action="toggle-sign-in" data-attendee-id="${escapeHtml(a.id)}" data-has-pin="${a.has_pin ? '1' : '0'}" title="${isOn ? 'Sign out' : 'Sign in as this attendee'}">${isOn ? '●' : '○'}</button></td>`;
     }
 
     const organiserCell = showOrganiserCol
@@ -1988,9 +2109,8 @@
   }
 
   function slotSelectedByUser(state, m, slotIso, attendeeId) {
-    if (state.selectedSlots.has(slotIso)) return true;
-    if (!attendeeId) return false;
-    return availabilityIdsAt(m, slotIso).includes(attendeeId);
+    if (!attendeeId || state.attendeeId !== attendeeId) return false;
+    return state.selectedSlots.has(slotIso);
   }
 
   function bestProposedSlot(m) {
@@ -2051,7 +2171,18 @@
         if (!canEditOptions(state.meet, me)) {
           throw new Error('Only a meeting organiser can change these settings.');
         }
-        const duration = parseDurationInput(fd.get('duration_input'));
+        const mode = String(fd.get('duration_mode') || 'custom');
+        const bounds = durationModeBounds(mode, state.meet);
+        let duration;
+        let dayStart = fd.get('day_start');
+        let dayEnd = fd.get('day_end');
+        if (bounds) {
+          duration = bounds.duration;
+          dayStart = bounds.day_start;
+          dayEnd = bounds.day_end;
+        } else {
+          duration = parseDurationInput(fd.get('duration_input'));
+        }
         const slotGran = parseDurationInput(fd.get('slot_granularity_input'));
         const durationErr = validateDurationSlotPair(duration, slotGran);
         if (durationErr) throw new Error(durationErr);
@@ -2062,14 +2193,30 @@
           title: fd.get('title'),
           duration_minutes: duration,
           slot_granularity_minutes: slotGran,
-          day_start: fd.get('day_start'), day_end: fd.get('day_end'),
-          am_start: fd.get('am_start'), am_end: fd.get('am_end'),
-          pm_start: fd.get('pm_start'), pm_end: fd.get('pm_end'),
+          day_start: dayStart, day_end: dayEnd,
           range_start: rangeStart, range_end: rangeEnd,
           timezone: normalizeTimezone(fd.get('timezone')),
           show_weekends: fd.get('show_weekends') === 'on',
-          recurrence: buildRecurrenceFromForm(fd),
         });
+      } else if (kind === 'add-location-row') {
+        const onlineLabel = String(fd.get('online_label') || '').trim();
+        const onlineUrl = String(fd.get('online_url') || '').trim();
+        const physicalLabel = String(fd.get('physical_label') || '').trim();
+        const physicalDetail = String(fd.get('physical_detail') || '').trim();
+        if (!onlineLabel && !physicalLabel) throw new Error('Enter an online label and/or a physical place name.');
+        if (onlineLabel) {
+          let detail = (!onlineUrl || onlineUrl === 'https://') ? 'Link to be added' : normalizeExternalUrl(onlineUrl);
+          if (onlineUrl && onlineUrl !== 'https://' && !isWellFormedUrl(detail)) {
+            throw new Error('Online link must be a well-formed URL (https://…).');
+          }
+          data = await apiPost({ action: 'add_location', slug: state.slug, label: onlineLabel, kind: 'video', detail });
+          state.meet = data.meet;
+        }
+        if (physicalLabel) {
+          data = await apiPost({ action: 'add_location', slug: state.slug, label: physicalLabel, kind: 'physical', detail: physicalDetail });
+          state.meet = data.meet;
+        }
+        form.reset();
       } else if (kind === 'update-meta') {
         const payload = {
           action: 'update_meta', slug: state.slug,
@@ -2204,6 +2351,7 @@
       render(root, state);
 
       if (kind === 'add-location') toast('Location saved');
+      else if (kind === 'add-location-row') toast('Location(s) added');
       else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee added');
       else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'Passcode removed' : 'Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
@@ -2265,29 +2413,6 @@
     if (action === 'toggle-header') { state.headerExpanded = !state.headerExpanded; render(root, state); return; }
 
     if (action === 'preset-duration-am' || action === 'preset-duration-pm') {
-      const form = btn.closest('form[data-form="update-settings"]');
-      if (!form) return;
-      const isAm = action === 'preset-duration-am';
-      const startName = isAm ? 'am_start' : 'pm_start';
-      const endName = isAm ? 'am_end' : 'pm_end';
-      const start = form.querySelector(`[name="${startName}"]`)?.value;
-      const end = form.querySelector(`[name="${endName}"]`)?.value;
-      if (!start || !end) {
-        toast('Set AM/PM session times first', true);
-        return;
-      }
-      const mins = minutesBetweenTimes(start, end);
-      if (mins < 1) {
-        toast('Session end must be after start', true);
-        return;
-      }
-      const durInput = form.querySelector('[name="duration_input"]');
-      if (durInput) durInput.value = formatDurationForInput(mins);
-      const dayStart = form.querySelector('[name="day_start"]');
-      const dayEnd = form.querySelector('[name="day_end"]');
-      if (dayStart) dayStart.value = start;
-      if (dayEnd) dayEnd.value = end;
-      toast(`${isAm ? 'AM' : 'PM'} length set to ${formatDurationLabel(mins)} — check slot size divides evenly, then save`);
       return;
     }
 
@@ -2381,6 +2506,47 @@
     }
     if (action === 'go-today') {
       state.viewStart = calendarMinStart(state.meet);
+      render(root, state);
+      return;
+    }
+    if (action === 'go-range-start') {
+      state.viewStart = calendarMinStart(state.meet);
+      render(root, state);
+      return;
+    }
+    if (action === 'go-range-end') {
+      const lastAvail = lastAvailabilityDay(state.meet);
+      const dayCount = visibleDayCount();
+      let target = lastAvail ? startOfDay(lastAvail) : state.viewStart;
+      if (lastAvail) {
+        target = shiftViewByDisplayedDays(target, -(dayCount - 1), state.meet.show_weekends);
+        const min = calendarMinStart(state.meet);
+        if (target < min) target = min;
+      }
+      state.viewStart = target;
+      render(root, state);
+      return;
+    }
+    if (action === 'prev-screen') {
+      const min = calendarMinStart(state.meet);
+      const n = visibleDayCount();
+      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends);
+      if (state.viewStart < min) state.viewStart = min;
+      render(root, state);
+      return;
+    }
+    if (action === 'next-screen') {
+      const n = visibleDayCount();
+      let next = shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends);
+      if (state.activeTab === 'group') {
+        const lastAvail = lastAvailabilityDay(state.meet);
+        if (lastAvail) {
+          const dayCount = visibleDayCount();
+          const maxStart = shiftViewByDisplayedDays(startOfDay(lastAvail), -(dayCount - 1), state.meet.show_weekends);
+          if (startOfDay(next) > startOfDay(maxStart)) next = maxStart;
+        }
+      }
+      state.viewStart = next;
       render(root, state);
       return;
     }
@@ -2536,6 +2702,40 @@
       state.selectedSlots.clear();
       state.selectedLocations.clear();
       render(root, state);
+      return;
+    }
+
+    if (action === 'toggle-sign-in') {
+      const targetId = btn.dataset.attendeeId;
+      const target = state.meet.attendees.find((a) => a.id === targetId);
+      if (!target) return;
+      if (state.attendeeId === targetId) {
+        state.attendeeId = '';
+        state.claimingId = null;
+        localStorage.removeItem(attendeeKey(state.slug));
+        state.selectedSlots.clear();
+        state.selectedLocations.clear();
+        render(root, state);
+        toast('Signed out');
+        return;
+      }
+      if (target.has_pin || btn.dataset.hasPin === '1') {
+        state.claimingId = targetId;
+        render(root, state);
+        requestAnimationFrame(() => root.querySelector('.claim-form input[name="pin"]')?.focus());
+        return;
+      }
+      try {
+        if (state.attendeeId) localStorage.removeItem(attendeeKey(state.slug));
+        const data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: targetId });
+        state.attendeeId = data.attendee_id;
+        state.meet = data.meet;
+        state.claimingId = null;
+        localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        restoreAttendeeSelections(state);
+        render(root, state);
+        toast('Signed in');
+      } catch (err) { toast(err.message, true); }
       return;
     }
 
@@ -2704,6 +2904,22 @@
       const pin = form.querySelector('.field-pin');
       if (pin) pin.hidden = !isSelf;
       form.querySelector('[data-show-when="propose"]')?.toggleAttribute('hidden', isSelf);
+      return;
+    }
+    if (e.target.name === 'duration_mode') {
+      const form = e.target.closest('form[data-form="update-settings"]');
+      const custom = form?.querySelector('.duration-custom-field');
+      const isCustom = e.target.value === 'custom';
+      if (custom) custom.classList.toggle('is-hidden', !isCustom);
+      const bounds = durationModeBounds(e.target.value, state.meet);
+      if (bounds && form) {
+        const ds = form.querySelector('[name="day_start"]');
+        const de = form.querySelector('[name="day_end"]');
+        if (ds) ds.value = bounds.day_start;
+        if (de) de.value = bounds.day_end;
+        const di = form.querySelector('[name="duration_input"]');
+        if (di) di.value = formatDurationForInput(bounds.duration);
+      }
       return;
     }
     if (e.target.name === 'recurrence_type') {
@@ -2971,28 +3187,36 @@
     }
     return v;
   }
+  function isWellFormedWebUrl(s) {
+    const raw = String(s || '').trim();
+    if (!raw) return false;
+    try {
+      const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (_) { return false; }
+  }
+
   function contactHref(c) {
     const v = String(c || '').trim();
-    if (!v) return '#';
-    if (v.includes(',')) return '#';
-    if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : '#';
-    return `tel:${v}`;
+    if (!v || v.includes(',')) return null;
+    if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : null;
+    if (/^https?:\/\//i.test(v) || /^www\./i.test(v) || /\.[a-z]{2,}(\/|$)/i.test(v)) {
+      return isWellFormedWebUrl(v) ? normalizeExternalUrl(v) : null;
+    }
+    return null;
   }
   function renderContactCell(a) {
     if (!a.contact) return '—';
     const parts = String(a.contact).split(',').map((p) => p.trim()).filter(Boolean);
     if (parts.length > 1) {
       return parts.map((part) => {
-        if (part.includes('@') && !isWellFormedEmail(part)) return `${escapeHtml(part)} <span class="badge warn" title="Not a valid email">check</span>`;
         const href = contactHref(part);
-        if (href === '#') return escapeHtml(part);
-        return `<a href="${escapeHtml(href)}">${escapeHtml(part)}</a>`;
+        return href ? `<a href="${escapeHtml(href)}">${escapeHtml(part)}</a>` : escapeHtml(part);
       }).join(', ');
     }
-    if (a.contact.includes('@') && !isWellFormedEmail(a.contact)) return `${escapeHtml(a.contact)} <span class="badge warn" title="Not a valid email">check</span>`;
     const href = contactHref(a.contact);
-    if (href === '#') return escapeHtml(a.contact);
-    return `<a href="${escapeHtml(href)}">${escapeHtml(a.contact)}</a>`;
+    if (href) return `<a href="${escapeHtml(href)}">${escapeHtml(a.contact)}</a>`;
+    return escapeHtml(a.contact);
   }
 
   function normalizeExternalUrl(url) {

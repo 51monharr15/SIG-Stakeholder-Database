@@ -219,6 +219,7 @@ final class MeetStore
                     'slug' => $meet['slug'],
                     'created' => $meet['created'] ?? '',
                     'range_start' => $meet['range_start'] ?? '',
+                    'attendee_id' => $att['id'],
                 ];
                 break;
             }
