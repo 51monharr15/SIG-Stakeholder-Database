@@ -166,6 +166,7 @@
       helpOpen: false,
       locType: 'online',
       lastNarrow: isNarrowScreen(),
+      expandedLocFields: new Set(),
     };
 
     try {
@@ -193,6 +194,11 @@
 
     root.addEventListener('click', (e) => handleClick(e, root, state));
     root.addEventListener('focusout', (e) => handleLocationRowBlur(e, root, state));
+    root.addEventListener('focusin', (e) => {
+      if (!e.target.matches('.loc-cell')) return;
+      const row = e.target.closest('[data-location-row]');
+      if (row) row.dataset.locSnapshot = locationRowSnapshot(row);
+    });
     root.addEventListener('change', (e) => handleChange(e, root, state));
     root.addEventListener('submit', (e) => handleSubmit(e, root, state));
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
@@ -1466,6 +1472,46 @@
     return { notes, ...parsed };
   }
 
+  function locationRowSnapshot(row) {
+    const { notes, online, physical } = readLocationRowInputs(row);
+    return JSON.stringify({
+      notes,
+      location: locationDisplayFromParts(online, physical),
+    });
+  }
+
+  function renderLocFieldDisplay(m, state, locId, field, value, { readOnly }) {
+    if (!value) return '—';
+    const key = `${locId || 'new'}:${field}`;
+    const expanded = state.expandedLocFields?.has(key);
+    const href = field === 'location' ? normalizeExternalUrl(value) : '';
+    const isUrl = field === 'location' && isWellFormedUrl(href);
+
+    if (readOnly && isUrl) {
+      if (!expanded && value.length <= 48) {
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
+      }
+      const shown = expanded ? value : `${value.slice(0, 45)}…`;
+      return `<span class="loc-url-wrap">
+        <button type="button" class="loc-expand-btn loc-url-text${expanded ? ' is-expanded' : ''}" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="${expanded ? 'Collapse' : 'Show full link'}">${escapeHtml(shown)}</button>
+        ${expanded ? `<span class="loc-url-actions row">
+          <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
+          <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+        </span>` : ''}
+      </span>`;
+    }
+
+    if (readOnly) {
+      const lines = String(value).split('\n');
+      const needsClamp = !expanded && (lines.length > 3 || String(value).length > 120);
+      if (needsClamp) {
+        return `<button type="button" class="loc-expand-btn loc-text-clamp" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show all">${escapeHtml(value)}</button>`;
+      }
+    }
+
+    return escapeHtml(value);
+  }
+
   function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
     const id = loc?.id || '';
     const f = locationRowFields(loc);
@@ -1476,27 +1522,21 @@
     const confirmedIds = effectiveConfirmedLocationIds(state, m);
     const isConfirmed = loc && confirmedIds.includes(loc.id);
 
-    const cell = (field, value, placeholder) => {
-      if (!canEdit) {
-        if (!value) return '—';
-        if (field === 'location') {
-          const href = normalizeExternalUrl(value);
-          if (isWellFormedUrl(href)) {
-            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
-          }
-        }
-        return escapeHtml(value);
-      }
-      return `<input type="text" class="loc-cell" data-loc-field="${field}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" title="${escapeHtml(placeholder)}">`;
-    };
+    const notesCell = canEdit
+      ? `<textarea class="loc-cell loc-cell-textarea" data-loc-field="notes" rows="3" placeholder="Notes" title="Notes">${escapeHtml(f.notes)}</textarea>`
+      : renderLocFieldDisplay(m, state, id, 'notes', f.notes, { readOnly: true });
+
+    const locationCell = canEdit
+      ? `<input type="text" class="loc-cell" data-loc-field="location" value="${escapeHtml(f.location)}" placeholder="URL or place name" title="URL or place name">`
+      : renderLocFieldDisplay(m, state, id, 'location', f.location, { readOnly: true });
 
     const worksCell = !loc
       ? '—'
       : readOnly
-        ? (worksSelected ? '●' : '—')
+        ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : 'No'}</span>`
         : !attendee
-          ? (worksSelected ? 'Yes' : '—')
-          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? '●' : '○'}</button>`;
+          ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : 'No'}</span>`
+          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? 'Yes' : 'No'}</button>`;
 
     const confirmCell = showConfirm && loc
       ? (isOrg
@@ -1505,8 +1545,8 @@
       : '';
 
     return `
-      <td class="loc-cell-notes">${cell('notes', f.notes, 'Notes')}</td>
-      <td class="loc-cell-location">${cell('location', f.location, 'URL or place name')}</td>
+      <td class="loc-cell-notes">${notesCell}</td>
+      <td class="loc-cell-location">${locationCell}</td>
       <td class="loc-ok-with">${initials ? escapeHtml(initials) : '—'}</td>
       <td class="loc-ok-me">${worksCell}</td>
       ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
@@ -1527,20 +1567,21 @@
         <th>Notes</th>
         <th>Location</th>
         <th title="Initials of attendees who marked OK with me">OK with</th>
-        <th title="Toggle if this location works for you">OK with me</th>
+        <th class="loc-ok-me-head" title="Toggle if this location works for you"><span>OK</span><span>with me</span></th>
         ${confirmCol}
       </tr></thead>
-      <tbody>${existingRows}${newRow}</tbody>
-    </table>
-    ${attendee && !readOnly ? '<p class="meta loc-table-hint">Each row is one location — URL or place name. Tab out to save. Toggle <strong>OK with me</strong> to record your preference.</p>' : ''}`;
+      <tbody>${newRow}${existingRows}</tbody>
+    </table>`;
   }
 
   function renderLocationsTab(m, state, attendee) {
+    const hint = attendee
+      ? '<p class="meta pane-lead">Each row is one location — enter a <strong>URL or place name</strong> in the first blank row. Tab out of a cell to save. Toggle <strong>OK with me</strong> to record your preference. Tap long text or links to expand; use <strong>Copy</strong> after expanding a link.</p>'
+      : '<p class="meta pane-lead">Each row is one location (URL or place name). Sign in on Attendees to propose locations and mark OK with me.</p>';
     return `
       <section class="panel stack" id="meeting-locations-pane">
-        <p class="meta pane-lead"><strong>Propose and choose locations — each row is one option. Tab out of a cell to save.</strong></p>
+        ${hint}
         ${renderLocationsTable(m, state, attendee)}
-        ${attendee ? '' : '<p class="meta">Sign in on Attendees to propose locations and mark OK with me.</p>'}
       </section>`;
   }
 
@@ -1548,13 +1589,20 @@
     if (!e.target.matches('.loc-cell')) return;
     const row = e.target.closest('[data-location-row]');
     if (!row) return;
-    if (row.contains(e.relatedTarget)) return;
-    await saveLocationRow(root, state, row);
+    const rowRef = row;
+    requestAnimationFrame(async () => {
+      if (rowRef.contains(document.activeElement)) return;
+      await saveLocationRow(root, state, rowRef);
+    });
   }
 
   async function saveLocationRow(root, state, row) {
     if (!state.attendeeId) return;
     const id = row.dataset.locationId || '';
+    const snapshot = row.dataset.locSnapshot || '';
+    const currentSnap = locationRowSnapshot(row);
+    if (snapshot && snapshot === currentSnap) return;
+
     const { notes, online, physical } = readLocationRowInputs(row);
     if (!online && !physical) {
       if (id && row.dataset.locSaving !== '1') {
@@ -1603,6 +1651,7 @@
         data = await apiPost({ action: 'add_location', ...payload });
       }
       state.meet = data.meet;
+      row.dataset.locSnapshot = currentSnap;
       render(root, state);
       toast(id ? 'Location saved' : 'Location added');
     } catch (err) {
@@ -1834,7 +1883,7 @@
               </label>
               <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
             </div>
-            <p class="meta options-duration-hint"><strong>Calendar slot size</strong> is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''}</p>
+            <p class="meta options-duration-hint"><strong>Calendar slot size</strong> is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''} Changing meeting length or slot size does <strong>not</strong> remap saved availability — attendees should review <strong>My availability</strong> and save again.</p>
           </div>
           <div class="options-group options-group-booking">
             <div class="form-grid options-date-stack">
@@ -2555,7 +2604,7 @@
 
       if (kind === 'add-location') toast('Location saved');
       else if (kind === 'add-location-row') toast('Location(s) added');
-      else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee added');
+      else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee saved');
       else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'Passcode removed' : 'Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
       else if (kind === 'update-settings') {
@@ -2643,6 +2692,27 @@
       }
       toggleSlot(state, btn.dataset.slot);
       render(root, state);
+      return;
+    }
+
+    if (action === 'expand-loc-cell') {
+      const key = btn.dataset.locExpand;
+      if (!key) return;
+      if (state.expandedLocFields.has(key)) state.expandedLocFields.delete(key);
+      else state.expandedLocFields.add(key);
+      render(root, state);
+      return;
+    }
+
+    if (action === 'copy-loc-url') {
+      const url = btn.dataset.url || '';
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('Link copied');
+      } catch (_) {
+        toast('Could not copy link', true);
+      }
       return;
     }
 
