@@ -1069,16 +1069,26 @@
   function renderOverviewAttendeeTable(m) {
     if (!m.attendees.length) return '<p class="meta">No attendees registered yet.</p>';
     return `<table class="data-table overview-attendee-table">
-      <thead><tr><th>Name</th><th title="Count of locations marked OK with me">Time slots/locations</th><th>Role</th></tr></thead>
+      <thead><tr><th>Name</th>${renderAttendeeSlotsLocsHead()}<th>Role</th></tr></thead>
       <tbody>${m.attendees.map((a) => `<tr>
         <td>${escapeHtml(a.display_name)}</td>
-        <td>${countLocationPrefsFor(m, a.id)}</td>
+        ${renderAttendeeSlotsLocsCell(m, a.id)}
         <td>${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
 
   // ─── Attendees tab ───────────────────────────────────────────────────────────
+
+  function renderAttendeeSlotsLocsHead() {
+    return `<th class="att-slots-locs-head" title="Availability slots marked and locations marked OK with me"><span>Time slots</span><span>locations</span></th>`;
+  }
+
+  function renderAttendeeSlotsLocsCell(m, attendeeId) {
+    const slots = countSlotsFor(m, attendeeId);
+    const locs = countLocationPrefsFor(m, attendeeId);
+    return `<td class="att-slots-locs"><span title="Time slots marked">${slots}</span><span title="Locations marked OK with me">${locs}</span></td>`;
+  }
 
   function renderAttendeesTab(m, state, attendee) {
     return `<section class="panel stack">${renderAttendeesSection(m, state, attendee, { standalone: true })}</section>`;
@@ -2057,12 +2067,12 @@
     const panelOpen = standalone || attendeePanelIsOpen(state, m, attendee);
     const listHint = signedIn
       ? (attendee.is_organizer
-        ? 'Toggle Organiser rights for others. Expand <strong>Merge duplicate attendees</strong> if needed.'
+        ? 'Toggle Organiser rights for others. <strong>Delete</strong> removes a row. Expand <strong>Merge duplicate attendees</strong> if needed.'
         : 'Duplicate rows can be merged — expand <strong>Merge duplicate attendees</strong> if needed.')
       : 'Toggle sign-in if you are listed (enter passcode if set), or add yourself below.';
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
-    const colCount = 6 + (showOrganiserCol ? 1 : 0);
+    const colCount = 6 + (showOrganiserCol ? 2 : 0);
     const regPaneId = standalone ? 'att-registered' : 'att-registered-cal';
 
     const identityBar = signedIn ? `<div class="row attendee-identity-bar">
@@ -2074,7 +2084,7 @@
         <div class="attendee-table-panel">
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th><th title="Count of locations marked OK with me">Time slots/locations</th><th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th>' : ''}</tr></thead>
+            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
             <tbody>
               ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
@@ -2254,14 +2264,19 @@
       ? `<td><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
       : '';
 
+    const deleteCell = showOrganiserCol
+      ? `<td class="col-delete"><button type="button" class="btn-cancel compact-btn" data-action="delete-attendee" data-attendee-id="${escapeHtml(a.id)}" title="Remove this attendee from the meeting">Delete</button></td>`
+      : '';
+
     return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
       ${meCell}
       <td>${escapeHtml(a.display_name)}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${renderContactCell(a)}</td>
-      <td>${countLocationPrefsFor(m, a.id)}</td>
+      ${renderAttendeeSlotsLocsCell(m, a.id)}
       <td>${pinCell}</td>
       ${organiserCell}
+      ${deleteCell}
     </tr>`;
   }
 
@@ -3250,6 +3265,31 @@
         if (state.editingAttachmentId === btn.dataset.attachmentId) state.editingAttachmentId = null;
         render(root, state);
         toast('Attachment deleted');
+      } catch (err) { toast(err.message, true); }
+      return;
+    }
+
+    if (action === 'delete-attendee') {
+      const targetId = btn.dataset.attendeeId;
+      const target = state.meet.attendees.find((a) => a.id === targetId);
+      const label = target ? attendeeLabel(target) : 'this attendee';
+      if (!confirm(`Remove ${label} from this meeting? Their availability and location preferences will be deleted.`)) return;
+      try {
+        const data = await apiPost({
+          action: 'remove_attendee',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          attendee_id: targetId,
+        });
+        state.meet = data.meet;
+        if (state.attendeeId === targetId) {
+          state.attendeeId = '';
+          localStorage.removeItem(attendeeKey(state.slug));
+          state.selectedSlots.clear();
+          state.selectedLocations.clear();
+        }
+        render(root, state);
+        toast('Attendee removed');
       } catch (err) { toast(err.message, true); }
       return;
     }

@@ -1508,6 +1508,44 @@ details summary { cursor: pointer; }
   font-weight: 600;
 }
 
+.att-slots-locs-head,
+.att-slots-locs {
+  width: 4.5rem;
+  min-width: 4.5rem;
+  max-width: 4.5rem;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.15;
+}
+
+.att-slots-locs-head {
+  vertical-align: bottom;
+  padding-bottom: 0.25rem !important;
+}
+
+.att-slots-locs-head span,
+.att-slots-locs span {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.att-slots-locs span:last-child {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.col-delete {
+  width: 4.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.col-delete .compact-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.35rem;
+}
+
 .loc-cell-textarea {
   resize: vertical;
   min-height: 3.6em;

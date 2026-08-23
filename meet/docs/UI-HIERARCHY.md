@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.24  
+**Build:** 1.8.25  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources:** `meet/index.php`, `meet/assets/js/app.js`
@@ -131,7 +131,7 @@
 | Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places, amber attachments. |
 | *tint-dates* Time · Recurrence · Locations | Scheduled time: / Proposed time: / None selected yet · Meeting length: · Calendar slot: · Recurrence: · Confirmed locations: / Proposed locations: / None yet |
 | *tint-text* Agenda and decisions | Agenda: / No agenda yet — go to **Meeting Resources** · Decisions required: / No decisions listed yet… |
-| *tint-people* Attendees | Attendees registered ({N}) · Availability entered ({N}) · table: Name · Time slots/locations · Role (Organiser/Attendee) |
+| *tint-people* Attendees | table: Name · Time slots / locations · Role |
 | *tint-dates* Top start times | Top start times ({shown} of {total}) — best attendance · Confirm one with **Set confirmed meeting details**… |
 | *tint-places* Top locations | Top locations ({shown} of {total}) — by popularity · {location} — {N} preference(s) |
 | *tint-assets* Attachments | Attachments ({N}) — when past/summarised |
@@ -143,7 +143,7 @@
 | Pane ID | Summary / key text |
 |---------|-------------------|
 | Lead | Toggle sign-in… / Toggle Organiser rights… / Merge duplicate attendees… |
-| `att-registered` | **Registered attendees ({N})** — table columns: Signed-in as · Name · Initials · Contact · Time slots/locations · Passcode · Organiser |
+| `att-registered` | **Registered attendees ({N})** — Signed-in as · Name · Initials · Contact · Time slots / locations · Passcode · Organiser · Delete *(organiser)* |
 | Passcode cell | Set / Not set |
 | `att-add-first` / add form | **Add yourself as an attendee** · Myself / Someone else · Display name · Initials (opt.) · Passcode (optional) · Contact · **Save** |
 | `att-add` | **Add another attendee** — Add **someone else**. Share the meeting link. |

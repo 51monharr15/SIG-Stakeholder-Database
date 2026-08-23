@@ -87,6 +87,9 @@ try {
             case 'update_attendee':
                 handleUpdateAttendee($store, $slug, $input);
                 break;
+            case 'remove_attendee':
+                handleRemoveAttendee($store, $slug, $input);
+                break;
             default:
                 Response::error('Unknown action', 400);
         }
@@ -489,6 +492,52 @@ function mergeAttendeeRows(array &$meet, string $keepId, string $removeId): void
         $meet['attendees'],
         fn ($att) => ($att['id'] ?? '') !== $removeId
     ));
+}
+
+/** @param array<string, mixed> $meet */
+function removeAttendeeFromMeet(array &$meet, string $attendeeId): void
+{
+    if (attendeeIndexById($meet['attendees'], $attendeeId) === null) {
+        throw new \RuntimeException('Attendee not found', 404);
+    }
+    if (count($meet['attendees']) <= 1) {
+        throw new \RuntimeException('Cannot remove the only attendee', 400);
+    }
+
+    foreach ($meet['availability'] as $slot => $ids) {
+        $meet['availability'][$slot] = array_values(array_filter($ids, fn ($id) => $id !== $attendeeId));
+        if ($meet['availability'][$slot] === []) {
+            unset($meet['availability'][$slot]);
+        }
+    }
+
+    unset($meet['location_preferences'][$attendeeId]);
+
+    $meet['attendees'] = array_values(array_filter(
+        $meet['attendees'],
+        fn ($att) => ($att['id'] ?? '') !== $attendeeId
+    ));
+}
+
+function handleRemoveAttendee(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $targetId = trim((string) ($input['attendee_id'] ?? ''));
+    if ($actingId === '' || $targetId === '') {
+        Response::error('acting_attendee_id and attendee_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    requireActingOrganizer($meet, $actingId);
+
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId) {
+        removeAttendeeFromMeet($m, $targetId);
+    });
+
+    Response::json([
+        'ok' => true,
+        'meet' => $store->publicView($meet),
+    ]);
 }
 
 function handleSaveAvailability(MeetStore $store, string $slug, array $input): void
