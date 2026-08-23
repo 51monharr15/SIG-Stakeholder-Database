@@ -583,29 +583,66 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }
 
+function isRowLocationInput(array $input): bool
+{
+    return array_key_exists('online_url', $input)
+        || array_key_exists('physical_text', $input)
+        || array_key_exists('notes', $input);
+}
+
+/** @return array{id: string, label: string, kind: string, detail: string} */
+function buildRowLocation(array $input, ?string $existingId = null): array
+{
+    $notes = trim((string) ($input['notes'] ?? $input['label'] ?? ''));
+    $online = trim((string) ($input['online_url'] ?? ''));
+    $physical = trim((string) ($input['physical_text'] ?? ''));
+    if ($online === '' && $physical === '') {
+        throw new \RuntimeException('Enter an online URL and/or physical location.', 400);
+    }
+    if ($online !== '') {
+        $online = normalizeAttachmentUrl($online);
+        if (!preg_match('#^https?://#i', $online)) {
+            throw new \RuntimeException('Online URL must be a well-formed web address (http:// or https://).', 400);
+        }
+    }
+    $label = $notes !== '' ? $notes : ($online !== '' ? 'Online' : 'Physical');
+
+    return [
+        'id' => $existingId ?? MeetFile::generateId('loc'),
+        'label' => $label,
+        'kind' => 'row',
+        'detail' => json_encode(['online' => $online, 'physical' => $physical], JSON_UNESCAPED_UNICODE),
+    ];
+}
+
 function handleAddLocation(MeetStore $store, string $slug, array $input): void
 {
-    $label = trim((string) ($input['label'] ?? ''));
-    if ($label === '') {
-        Response::error('Location label required');
-    }
-
-    $kind = trim((string) ($input['kind'] ?? 'other'));
-    $detail = trim((string) ($input['detail'] ?? ''));
-    if ($kind === 'video' && $detail === '') {
-        $detail = 'Link to be added';
-    }
-
     $meet = $store->loadBySlug($slug);
-    $location = [
-        'id' => MeetFile::generateId('loc'),
-        'label' => $label,
-        'kind' => $kind,
-        'detail' => $detail,
-    ];
 
-    if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {
-        $location['detail'] = normalizeLocationDetail($location['kind'], $location['detail']);
+    if (isRowLocationInput($input)) {
+        $location = buildRowLocation($input);
+    } else {
+        $label = trim((string) ($input['label'] ?? ''));
+        if ($label === '') {
+            Response::error('Location label required');
+        }
+
+        $kind = trim((string) ($input['kind'] ?? 'other'));
+        $detail = trim((string) ($input['detail'] ?? ''));
+        if ($kind === 'video' && $detail === '') {
+            $detail = 'Link to be added';
+        }
+
+        $location = [
+            'id' => MeetFile::generateId('loc'),
+            'label' => $label,
+            'kind' => $kind,
+            'detail' => $detail,
+        ];
+
+        if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {
+            $location['detail'] = normalizeLocationDetail($location['kind'], $location['detail']);
+        }
     }
 
     $meet = $store->update($meet['id'], function (array $m) use ($location) {
@@ -619,41 +656,68 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
 function handleUpdateLocation(MeetStore $store, string $slug, array $input): void
 {
     $locationId = trim((string) ($input['location_id'] ?? ''));
-    $label = trim((string) ($input['label'] ?? ''));
-    $kind = trim((string) ($input['kind'] ?? ''));
-    $detail = trim((string) ($input['detail'] ?? ''));
-    if ($locationId === '' || $label === '') {
-        Response::error('location_id and label required');
-    }
-    if ($kind === '') {
-        Response::error('kind required');
-    }
-    if ($kind === 'video' && $detail === '') {
-        $detail = 'Link to be added';
+    if ($locationId === '') {
+        Response::error('location_id required');
     }
 
     $meet = $store->loadBySlug($slug);
-    $meet = $store->update($meet['id'], function (array $m) use ($locationId, $label, $kind, $detail) {
-        $found = false;
-        foreach ($m['locations'] as &$loc) {
-            if (($loc['id'] ?? '') !== $locationId) {
-                continue;
+
+    if (isRowLocationInput($input)) {
+        $location = buildRowLocation($input, $locationId);
+        $meet = $store->update($meet['id'], function (array $m) use ($locationId, $location) {
+            $found = false;
+            foreach ($m['locations'] as &$loc) {
+                if (($loc['id'] ?? '') !== $locationId) {
+                    continue;
+                }
+                $found = true;
+                $loc['label'] = $location['label'];
+                $loc['kind'] = $location['kind'];
+                $loc['detail'] = $location['detail'];
+                break;
             }
-            $found = true;
-            $loc['label'] = $label;
-            $loc['kind'] = $kind;
-            $loc['detail'] = $detail;
-            if (in_array($kind, ['video', 'hybrid'], true) && $detail !== '') {
-                $loc['detail'] = normalizeLocationDetail($kind, $detail);
+            unset($loc);
+            if (!$found) {
+                throw new \RuntimeException('Location not found', 404);
             }
-            break;
+            return $m;
+        });
+    } else {
+        $label = trim((string) ($input['label'] ?? ''));
+        $kind = trim((string) ($input['kind'] ?? ''));
+        $detail = trim((string) ($input['detail'] ?? ''));
+        if ($label === '') {
+            Response::error('label required');
         }
-        unset($loc);
-        if (!$found) {
-            throw new \RuntimeException('Location not found', 404);
+        if ($kind === '') {
+            Response::error('kind required');
         }
-        return $m;
-    });
+        if ($kind === 'video' && $detail === '') {
+            $detail = 'Link to be added';
+        }
+
+        $meet = $store->update($meet['id'], function (array $m) use ($locationId, $label, $kind, $detail) {
+            $found = false;
+            foreach ($m['locations'] as &$loc) {
+                if (($loc['id'] ?? '') !== $locationId) {
+                    continue;
+                }
+                $found = true;
+                $loc['label'] = $label;
+                $loc['kind'] = $kind;
+                $loc['detail'] = $detail;
+                if (in_array($kind, ['video', 'hybrid'], true) && $detail !== '') {
+                    $loc['detail'] = normalizeLocationDetail($kind, $detail);
+                }
+                break;
+            }
+            unset($loc);
+            if (!$found) {
+                throw new \RuntimeException('Location not found', 404);
+            }
+            return $m;
+        });
+    }
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }

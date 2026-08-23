@@ -838,7 +838,7 @@ button.linkish {
 
 .cal-header, .cal-body {
   display: grid;
-  grid-template-columns: 56px repeat(var(--cal-cols, 3), minmax(0, 1fr));
+  grid-template-columns: 48px repeat(var(--cal-cols, 3), minmax(0, 1fr));
   gap: 0.35rem;
 }
 
@@ -1336,26 +1336,55 @@ details summary { cursor: pointer; }
 .locations-table {
   width: 100%;
   font-size: 0.88rem;
+  table-layout: fixed;
 }
 
 .locations-table td,
 .locations-table th {
-  vertical-align: top;
+  vertical-align: middle;
   padding: 0.35rem 0.4rem;
 }
 
-.loc-works-btn,
+.locations-table input.loc-cell {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0.25rem;
+  font: inherit;
+  min-width: 0;
+}
+
+.locations-table input.loc-cell:focus {
+  outline: 1px solid #2563eb;
+  background: #fff;
+  border-radius: 2px;
+}
+
+.loc-cell-notes { width: 18%; }
+.loc-cell-online { width: 26%; }
+.loc-cell-physical { width: 26%; }
+.loc-ok-with { width: 12%; text-align: center; white-space: nowrap; }
+.loc-ok-me { width: 10%; text-align: center; }
+.loc-confirm-col { width: 8%; text-align: center; }
+
+.loc-row-new td {
+  background: #fafafa;
+}
+
+.loc-ok-toggle,
 .loc-confirm-btn {
   min-width: 2.25rem;
   padding: 0.15rem 0.35rem;
-  font-size: 0.82rem;
+  font-size: 0.95rem;
+  line-height: 1;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #fff;
   cursor: pointer;
 }
 
-.loc-works-btn.on {
+.loc-ok-toggle.on {
   background: #dbeafe;
   border-color: #2563eb;
   color: #1d4ed8;

@@ -191,6 +191,7 @@
     }
 
     root.addEventListener('click', (e) => handleClick(e, root, state));
+    root.addEventListener('focusout', (e) => handleLocationRowBlur(e, root, state));
     root.addEventListener('change', (e) => handleChange(e, root, state));
     root.addEventListener('submit', (e) => handleSubmit(e, root, state));
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
@@ -1149,8 +1150,8 @@
         </details>
         <details class="confirm-section"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed locations</summary>
-          <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> (optional — up to one Online and one Physical). Attendees propose and mark <strong>Works for me</strong> on the Locations tab.</p>
-          ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg })}
+          <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> (optional — up to one Online and one Physical). Attendees propose rows and mark <strong>OK for Me</strong> on the Locations tab.</p>
+          ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true })}
         </details>
         <div class="row confirm-actions-row">
           ${renderAcceptTimeButton(isOrg, state, m)}
@@ -1221,12 +1222,6 @@
     return locs.online || locs.physical || '';
   }
 
-  function locationConfirmChannel(kind) {
-    if (kind === 'hybrid') return 'both';
-    if (kind === 'video' || kind === 'phone') return 'online';
-    return 'physical';
-  }
-
   function groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap) {
     return days.some((day) => {
       const slotIso = slotIsoFromMeetingDate(toDateIso(day), hm, mtz);
@@ -1252,7 +1247,7 @@
       const voters = attendeesForLocation(m, loc.id);
       const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
       const allPreferred = m.attendees.length > 0 && voters.length === m.attendees.length;
-      const channel = locationConfirmChannel(loc.kind);
+      const channel = locationConfirmChannel(loc);
       const isSelected = channel === 'both'
         ? selectedLocations.online === loc.id && selectedLocations.physical === loc.id
         : channel === 'online'
@@ -1358,97 +1353,204 @@
 
   // ─── Locations tab ───────────────────────────────────────────────────────────
 
-  function isOnlineLocKind(kind) {
-    return ['video', 'phone', 'hybrid'].includes(kind);
-  }
-
-  function isPhysicalLocKind(kind) {
-    return ['physical', 'hybrid', 'other'].includes(kind);
-  }
-
-  function renderLocationOnlineCell(loc) {
-    const url = extractUrlFromDetail(loc.detail);
-    const label = escapeHtml(loc.label);
-    if (url) {
-      const href = normalizeExternalUrl(url);
-      return `${label} — <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+  function locationRowFields(loc) {
+    if (!loc) return { notes: '', online: '', physical: '' };
+    if (loc.kind === 'row') {
+      try {
+        const o = JSON.parse(loc.detail || '{}');
+        const generic = loc.label === 'Online' || loc.label === 'Physical';
+        return {
+          notes: generic ? '' : (loc.label || ''),
+          online: o.online || '',
+          physical: o.physical || '',
+        };
+      } catch (_) {
+        return { notes: loc.label || '', online: '', physical: loc.detail || '' };
+      }
     }
-    return label;
+    if (['video', 'phone', 'hybrid'].includes(loc.kind)) {
+      return {
+        notes: loc.label || '',
+        online: extractUrlFromDetail(loc.detail) || loc.detail || '',
+        physical: '',
+      };
+    }
+    return {
+      notes: loc.label || '',
+      online: '',
+      physical: String(loc.detail || '').trim(),
+    };
   }
 
-  function renderLocationPhysicalCell(loc) {
-    const detail = String(loc.detail || '').trim();
-    return detail ? `${escapeHtml(loc.label)} — ${escapeHtml(detail)}` : escapeHtml(loc.label);
+  function locationConfirmChannel(loc) {
+    if (loc.kind === 'hybrid') return 'both';
+    if (loc.kind === 'row') {
+      const f = locationRowFields(loc);
+      if (f.online && f.physical) return 'both';
+      if (f.online) return 'online';
+      return 'physical';
+    }
+    if (loc.kind === 'video' || loc.kind === 'phone') return 'online';
+    return 'physical';
   }
 
-  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false } = {}) {
+  function readLocationRowInputs(row) {
+    return {
+      notes: row.querySelector('[data-loc-field="notes"]')?.value.trim() || '',
+      online: row.querySelector('[data-loc-field="online"]')?.value.trim() || '',
+      physical: row.querySelector('[data-loc-field="physical"]')?.value.trim() || '',
+    };
+  }
+
+  function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
+    const id = loc?.id || '';
+    const f = locationRowFields(loc);
+    const canEdit = !!attendee && !readOnly;
+    const voters = loc ? attendeesForLocation(m, loc.id) : [];
+    const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
+    const worksSelected = loc && attendee && state.selectedLocations.has(loc.id);
     const selectedLocs = effectiveConfirmLocations(state, m);
+    const channel = loc ? locationConfirmChannel(loc) : null;
+    const isConfirmed = loc && channel === 'both'
+      ? selectedLocs.online === loc.id && selectedLocs.physical === loc.id
+      : channel === 'online'
+        ? selectedLocs.online === loc.id
+        : loc && selectedLocs.physical === loc.id;
+
+    const cell = (field, value, placeholder) => {
+      if (!canEdit) {
+        if (!value) return '—';
+        if (field === 'online' && isWellFormedUrl(normalizeExternalUrl(value))) {
+          const href = normalizeExternalUrl(value);
+          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
+        }
+        return escapeHtml(value);
+      }
+      return `<input type="text" class="loc-cell" data-loc-field="${field}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" title="${escapeHtml(placeholder)}">`;
+    };
+
+    const worksCell = !loc
+      ? '—'
+      : !attendee
+        ? (worksSelected ? 'Yes' : '—')
+        : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK for me' : 'OK for me — saves immediately'}" aria-label="OK for me">${worksSelected ? '●' : '○'}</button>`;
+
+    const confirmCell = showConfirm && loc
+      ? (isOrg
+        ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Confirm for meeting">${isConfirmed ? '✓' : '○'}</button>`
+        : (isConfirmed ? '✓' : '—'))
+      : '';
+
+    return `
+      <td class="loc-cell-notes">${cell('notes', f.notes, 'Notes')}</td>
+      <td class="loc-cell-online">${cell('online', f.online, 'https://…')}</td>
+      <td class="loc-cell-physical">${cell('physical', f.physical, 'Place / address')}</td>
+      <td class="loc-ok-with">${initials ? escapeHtml(initials) : '—'}</td>
+      <td class="loc-ok-me">${worksCell}</td>
+      ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
+  }
+
+  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
     const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirm</th>' : '';
-    const addRow = attendee ? `<tr class="loc-add-row">
-      <td colspan="2">
-        <form class="loc-add-form" data-form="add-location-row">
-          <div class="loc-add-fields">
-            <label title="Optional online meeting">Online <input name="online_label" placeholder="Label" maxlength="80"></label>
-            <label>Link <input name="online_url" type="text" placeholder="https://…" autocapitalize="off"></label>
-            <label title="Optional physical place">Physical <input name="physical_label" placeholder="Place name" maxlength="80"></label>
-            <label>Details <input name="physical_detail" placeholder="Address or room" maxlength="200"></label>
-          </div>
-          <button type="submit" class="compact-btn" title="Add one or both locations from this row">Add location(s)</button>
-        </form>
-      </td>
-      <td colspan="${showConfirm ? 3 : 2}" class="meta">Enter online and/or physical — toggling <strong>Works for me</strong> saves immediately.</td>
-    </tr>` : '';
-    const rows = m.locations.map((loc) => {
-      const voters = attendeesForLocation(m, loc.id);
-      const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
-      const worksSelected = attendee && state.selectedLocations.has(loc.id);
-      const channel = locationConfirmChannel(loc.kind);
-      const isConfirmed = channel === 'both'
-        ? selectedLocs.online === loc.id && selectedLocs.physical === loc.id
-        : channel === 'online'
-          ? selectedLocs.online === loc.id
-          : selectedLocs.physical === loc.id;
-      const worksCell = attendee
-        ? `<button type="button" class="loc-works-btn${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Click to remove your preference' : 'Works for me — click to save'}">${worksSelected ? 'Yes' : '—'}</button>`
-        : '—';
-      const confirmCell = showConfirm
-        ? (isOrg
-          ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Toggle organiser confirm">${isConfirmed ? '✓' : '○'}</button>`
-          : (isConfirmed ? '✓' : '—'))
-        : '';
-      const editBtn = attendee && state.editingLocationId !== loc.id
-        ? `<button type="button" class="compact-btn loc-edit-inline" data-action="edit-location" data-location-id="${escapeHtml(loc.id)}" title="Edit or remove">Edit</button>`
-        : '';
-      return `<tr class="loc-row${isConfirmed ? ' loc-confirmed' : ''}">
-        <td>${isOnlineLocKind(loc.kind) ? renderLocationOnlineCell(loc) : '—'} ${editBtn}</td>
-        <td>${isPhysicalLocKind(loc.kind) ? renderLocationPhysicalCell(loc) : '—'}</td>
-        <td>${initials ? escapeHtml(initials) : '—'}</td>
-        <td class="loc-works-col">${worksCell}</td>
-        ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}
-      </tr>${state.editingLocationId === loc.id && attendee ? `<tr><td colspan="${showConfirm ? 5 : 4}">${renderEditLocationForm(loc, attendee)}</td></tr>` : ''}`;
-    }).join('');
+    const existingRows = m.locations.map((loc) => `
+      <tr class="loc-row" data-location-row data-location-id="${escapeHtml(loc.id)}">
+        ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly })}
+      </tr>`).join('');
+    const newRow = attendee && !readOnly ? `
+      <tr class="loc-row loc-row-new" data-location-row data-location-id="">
+        ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
+      </tr>` : '';
+    const colSpan = showConfirm ? 6 : 5;
     return `<table class="data-table locations-table">
       <thead><tr>
-        <th>Online</th><th>Physical</th><th title="Attendee initials who marked Works for me">OK with</th>
-        <th title="Toggle if this location works for you — saves immediately">Works for me</th>
+        <th>Notes</th>
+        <th>Online</th>
+        <th>Physical</th>
+        <th title="Initials of attendees who marked OK for me">OK with</th>
+        <th title="Toggle if this row works for you">OK for Me</th>
         ${confirmCol}
       </tr></thead>
-      <tbody>${addRow}${rows || `<tr><td colspan="${showConfirm ? 5 : 4}" class="meta">No locations yet — use the row above to add one.</td></tr>`}</tbody>
-    </table>`;
+      <tbody>${existingRows}${newRow}</tbody>
+    </table>
+    ${attendee && !readOnly ? '<p class="meta loc-table-hint">Each row is one location option — type in the cells and tab out to save. Toggle <strong>OK for Me</strong> to record your preference.</p>' : ''}`;
   }
 
   function renderLocationsTab(m, state, attendee) {
     return `
       <section class="panel stack" id="meeting-locations-pane">
-        <p class="meta pane-lead"><strong>Select from locations proposed — Works for me saves your choice. Propose new location(s) in the table below.</strong></p>
-        <div class="row group-legend loc-legend">
-          <span class="legend-chip loc-proposed">Proposed</span>
-          <span class="legend-chip loc-works active">Works for me = Yes</span>
-          <span class="legend-chip selected">Confirmed by organiser</span>
-        </div>
+        <p class="meta pane-lead"><strong>Propose and choose locations — each row is one option. Tab out of a cell to save.</strong></p>
         ${renderLocationsTable(m, state, attendee)}
-        ${attendee ? '' : '<p class="meta">Sign in on Attendees to save location preferences.</p>'}
+        ${attendee ? '' : '<p class="meta">Sign in on Attendees to propose locations and mark OK for me.</p>'}
       </section>`;
+  }
+
+  async function handleLocationRowBlur(e, root, state) {
+    if (!e.target.matches('.loc-cell')) return;
+    const row = e.target.closest('[data-location-row]');
+    if (!row) return;
+    if (row.contains(e.relatedTarget)) return;
+    await saveLocationRow(root, state, row);
+  }
+
+  async function saveLocationRow(root, state, row) {
+    if (!state.attendeeId) return;
+    const id = row.dataset.locationId || '';
+    const { notes, online, physical } = readLocationRowInputs(row);
+    if (!online && !physical) {
+      if (id && row.dataset.locSaving !== '1') {
+        const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+        if (!me?.is_organizer) {
+          render(root, state);
+          toast('Only the organiser can remove a location row', true);
+          return;
+        }
+        row.dataset.locSaving = '1';
+        try {
+          const data = await apiPost({
+            action: 'remove_location',
+            slug: state.slug,
+            acting_attendee_id: state.attendeeId,
+            location_id: id,
+          });
+          state.meet = data.meet;
+          state.selectedLocations.delete(id);
+          render(root, state);
+          toast('Location row removed');
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          delete row.dataset.locSaving;
+        }
+      }
+      return;
+    }
+    if (online && !isWellFormedUrl(normalizeExternalUrl(online))) {
+      toast('Online must be a well-formed URL (https://…)', true);
+      return;
+    }
+    const payload = {
+      slug: state.slug,
+      notes,
+      online_url: online ? normalizeExternalUrl(online) : '',
+      physical_text: physical,
+    };
+    if (row.dataset.locSaving === '1') return;
+    row.dataset.locSaving = '1';
+    try {
+      let data;
+      if (id) {
+        data = await apiPost({ action: 'update_location', location_id: id, ...payload });
+      } else {
+        data = await apiPost({ action: 'add_location', ...payload });
+      }
+      state.meet = data.meet;
+      render(root, state);
+      toast(id ? 'Location saved' : 'Location added');
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      delete row.dataset.locSaving;
+    }
   }
 
   function renderEditLocationForm(loc, attendee) {
@@ -1509,8 +1611,14 @@
 
   function renderConfirmForm(m, state, slotVal, isUpdate) {
     const locs = effectiveConfirmLocations(state, m);
-    const onlineOpts = m.locations.filter((l) => ['video', 'phone', 'hybrid'].includes(l.kind));
-    const physOpts = m.locations.filter((l) => ['physical', 'hybrid', 'other'].includes(l.kind));
+    const onlineOpts = m.locations.filter((l) => {
+      const ch = locationConfirmChannel(l);
+      return ch === 'online' || ch === 'both';
+    });
+    const physOpts = m.locations.filter((l) => {
+      const ch = locationConfirmChannel(l);
+      return ch === 'physical' || ch === 'both';
+    });
     return `
       <details${isUpdate ? '' : ' open'}><summary>${isUpdate ? 'Update agreed time &amp; location (organiser)' : 'Agree meeting time &amp; location (organiser)'}</summary>
         <p class="meta">Choose a time from <strong>Set confirmed meeting details</strong> by clicking a slot, or enter a UTC time below. Online and Physical locations are optional.</p>
@@ -1923,6 +2031,14 @@
   }
 
   function locationChipLabel(loc) {
+    if (loc.kind === 'row') {
+      const f = locationRowFields(loc);
+      const parts = [];
+      if (f.notes) parts.push(f.notes);
+      if (f.online) parts.push(f.online);
+      if (f.physical) parts.push(f.physical);
+      return parts.join(' · ') || 'Location';
+    }
     const kind = locationKindLabel(loc.kind);
     const service = String(loc.label || '').trim();
     const detail = loc.detail ? ` — ${loc.detail}` : '';
@@ -1936,6 +2052,19 @@
     if (!locationId) return '<span class="label-hint">No location scheduled yet.</span>';
     const loc = m.locations.find((l) => l.id === locationId);
     if (!loc) return escapeHtml(locationId);
+    if (loc.kind === 'row') {
+      const f = locationRowFields(loc);
+      const parts = [];
+      if (f.notes) parts.push(escapeHtml(f.notes));
+      if (f.online) {
+        const href = normalizeExternalUrl(f.online);
+        parts.push(isWellFormedUrl(href)
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(f.online)}</a>`
+          : escapeHtml(f.online));
+      }
+      if (f.physical) parts.push(escapeHtml(f.physical));
+      return parts.join(' · ') || escapeHtml(locationId);
+    }
     const url = extractUrlFromDetail(loc.detail);
     const kind = locationKindLabel(loc.kind);
     const service = String(loc.label || '').trim();
@@ -2621,7 +2750,7 @@
       }
       const loc = state.meet.locations.find((l) => l.id === btn.dataset.locationId);
       if (!loc) return;
-      const channel = locationConfirmChannel(loc.kind);
+      const channel = locationConfirmChannel(loc);
       const id = loc.id;
       const cur = effectiveConfirmLocations(state, state.meet);
       if (channel === 'both') {
