@@ -672,9 +672,9 @@
       <div class="meet-shell">
         <div class="sticky-top${compactHeader ? ' sticky-top-compact' : ''}">
           <div class="sticky-top-inner">
-            <div class="sticky-head row">
+            <div class="sticky-head">
               <h1 class="meet-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</h1>
-              <div class="row sticky-head-actions">
+              <div class="sticky-head-actions row">
                 ${narrow ? `<button type="button" class="compact-btn header-toggle-btn" data-action="toggle-header" title="Collapse/Expand for narrow screens">${compactHeader ? 'More ▾' : 'Less ▴'}</button>` : ''}
                 <button type="button" class="compact-btn header-help-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
                 <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
