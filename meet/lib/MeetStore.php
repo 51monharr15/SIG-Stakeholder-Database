@@ -59,7 +59,15 @@ final class MeetStore
         if ($content === false) {
             throw new \RuntimeException('Unable to read meeting file');
         }
-        return MeetFile::parse($content);
+        $meet = MeetFile::parse($content);
+        $beforeAvail = json_encode($meet['availability'] ?? []);
+        $beforePrefs = json_encode($meet['location_preferences'] ?? []);
+        $meet = MeetFile::normalize($meet);
+        if (json_encode($meet['availability'] ?? []) !== $beforeAvail
+            || json_encode($meet['location_preferences'] ?? []) !== $beforePrefs) {
+            $this->save($meet);
+        }
+        return $meet;
     }
 
     public function save(array $meet): array
@@ -113,6 +121,7 @@ final class MeetStore
 
     public function publicView(array $meet): array
     {
+        $meet = MeetFile::normalize($meet);
         $suggestions = Availability::buildSuggestions($meet);
         $today = gmdate('Y-m-d');
         $rangeStart = max($meet['range_start'], $today);

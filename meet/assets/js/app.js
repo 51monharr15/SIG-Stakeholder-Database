@@ -1340,12 +1340,50 @@
     return effectiveConfirmedLocationIds(state, m);
   }
 
+  function activeAttendeeIds(m) {
+    return new Set((m.attendees || []).map((a) => a.id));
+  }
+
+  function slotTimeMs(iso) {
+    const ms = new Date(iso).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+
+  function suggestionAtSlot(m, slotIso, fullMap, partialMap) {
+    const ts = slotTimeMs(slotIso);
+    if (ts === null) return { full: null, partial: null };
+    const active = activeAttendeeIds(m);
+    for (const [key, val] of fullMap) {
+      if (slotTimeMs(key) === ts) {
+        const attendees = (val.attendees || []).filter((id) => active.has(id));
+        return { full: { ...val, attendees, count: attendees.length }, partial: null };
+      }
+    }
+    for (const [key, val] of partialMap) {
+      if (slotTimeMs(key) === ts) {
+        const attendees_full = (val.attendees_full || []).filter((id) => active.has(id));
+        const attendees_partial = (val.attendees_partial || []).filter((p) => active.has(p.id));
+        const attendees_absent = (val.attendees_absent || []).filter((id) => active.has(id));
+        return {
+          full: null,
+          partial: { ...val, attendees_full, attendees_partial, attendees_absent },
+        };
+      }
+    }
+    return { full: null, partial: null };
+  }
+
+  function slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap) {
+    const { full, partial } = suggestionAtSlot(m, slotIso, fullMap, partialMap);
+    if (full || partial) return true;
+    return availabilityIdsAt(m, slotIso).length > 0;
+  }
+
   function groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap) {
     return days.some((day) => {
       const slotIso = slotIsoFromMeetingDate(toDateIso(day), hm, mtz);
       if (slotIso === selected) return true;
-      if (fullMap.has(slotIso) || partialMap.has(slotIso)) return true;
-      return availabilityIdsAt(m, slotIso).length > 0;
+      return slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap);
     });
   }
 
@@ -1354,8 +1392,7 @@
     return hours.some((hm) => {
       const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
       if (slotIso === selected) return true;
-      if (fullMap.has(slotIso) || partialMap.has(slotIso)) return true;
-      return availabilityIdsAt(m, slotIso).length > 0;
+      return slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap);
     });
   }
 
@@ -1395,13 +1432,14 @@
     let initials = '';
     const atSlotIds = availabilityIdsAt(m, slotIso);
     const allAtSlot = m.attendees.length > 0 && atSlotIds.length === m.attendees.length;
-    if (fullMap.has(slotIso)) {
-      const s = fullMap.get(slotIso);
+    const { full: fullEntry, partial: partialEntry } = suggestionAtSlot(m, slotIso, fullMap, partialMap);
+    if (fullEntry) {
+      const s = fullEntry;
       cls = 'full';
       tip += ` · all attendees free for full meeting (${s.count}/${m.attendees.length})`;
       initials = (s.attendees || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
-    } else if (partialMap.has(slotIso)) {
-      const p = partialMap.get(slotIso);
+    } else if (partialEntry) {
+      const p = partialEntry;
       const fullCount = (p.attendees_full || []).length;
       if (fullCount === m.attendees.length) {
         cls = 'full';
@@ -1453,20 +1491,24 @@
     }
     return m.attendees
       .map((a) => a.id)
-      .filter((id) => windowKeys.every((key) => {
-        const ids = m.availability?.[key] || availabilityIdsAt(m, key);
-        return ids.includes(id);
-      }));
+      .filter((id) => windowKeys.every((key) => availabilityIdsAt(m, key).includes(id)));
   }
 
   function availabilityIdsAt(m, iso) {
-    if (m.availability?.[iso]) return m.availability[iso];
-    const target = new Date(iso).getTime();
-    if (Number.isNaN(target)) return [];
-    for (const [key, ids] of Object.entries(m.availability || {})) {
-      if (new Date(key).getTime() === target) return ids;
+    const active = activeAttendeeIds(m);
+    let ids = [];
+    if (m.availability?.[iso]) ids = m.availability[iso];
+    else {
+      const target = slotTimeMs(iso);
+      if (target === null) return [];
+      for (const [key, keyIds] of Object.entries(m.availability || {})) {
+        if (slotTimeMs(key) === target) {
+          ids = keyIds;
+          break;
+        }
+      }
     }
-    return [];
+    return ids.filter((id) => active.has(id));
   }
 
   // ─── Locations tab ───────────────────────────────────────────────────────────

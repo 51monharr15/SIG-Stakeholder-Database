@@ -50,7 +50,7 @@ final class MeetFile
             'confirmed_location_physical' => null,
             'confirmed_location_online' => null,
             'confirmed_location_ids' => [],
-            'app_version' => '1.8.26',
+            'app_version' => '1.8.27',
         ];
     }
 
@@ -459,7 +459,30 @@ final class MeetFile
             $attendee['organizer'] = !empty($attendee['organizer']);
         }
         unset($attendee);
+        self::sanitizeAttendanceData($meet);
         return $meet;
+    }
+
+    /** Drop availability and location prefs for removed attendees. */
+    public static function sanitizeAttendanceData(array &$meet): void
+    {
+        $valid = array_flip(array_column($meet['attendees'] ?? [], 'id'));
+        foreach ($meet['availability'] as $slot => $ids) {
+            $filtered = array_values(array_filter(
+                is_array($ids) ? $ids : [],
+                static fn ($id) => isset($valid[(string) $id])
+            ));
+            if ($filtered === []) {
+                unset($meet['availability'][$slot]);
+            } else {
+                $meet['availability'][$slot] = $filtered;
+            }
+        }
+        foreach (array_keys($meet['location_preferences'] ?? []) as $attendeeId) {
+            if (!isset($valid[$attendeeId])) {
+                unset($meet['location_preferences'][$attendeeId]);
+            }
+        }
     }
 
     /** @return string|null Error message, or null if valid. */
