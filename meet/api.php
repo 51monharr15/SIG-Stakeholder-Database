@@ -606,8 +606,24 @@ function parseLocationTextField(string $text): array
 
         return ['online' => $url, 'physical' => ''];
     }
+    if (looksLikeMalformedLocationUrl($text)) {
+        return ['online' => '', 'physical' => $text];
+    }
 
     return ['online' => '', 'physical' => $text];
+}
+
+function looksLikeMalformedLocationUrl(string $text): bool
+{
+    $markers = ['/', '.', 'ww', ':', 'ttp'];
+    $count = 0;
+    foreach ($markers as $m) {
+        if (str_contains($text, $m)) {
+            $count++;
+        }
+    }
+
+    return $count >= 3;
 }
 
 /** @return array{id: string, label: string, kind: string, detail: string} */

@@ -236,7 +236,7 @@ final class MeetStore
             if ($dateB === '') {
                 $dateB = substr((string) ($b['created'] ?? ''), 0, 10);
             }
-            $byDate = strcmp($dateA, $dateB);
+            $byDate = strcmp($dateB, $dateA);
             if ($byDate !== 0) {
                 return $byDate;
             }

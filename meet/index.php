@@ -78,7 +78,12 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
           <form id="list-meetings-form" class="create-form">
             <div class="find-meetings-fields">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
-              <label>Passcode <input type="text" name="pin" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters."></label>
+              <label>Passcode
+                <span class="pin-field-wrap">
+                  <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters.">
+                  <button type="button" class="pin-reveal-btn" id="find-pin-toggle" title="Show or hide passcode" aria-label="Show passcode">👁</button>
+                </span>
+              </label>
             </div>
             <button type="submit">List my meetings</button>
           </form>

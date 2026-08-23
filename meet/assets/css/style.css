@@ -186,6 +186,8 @@ button.btn-disabled {
   margin: 0.4rem 0 0.1rem;
   padding-top: 0.4rem;
   border-top: 1px solid var(--line);
+  overflow-x: visible;
+  max-width: 100%;
 }
 
 .sticky-top-compact .sticky-top-inner {
@@ -233,6 +235,12 @@ button.btn-disabled {
 .help-panel-header {
   justify-content: space-between;
   margin-bottom: 0.65rem;
+}
+
+.help-panel-header .compact-btn {
+  min-height: 2rem;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 
 .help-columns {
@@ -435,23 +443,11 @@ button.linkish {
   .meet-title { font-size: 1.05rem; }
   .tab { padding: 0.28rem 0.5rem; font-size: 0.72rem; }
   .sticky-head { gap: 0.35rem; }
-  .sticky-head .compact-btn[data-action="copy-link"] {
-    font-size: 0.72rem;
-    padding: 0.3rem 0.45rem;
-    white-space: nowrap;
-  }
-  .sticky-head .compact-btn[data-action="toggle-header"] {
-    font-size: 0.72rem;
-    padding: 0.3rem 0.45rem;
-  }
   .dashboard-nav {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow-x: visible;
     gap: 0.25rem;
-    padding-bottom: 0.15rem;
+    padding-bottom: 0;
   }
   .dash-btn {
     flex-shrink: 0;
@@ -636,6 +632,52 @@ button.linkish {
   position: relative;
   z-index: 2;
   cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.55rem;
+  line-height: 1.2;
+  min-height: 2rem;
+  box-sizing: border-box;
+  align-self: center;
+}
+
+.pin-field-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pin-field-wrap input { flex: 1 1 auto; min-width: 0; }
+
+.pin-reveal-btn {
+  flex-shrink: 0;
+  background: #f1f5f9;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 1rem;
+}
+
+.pane-region-scroll,
+.locations-table-scroll,
+.attendee-table-wrap,
+.attachments-table-scroll {
+  scrollbar-width: thin;
+}
+
+.locations-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.calendar-grid-pane .cal-header-nav {
+  position: static;
+  box-shadow: none;
+}
+
+.loc-ok-toggle:not(.on) {
+  color: var(--muted);
 }
 
 .confirm-action-btn:disabled {

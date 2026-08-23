@@ -71,6 +71,18 @@
       }
     });
 
+    const pinInput = document.getElementById('find-pin-input');
+    document.getElementById('find-pin-toggle')?.addEventListener('click', () => {
+      if (!pinInput) return;
+      const show = pinInput.type === 'password';
+      pinInput.type = show ? 'text' : 'password';
+      const btn = document.getElementById('find-pin-toggle');
+      if (btn) {
+        btn.title = show ? 'Hide passcode' : 'Show passcode';
+        btn.setAttribute('aria-label', show ? 'Hide passcode' : 'Show passcode');
+      }
+    });
+
     document.getElementById('list-meetings-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(e.target);
@@ -786,7 +798,8 @@
     }
     const recurrenceHtml = `<span class="meta">Recurrence: ${recurrenceLabel}</span>`;
     const locIds = confirmedLocationIdsForDisplay(m, state);
-    const locLabel = scheduled ? 'Locations' : 'Locations (proposed)';
+    const hasConfirmedLocs = effectiveConfirmedLocationIds(state, m).length > 0;
+    const locLabel = scheduled || hasConfirmedLocs ? 'Locations' : 'Locations (proposed)';
     const locHtml = locIds.length
       ? `<span class="meta">${locLabel}: ${locIds.map((id) => locationInlineHtml(m, id)).join('; ')}</span>`
       : '<span class="meta">No locations confirmed</span>';
@@ -832,7 +845,7 @@
                 <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
                 <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours, timezone. Save when done.</li>
                 <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments (pre- and post-meeting).</li>
-                <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save my availability</em>.</li>
+                <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
                 <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
                 <li><strong>Set confirmed meeting details</strong> — <em>Group calendar</em>: everyone’s marks on one grid. Organiser picks start and location(s), then accepts. Partial overlap is OK.</li>
@@ -843,7 +856,7 @@
               <ol class="help-steps">
                 <li>Open the meeting link you were sent. You will see the meeting title and current status.</li>
                 <li>Go to <strong>Attendees</strong>. If you are already listed, tick <em>Me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
-                <li>Open <strong>My availability</strong> and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press <em>Save my availability</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
+                <li>Open <strong>My availability</strong> and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press <em>Save</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
                 <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
                 <li>Open <strong>Set confirmed meeting details</strong> to see the <em>Group calendar</em> — how times overlap and what is proposed or scheduled.</li>
                 <li>Check the top status line for the current scheduled time and location.</li>
@@ -907,7 +920,7 @@
           </li>
           <li>
             <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
-            ${go('calendar', 'Go to My availability')} and select slots when you are free — use ◀ ▶ beside the dates to move by weekday. Select enough consecutive slots to cover the full meeting if you can.
+            ${go('calendar', 'Go to My availability')} and select slots when you are free — use the green navigation buttons (◀ ▶ beside dates) to move by day or screen. Select enough consecutive slots to cover the full meeting if you can.
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
@@ -1089,7 +1102,7 @@
         <div class="availability-mark-band">
         <details class="calendar-instructions"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
-          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Save with <em>Save my availability</em>. Tap a selected slot again to deselect — save again after changes.</p>
+          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> in the band below the grid. Tap a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
           <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell.</p>
           <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
@@ -1097,7 +1110,6 @@
         </details>
         </div>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
-        ${renderSaveRow(state, m, { showBottomButton: false })}
         <div class="pane-region tint-dates calendar-grid-pane">
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz })}
@@ -1149,7 +1161,7 @@
   function renderSaveRow(state, m, { showTopDuplicate = true, showBottomButton = true } = {}) {
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
-    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save my availability</button>`;
+    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save</button>`;
     const count = state.selectedSlots.size;
     const slotMeta = m ? calendarNavHint(m).trim() : '';
     let html = '';
@@ -1202,14 +1214,14 @@
     return `
       <section class="panel stack" id="meeting-availability-pane">
         <p class="meta pane-lead"><strong>Group calendar</strong> — everyone’s availability on one grid. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each.${calendarNavHint(m)}</p>
-        <details class="meeting-link-block">
-          <summary class="meta" title="Share this link so others can open the meeting">Meeting link</summary>
-          <div class="share-row row">
+        <details ${paneDetailsAttrs(state, 'group-link', { extraClass: 'tint-text confirm-section confirm-section-link' })}>
+          <summary title="Share this link so others can open the meeting">Meeting link</summary>
+          <div class="confirm-section-inner share-row row">
             <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
             <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link to clipboard">Copy meeting link</button>
           </div>
         </details>
-        <details class="confirm-section confirm-section-time pane-details tint-dates"${autoDetailsOpen(true) ? ' open' : ''} data-pane-id="group-time">
+        <details ${paneDetailsAttrs(state, 'group-time', { extraClass: 'confirm-section confirm-section-time tint-dates' })}>
           <summary title="Pick a meeting start from the Group calendar">Proposed meeting time</summary>
           <div class="confirm-section-inner stack">
             ${renderAcceptTimeButton(isOrg, state, m)}
@@ -1238,10 +1250,10 @@
           <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees available</span>
           <span class="legend-chip selected" title="Your current proposed start before Accept">Dark green border = selected start</span>
         </div>
-        <details class="confirm-section confirm-section-locations pane-details tint-places"${autoDetailsOpen(true) ? ' open' : ''} data-pane-id="group-locations">
+        <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations tint-places' })}>
           <summary>Proposed locations</summary>
           <div class="confirm-section-inner">
-            <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> on any row (saves immediately). Attendees propose and mark <strong>OK with me</strong> on the Locations tab.</p>
+            <p class="meta pane-lead">Organiser: toggle <strong>Confirmed</strong> (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark <strong>OK with me</strong> using the Locations tab.</p>
             ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true })}
           </div>
         </details>
@@ -1489,11 +1501,24 @@
     return 'physical';
   }
 
+  function looksLikeMalformedUrl(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return false;
+    if (/^https?:\/\//i.test(raw) || isWellFormedUrl(normalizeExternalUrl(raw))) return false;
+    const markers = ['/', '.', 'ww', ':', 'ttp'];
+    let count = 0;
+    for (const m of markers) if (raw.includes(m)) count++;
+    return count >= 3;
+  }
+
   function parseLocationFieldText(text) {
     const raw = String(text || '').trim();
     if (!raw) return { online: '', physical: '' };
     if (/^https?:\/\//i.test(raw) || isWellFormedUrl(normalizeExternalUrl(raw))) {
       return { online: normalizeExternalUrl(raw), physical: '' };
+    }
+    if (looksLikeMalformedUrl(raw)) {
+      return { online: '', physical: raw, malformedUrl: true };
     }
     return { online: '', physical: raw };
   }
@@ -1582,14 +1607,14 @@
     const worksCell = !loc
       ? '—'
       : readOnly
-        ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : 'No'}</span>`
+        ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : '?'}</span>`
         : !attendee
-          ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : 'No'}</span>`
-          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? 'Yes' : 'No'}</button>`;
+          ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : '?'}</span>`
+          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? 'Yes' : '?'}</button>`;
 
     const confirmCell = showConfirm && loc
       ? (isOrg
-        ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Confirm for meeting">${isConfirmed ? '✓' : '○'}</button>`
+        ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Confirmed for meeting">${isConfirmed ? '✓' : '○'}</button>`
         : (isConfirmed ? '✓' : '—'))
       : '';
 
@@ -1602,7 +1627,7 @@
   }
 
   function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
-    const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirm</th>' : '';
+    const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirmed</th>' : '';
     const existingRows = m.locations.map((loc) => `
       <tr class="loc-row" data-location-row data-location-id="${escapeHtml(loc.id)}">
         ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly })}
@@ -1654,6 +1679,11 @@
     if (snapshot && snapshot === currentSnap) return;
 
     const { notes, online, physical } = readLocationRowInputs(row);
+    const locationText = row.querySelector('[data-loc-field="location"]')?.value.trim() || '';
+    if (looksLikeMalformedUrl(locationText)) {
+      const ok = confirm('This location looks like a badly formed URL. Save it as plain text instead?');
+      if (!ok) return;
+    }
     if (!online && !physical) {
       if (id && row.dataset.locSaving !== '1') {
         const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
@@ -1796,7 +1826,7 @@
       <td class="attach-cell-label"><input type="text" class="attach-cell" data-attach-field="label" placeholder="Label"></td>
       <td class="attach-cell-content"><textarea class="attach-cell" data-attach-field="content" rows="3" placeholder="URL or text (simple HTML)"></textarea></td>
     </tr>` : '';
-    return `<div class="pane-region-scroll"><table class="data-table attachments-table">
+    return `<div class="pane-region-scroll attachments-table-scroll"><table class="data-table attachments-table">
       <thead><tr><th>Label</th><th>Content</th></tr></thead>
       <tbody>${newRow}${rows}</tbody>
     </table></div>`;
@@ -1936,19 +1966,20 @@
   function renderOptionsTab(m, state, attendee) {
     const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
-    const saveBtn = canEdit ? '<button type="submit">Save calendar options</button>' : '';
+    const saveBtn = canEdit ? '<button type="submit">Save</button>' : '';
+    const headerSaveBtn = canEdit ? '<button type="submit" form="update-settings-form">Save</button>' : '';
     const rangeEndDisplay = optionsRangeEnd(m);
     return `
       <section class="panel stack">
         <div class="pane-title-row row">
           <p class="meta pane-lead"><strong>Don't forget to save after making changes.</strong> Meeting length, calendar slot size, bookable dates and hours.${canEdit ? '' : ' View only — organiser can edit.'}</p>
-          ${canEdit ? formSaveHeader(saveBtn) : ''}
+          ${canEdit ? formSaveHeader(headerSaveBtn) : ''}
         </div>
         ${canEdit && !m.attendees.length ? `<div class="row">
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="getting-started">Back to Getting started</button>
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
         </div>` : ''}
-        <form class="inline-form organizer-form" data-form="update-settings">
+        <form id="update-settings-form" class="inline-form organizer-form" data-form="update-settings">
           ${canEdit ? '' : formSaveHeader('')}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <details ${paneDetailsAttrs(state, 'opts-length', { extraClass: 'tint-dates' })}>
