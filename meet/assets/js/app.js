@@ -1480,6 +1480,16 @@
     });
   }
 
+  function selectElementContents(el) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    } catch (_) { /* ignore */ }
+  }
+
   function renderLocFieldDisplay(m, state, locId, field, value, { readOnly }) {
     if (!value) return '—';
     const key = `${locId || 'new'}:${field}`;
@@ -1491,21 +1501,27 @@
       if (!expanded && value.length <= 48) {
         return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
       }
-      const shown = expanded ? value : `${value.slice(0, 45)}…`;
-      return `<span class="loc-url-wrap">
-        <button type="button" class="loc-expand-btn loc-url-text${expanded ? ' is-expanded' : ''}" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="${expanded ? 'Collapse' : 'Show full link'}">${escapeHtml(shown)}</button>
-        ${expanded ? `<span class="loc-url-actions row">
-          <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
-          <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
-        </span>` : ''}
-      </span>`;
+      if (expanded) {
+        return `<span class="loc-url-wrap">
+          <span class="loc-selectable-text loc-url-full" data-loc-select="${escapeHtml(key)}" tabindex="0" title="Full link — selected for copy">${escapeHtml(value)}</span>
+          <span class="loc-url-actions row">
+            <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
+            <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+          </span>
+        </span>`;
+      }
+      const shown = `${value.slice(0, 45)}…`;
+      return `<button type="button" class="loc-expand-btn loc-url-text" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show full link (selects all for copy)">${escapeHtml(shown)}</button>`;
     }
 
     if (readOnly) {
       const lines = String(value).split('\n');
       const needsClamp = !expanded && (lines.length > 3 || String(value).length > 120);
       if (needsClamp) {
-        return `<button type="button" class="loc-expand-btn loc-text-clamp" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show all">${escapeHtml(value)}</button>`;
+        return `<button type="button" class="loc-expand-btn loc-text-clamp" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show all (selects for copy)">${escapeHtml(value)}</button>`;
+      }
+      if (expanded) {
+        return `<span class="loc-selectable-text loc-text-full" data-loc-select="${escapeHtml(key)}" tabindex="0">${escapeHtml(value)}</span>`;
       }
     }
 
@@ -1562,7 +1578,7 @@
       <tr class="loc-row loc-row-new" data-location-row data-location-id="">
         ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
       </tr>` : '';
-    return `<table class="data-table locations-table">
+    return `<div class="pane-region locations-table-scroll"><table class="data-table locations-table">
       <thead><tr>
         <th>Notes</th>
         <th>Location</th>
@@ -1571,13 +1587,14 @@
         ${confirmCol}
       </tr></thead>
       <tbody>${newRow}${existingRows}</tbody>
-    </table>`;
+    </table></div>`;
   }
 
   function renderLocationsTab(m, state, attendee) {
     const hint = attendee
-      ? '<p class="meta pane-lead">Each row is one location — enter a <strong>URL or place name</strong> in the first blank row. Tab out of a cell to save. Toggle <strong>OK with me</strong> to record your preference. Tap long text or links to expand; use <strong>Copy</strong> after expanding a link.</p>'
-      : '<p class="meta pane-lead">Each row is one location (URL or place name). Sign in on Attendees to propose locations and mark OK with me.</p>';
+      ? `<p class="meta pane-lead">Proposed URLs or place names in the <strong>top row</strong> are added to the table. Tab out of an amended cell to save.</p>
+         <p class="meta pane-lead">Toggle <strong>OK with me</strong> to record your preference. Tap/click overflow cells to expand; use <strong>Copy</strong> after expanding a link.</p>`
+      : '<p class="meta pane-lead">Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me.</p>';
     return `
       <section class="panel stack" id="meeting-locations-pane">
         ${hint}
@@ -1871,6 +1888,7 @@
           ${canEdit ? '' : formSaveHeader('')}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <div class="options-group options-group-core">
+            <p class="options-group-title">Meeting length &amp; calendar</p>
             <div class="form-grid">
               <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
             </div>
@@ -1886,26 +1904,31 @@
             <p class="meta options-duration-hint"><strong>Calendar slot size</strong> is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''} Changing meeting length or slot size does <strong>not</strong> remap saved availability — attendees should review <strong>My availability</strong> and save again.</p>
           </div>
           <div class="options-group options-group-booking">
-            <div class="form-grid options-date-stack">
-              <label title="Earliest date this meeting is open for scheduling.">Earliest bookable meeting start<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
-              <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">Require bookings to be on or before <span class="label-hint">(optional — blank = open-ended)</span><input type="date" name="range_end" value="${escapeHtml(rangeEndDisplay)}"></label>
-            </div>
-            <div class="form-grid options-time-stack">
-              <label title="Earliest start time shown on the calendar grid each day (meeting timezone).">Allow bookings from <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
-              <label title="Latest end time shown on the calendar grid each day (meeting timezone).">Allow bookings up until <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+            <p class="options-group-title">Bookable dates &amp; daily hours</p>
+            <div class="options-booking-grid">
+              <label title="Earliest date this meeting is open for scheduling.">Start date<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
+              <label title="Earliest start time on the calendar grid each day (meeting timezone).">Start time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+              <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">End date <span class="label-hint">(optional)</span><input type="date" name="range_end" value="${escapeHtml(rangeEndDisplay)}"></label>
+              <label title="Latest end time on the calendar grid each day (meeting timezone).">End time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
             </div>
           </div>
-          <details class="timezone-block">
-            <summary>Calendar hours · ${escapeHtml(mtz)} · ${escapeHtml(formatWallHour(parseTime(m.day_start)))}–${escapeHtml(formatWallHour(parseTime(m.day_end)))} · book ${escapeHtml(optionsRangeStart(m))}${rangeEndDisplay ? ` – ${escapeHtml(rangeEndDisplay)}` : ' – open-ended'}</summary>
+          <div class="options-group options-group-hours">
+            <p class="options-group-title">Calendar hours &amp; timezone</p>
+            <details class="timezone-block">
+            <summary>${escapeHtml(mtz)} · ${escapeHtml(formatWallHour(parseTime(m.day_start)))}–${escapeHtml(formatWallHour(parseTime(m.day_end)))} · ${escapeHtml(optionsRangeStart(m))}${rangeEndDisplay ? ` – ${escapeHtml(rangeEndDisplay)}` : ' – open-ended'}</summary>
             <p class="meta">Times on the calendar grid are shown in each person’s local timezone (and UTC in slot details). The timezone below defines which wall-clock hours ${escapeHtml(formatWallHour(parseTime(m.day_start)))}–${escapeHtml(formatWallHour(parseTime(m.day_end)))} refer to — everyone marks the same underlying slots.</p>
             <label>Timezone
               <select name="timezone">${timezoneOptions(m.timezone)}</select>
             </label>
           </details>
+          </div>
+          <div class="options-group options-group-recurrence">
+            <p class="options-group-title">Recurrence</p>
           <details class="recurrence-future" disabled>
             <summary class="recurrence-summary">Recurrence is a future feature</summary>
             <p class="meta">One-off scheduling only for now. Recurrence design is parked.</p>
           </details>
+          </div>
           </fieldset>
           ${saveBtn}
         </form>
@@ -2618,6 +2641,12 @@
   }
 
   async function handleClick(e, root, state) {
+    const locSelect = e.target.closest('[data-loc-select]');
+    if (locSelect) {
+      selectElementContents(locSelect);
+      return;
+    }
+
     const btn = e.target.closest('[data-action], [data-fmt]');
     if (!btn) return;
 
@@ -2698,9 +2727,16 @@
     if (action === 'expand-loc-cell') {
       const key = btn.dataset.locExpand;
       if (!key) return;
+      const opening = !state.expandedLocFields.has(key);
       if (state.expandedLocFields.has(key)) state.expandedLocFields.delete(key);
       else state.expandedLocFields.add(key);
       render(root, state);
+      if (opening) {
+        requestAnimationFrame(() => {
+          const el = root.querySelector(`[data-loc-select="${CSS.escape(key)}"]`);
+          if (el) selectElementContents(el);
+        });
+      }
       return;
     }
 
