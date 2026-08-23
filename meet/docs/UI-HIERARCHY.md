@@ -3,7 +3,10 @@
 **Build:** 1.8.30  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
-**Sources:** `meet/index.php`, `meet/assets/js/app.js`
+**Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
+Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `operations.php`), and API/toast error strings from `meet/api.php`.
+
+**Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations) so reviews and amendments stay unambiguous.
 
 ### Legend
 

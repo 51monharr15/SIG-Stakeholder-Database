@@ -61,7 +61,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
         <section class="pane-region tint-create">
           <h1 class="section-title">Find a meeting time everyone can make</h1>
           <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
-          <p class="hint">Meeting locations can be online (URL) or physical. Times are shown to attendees in local timezone and UTC.</p>
+          <p class="hint">Meeting locations can be online (URL) and physical (Simultaneously!). Times are shown to attendees in their local timezone (and UTC as 'reference').</p>
           <p class="hint" id="home-local-time">Your local time zone is …</p>
           <form id="create-form" class="create-form">
             <label>

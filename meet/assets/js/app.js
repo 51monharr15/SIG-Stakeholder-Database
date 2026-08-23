@@ -635,7 +635,7 @@
     { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
     { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
     { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
-    { id: 'calendar',   label: 'My availability',   tip: 'Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use ◀ ▶ beside dates to move by weekday.' },
+    { id: 'calendar',   label: 'My availability',   tip: 'Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday.' },
     { id: 'agenda',     label: 'Meeting Resources', tip: 'Description, agenda, decisions, notes, and attachments (pre- and post-meeting assets).' },
     { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length (minutes, hours, or AM/PM), calendar slot size (partial availability), bookable dates and hours. Organiser only.' },
     { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks start time (partial overlap OK) and location(s). Use ◀ ▶ beside dates to move by weekday.' },
@@ -895,14 +895,14 @@
         <h2 class="section-title">Getting started</h2>
         <details class="getting-started-intro"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Instructions for organisers and attendees</summary>
-          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — full details in <strong>How to use this</strong> above. Essential steps: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>. Optionally review everything!</p>
+          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — full details in <strong>How to use this</strong> above. Essential steps for all Attendees: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>. Optionally review everything!</p>
           <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a>.</p>
         </details>
         <ol class="setup-steps">
           <li>
             <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
-            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
-            First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
+            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself</strong> —
+            First attendee becomes first Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
             <strong>${setup.stepOptions ? '✓ ' : ''}Set Calendar Options</strong> —
@@ -924,7 +924,7 @@
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
-            ${go('locations', 'Go to Locations')} — Propose locations (Online and/or Physical) for attendees to vote on.
+            ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and Physical) for attendees to vote on.
             Any attendee can propose locations. Organisers can (re-)select a confirmed location at any time.
           </li>
           <li>
@@ -2056,7 +2056,7 @@
     return `
       <section class="panel stack">
         <div class="pane-title-row row">
-          <p class="meta pane-lead"><strong>Don't forget to save after making changes.</strong> Meeting length, calendar slot size, bookable dates and hours.${canEdit ? '' : ' View only — organiser can edit.'}</p>
+          <p class="meta pane-lead"><strong>Don't forget to save after making changes.</strong> Meeting length, Calendar slot size, Bookable dates and hours.${canEdit ? '' : ' View only — organiser can edit.'}</p>
           ${canEdit ? formSaveHeader(headerSaveBtn) : ''}
         </div>
         ${canEdit && !m.attendees.length ? `<div class="row">
@@ -3143,8 +3143,8 @@
         return;
       }
       const slot = btn.dataset.slot;
-      const current = state.pendingConfirmSlot || state.meet.confirmed_slot || '';
-      if (current === slot) {
+      const current = effectiveConfirmSlot(state, state.meet);
+      if (current && slotsEqual(current, slot)) {
         state.pendingConfirmSlot = '';
         render(root, state);
         toast('Selection cleared');
