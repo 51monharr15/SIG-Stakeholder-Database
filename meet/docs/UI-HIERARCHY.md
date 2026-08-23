@@ -210,7 +210,7 @@ Format toolbar (description/agenda/notes): Bold · Italic · Paragraph · Line b
 |---------|------|
 | Lead | **Group calendar** — everyone's availability on one grid. Meeting length… slots… |
 | `group-link` *tint-text* | **Meeting link** · **Copy meeting link** |
-| `group-time` *tint-dates* | **Proposed meeting time** · Accept date: {time|None proposed} · Click a slot to set… · **Currently selected meeting start:** · Hide empty hours / Show all hours |
+| `group-time` *tint-dates* | **Proposed meeting time** · Accept date: {time|None proposed} or **Accepted:** {time} (disabled when already scheduled) · Click a slot to set… · **Currently selected meeting start:** · Hide empty hours / Show all hours |
 | Legend | Light green = all attendees, full meeting · Amber = partial · Purple = some · Dark green border = selected start |
 | `group-locations` *tint-places* | **Proposed locations** · Organiser: toggle **Confirmed** (multiple allowed…) · same locations table as §2.4 + **Confirmed** column |
 

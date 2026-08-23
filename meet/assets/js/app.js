@@ -1272,13 +1272,28 @@
 
   function renderAcceptTimeButton(isOrg, state, m) {
     const slot = effectiveConfirmSlot(state, m);
-    const label = slot
-      ? `Accept date: ${formatSlotLocal(slot)}`
-      : 'Accept date: None proposed';
+    const alreadyAccepted = slot && isSlotAlreadyAccepted(m, slot) && !hasPendingConfirmChange(state, m);
+    let label;
+    let disabled = false;
+    let title;
+    if (alreadyAccepted) {
+      label = `Accepted: ${formatSlotLocal(m.confirmed_slot)}`;
+      disabled = true;
+      title = 'This start is already scheduled';
+    } else if (slot) {
+      label = `Accept date: ${formatSlotLocal(slot)}`;
+      title = m.confirmed_slot
+        ? 'Accept this new start as the scheduled time (reschedules the meeting)'
+        : 'Accept this start as the scheduled time';
+    } else {
+      label = 'Accept date: None proposed';
+      disabled = true;
+      title = 'Select a start slot below first';
+    }
     if (!isOrg) {
       return `<button type="button" class="confirm-action-btn" data-action="confirm-time" disabled title="Organiser status required">${escapeHtml(label)}</button>`;
     }
-    return `<button type="button" class="confirm-action-btn" data-action="confirm-time"${slot ? '' : ' disabled'} title="${slot ? 'Accept this start as the scheduled time' : 'Select a start slot below first'}">${escapeHtml(label)}</button>`;
+    return `<button type="button" class="confirm-action-btn" data-action="confirm-time"${disabled ? ' disabled' : ''} title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
   }
 
   function effectiveConfirmSlot(state, m) {
@@ -1347,6 +1362,23 @@
   function slotTimeMs(iso) {
     const ms = new Date(iso).getTime();
     return Number.isNaN(ms) ? null : ms;
+  }
+
+  function slotsEqual(a, b) {
+    if (!a || !b) return false;
+    const ta = slotTimeMs(a);
+    const tb = slotTimeMs(b);
+    return ta !== null && ta === tb;
+  }
+
+  function hasPendingConfirmChange(state, m) {
+    if (state.pendingConfirmSlot === '') return true;
+    if (!state.pendingConfirmSlot) return false;
+    return !slotsEqual(state.pendingConfirmSlot, m.confirmed_slot || '');
+  }
+
+  function isSlotAlreadyAccepted(m, slot) {
+    return !!m.confirmed_slot && slotsEqual(m.confirmed_slot, slot);
   }
 
   function suggestionAtSlot(m, slotIso, fullMap, partialMap) {
@@ -3167,7 +3199,12 @@
         toast('Choose a start slot first on the calendar above', true);
         return;
       }
-      const wasAlreadyConfirmed = !!state.meet.confirmed_slot;
+      if (isSlotAlreadyAccepted(state.meet, slot) && !hasPendingConfirmChange(state, state.meet)) {
+        toast('This start is already scheduled');
+        return;
+      }
+      const priorConfirmed = state.meet.confirmed_slot || '';
+      const isReschedule = priorConfirmed !== '' && !slotsEqual(priorConfirmed, slot);
       try {
         const data = await apiPost({
           action: 'confirm',
@@ -3177,7 +3214,7 @@
         });
         state.meet = data.meet;
         state.pendingConfirmSlot = null;
-        if (wasAlreadyConfirmed) {
+        if (isReschedule) {
           state.wasRescheduled = true;
           localStorage.setItem(rescheduledKey(state.slug), 'yes');
         }
