@@ -585,24 +585,50 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
 
 function isRowLocationInput(array $input): bool
 {
-    return array_key_exists('online_url', $input)
+    return array_key_exists('location_text', $input)
+        || array_key_exists('online_url', $input)
         || array_key_exists('physical_text', $input)
         || array_key_exists('notes', $input);
+}
+
+/** @return array{online: string, physical: string} */
+function parseLocationTextField(string $text): array
+{
+    $text = trim($text);
+    if ($text === '') {
+        return ['online' => '', 'physical' => ''];
+    }
+    if (preg_match('#^https?://#i', $text)) {
+        $url = normalizeAttachmentUrl($text);
+        if (!preg_match('#^https?://#i', $url)) {
+            throw new \RuntimeException('Location URL must be a well-formed web address (http:// or https://).', 400);
+        }
+
+        return ['online' => $url, 'physical' => ''];
+    }
+
+    return ['online' => '', 'physical' => $text];
 }
 
 /** @return array{id: string, label: string, kind: string, detail: string} */
 function buildRowLocation(array $input, ?string $existingId = null): array
 {
     $notes = trim((string) ($input['notes'] ?? $input['label'] ?? ''));
-    $online = trim((string) ($input['online_url'] ?? ''));
-    $physical = trim((string) ($input['physical_text'] ?? ''));
+    if (array_key_exists('location_text', $input)) {
+        $parsed = parseLocationTextField((string) ($input['location_text'] ?? ''));
+        $online = $parsed['online'];
+        $physical = $parsed['physical'];
+    } else {
+        $online = trim((string) ($input['online_url'] ?? ''));
+        $physical = trim((string) ($input['physical_text'] ?? ''));
+    }
     if ($online === '' && $physical === '') {
-        throw new \RuntimeException('Enter an online URL and/or physical location.', 400);
+        throw new \RuntimeException('Enter a location (URL or place name).', 400);
     }
     if ($online !== '') {
         $online = normalizeAttachmentUrl($online);
         if (!preg_match('#^https?://#i', $online)) {
-            throw new \RuntimeException('Online URL must be a well-formed web address (http:// or https://).', 400);
+            throw new \RuntimeException('Location URL must be a well-formed web address (http:// or https://).', 400);
         }
     }
     $label = $notes !== '' ? $notes : ($online !== '' ? 'Online' : 'Physical');

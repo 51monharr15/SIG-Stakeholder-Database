@@ -914,10 +914,11 @@
       <section class="panel stack overview-panel">
         <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▸ headings to expand</span></h2>
         <details class="overview-block"${autoDetailsOpen(true) ? ' open' : ''}>
-          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Proposed times</summary>
-          <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'}:</strong> ${timeSummary}</p>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Locations</summary>
+          <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'} time:</strong> ${timeSummary}</p>
           <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
           <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
+          ${renderConfirmedLocationsSummary(m, state, scheduled)}
         </details>
         <details class="overview-block"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to set it.</p>'}
@@ -999,13 +1000,24 @@
     return `${formatTimePair(s.slot)} — ${marked} of ${total} marked (partial overlap)`;
   }
 
+  function renderConfirmedLocationsSummary(m, state, scheduled) {
+    const ids = scheduled && (m.confirmed_location_ids || []).length
+      ? m.confirmed_location_ids
+      : effectiveConfirmedLocationIds(state, m);
+    const label = scheduled ? 'Confirmed locations' : 'Proposed locations';
+    if (!ids.length) {
+      return `<p class="meta"><strong>${label}:</strong> None yet</p>`;
+    }
+    return `<p class="meta"><strong>${label}:</strong> ${ids.map((id) => locationInlineHtml(m, id)).join('; ')}</p>`;
+  }
+
   function renderOverviewAttendeeTable(m) {
     if (!m.attendees.length) return '<p class="meta">No attendees registered yet.</p>';
     return `<table class="data-table overview-attendee-table">
-      <thead><tr><th>Name</th><th>Slots marked</th><th>Role</th></tr></thead>
+      <thead><tr><th>Name</th><th title="Count of locations marked OK with me">Time slots/locations</th><th>Role</th></tr></thead>
       <tbody>${m.attendees.map((a) => `<tr>
         <td>${escapeHtml(a.display_name)}</td>
-        <td>${countSlotsFor(m, a.id)}</td>
+        <td>${countLocationPrefsFor(m, a.id)}</td>
         <td>${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -1190,7 +1202,7 @@
         <details class="confirm-section confirm-section-locations"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title">Proposed locations</summary>
           <div class="confirm-section-inner">
-            <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> on any row (saves immediately). Attendees propose and mark <strong>OK for Me</strong> on the Locations tab.</p>
+            <p class="meta pane-lead">Organiser: toggle <strong>Confirm</strong> on any row (saves immediately). Attendees propose and mark <strong>OK with me</strong> on the Locations tab.</p>
             ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true })}
           </div>
         </details>
@@ -1399,52 +1411,59 @@
   // ─── Locations tab ───────────────────────────────────────────────────────────
 
   function locationRowFields(loc) {
-    if (!loc) return { notes: '', online: '', physical: '' };
+    if (!loc) return { notes: '', location: '' };
     if (loc.kind === 'row') {
       try {
         const o = JSON.parse(loc.detail || '{}');
         const generic = loc.label === 'Online' || loc.label === 'Physical';
+        const online = o.online || '';
+        const physical = o.physical || '';
         return {
           notes: generic ? '' : (loc.label || ''),
-          online: o.online || '',
-          physical: o.physical || '',
+          location: locationDisplayFromParts(online, physical),
         };
       } catch (_) {
-        return { notes: loc.label || '', online: '', physical: loc.detail || '' };
+        return { notes: loc.label || '', location: loc.detail || '' };
       }
     }
     if (['video', 'phone', 'hybrid'].includes(loc.kind)) {
-      return {
-        notes: loc.label || '',
-        online: extractUrlFromDetail(loc.detail) || loc.detail || '',
-        physical: '',
-      };
+      const url = extractUrlFromDetail(loc.detail) || loc.detail || '';
+      return { notes: loc.label || '', location: url };
     }
     return {
       notes: loc.label || '',
-      online: '',
-      physical: String(loc.detail || '').trim(),
+      location: String(loc.detail || '').trim(),
     };
   }
 
+  function locationDisplayFromParts(online, physical) {
+    if (online && physical) return `${online} · ${physical}`;
+    return online || physical || '';
+  }
+
+  /** @deprecated Legacy helper for unused chip UI */
   function locationConfirmChannel(loc) {
-    if (loc.kind === 'hybrid') return 'both';
-    if (loc.kind === 'row') {
-      const f = locationRowFields(loc);
-      if (f.online && f.physical) return 'both';
-      if (f.online) return 'online';
-      return 'physical';
-    }
-    if (loc.kind === 'video' || loc.kind === 'phone') return 'online';
+    const f = locationRowFields(loc);
+    const parsed = parseLocationFieldText(f.location);
+    if (parsed.online && parsed.physical) return 'both';
+    if (parsed.online) return 'online';
     return 'physical';
   }
 
+  function parseLocationFieldText(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return { online: '', physical: '' };
+    if (/^https?:\/\//i.test(raw) || isWellFormedUrl(normalizeExternalUrl(raw))) {
+      return { online: normalizeExternalUrl(raw), physical: '' };
+    }
+    return { online: '', physical: raw };
+  }
+
   function readLocationRowInputs(row) {
-    return {
-      notes: row.querySelector('[data-loc-field="notes"]')?.value.trim() || '',
-      online: row.querySelector('[data-loc-field="online"]')?.value.trim() || '',
-      physical: row.querySelector('[data-loc-field="physical"]')?.value.trim() || '',
-    };
+    const notes = row.querySelector('[data-loc-field="notes"]')?.value.trim() || '';
+    const location = row.querySelector('[data-loc-field="location"]')?.value.trim() || '';
+    const parsed = parseLocationFieldText(location);
+    return { notes, ...parsed };
   }
 
   function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
@@ -1460,9 +1479,11 @@
     const cell = (field, value, placeholder) => {
       if (!canEdit) {
         if (!value) return '—';
-        if (field === 'online' && isWellFormedUrl(normalizeExternalUrl(value))) {
+        if (field === 'location') {
           const href = normalizeExternalUrl(value);
-          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
+          if (isWellFormedUrl(href)) {
+            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
+          }
         }
         return escapeHtml(value);
       }
@@ -1475,7 +1496,7 @@
         ? (worksSelected ? '●' : '—')
         : !attendee
           ? (worksSelected ? 'Yes' : '—')
-          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK for me' : 'OK for me — saves immediately'}" aria-label="OK for me">${worksSelected ? '●' : '○'}</button>`;
+          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? '●' : '○'}</button>`;
 
     const confirmCell = showConfirm && loc
       ? (isOrg
@@ -1485,8 +1506,7 @@
 
     return `
       <td class="loc-cell-notes">${cell('notes', f.notes, 'Notes')}</td>
-      <td class="loc-cell-online">${cell('online', f.online, 'https://…')}</td>
-      <td class="loc-cell-physical">${cell('physical', f.physical, 'Place / address')}</td>
+      <td class="loc-cell-location">${cell('location', f.location, 'URL or place name')}</td>
       <td class="loc-ok-with">${initials ? escapeHtml(initials) : '—'}</td>
       <td class="loc-ok-me">${worksCell}</td>
       ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
@@ -1502,19 +1522,17 @@
       <tr class="loc-row loc-row-new" data-location-row data-location-id="">
         ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
       </tr>` : '';
-    const colSpan = showConfirm ? 6 : 5;
     return `<table class="data-table locations-table">
       <thead><tr>
         <th>Notes</th>
-        <th>Online</th>
-        <th>Physical</th>
-        <th title="Initials of attendees who marked OK for me">OK with</th>
-        <th title="Toggle if this row works for you">OK for Me</th>
+        <th>Location</th>
+        <th title="Initials of attendees who marked OK with me">OK with</th>
+        <th title="Toggle if this location works for you">OK with me</th>
         ${confirmCol}
       </tr></thead>
       <tbody>${existingRows}${newRow}</tbody>
     </table>
-    ${attendee && !readOnly ? '<p class="meta loc-table-hint">Each row is one location option — type in the cells and tab out to save. Toggle <strong>OK for Me</strong> to record your preference.</p>' : ''}`;
+    ${attendee && !readOnly ? '<p class="meta loc-table-hint">Each row is one location — URL or place name. Tab out to save. Toggle <strong>OK with me</strong> to record your preference.</p>' : ''}`;
   }
 
   function renderLocationsTab(m, state, attendee) {
@@ -1522,7 +1540,7 @@
       <section class="panel stack" id="meeting-locations-pane">
         <p class="meta pane-lead"><strong>Propose and choose locations — each row is one option. Tab out of a cell to save.</strong></p>
         ${renderLocationsTable(m, state, attendee)}
-        ${attendee ? '' : '<p class="meta">Sign in on Attendees to propose locations and mark OK for me.</p>'}
+        ${attendee ? '' : '<p class="meta">Sign in on Attendees to propose locations and mark OK with me.</p>'}
       </section>`;
   }
 
@@ -1567,14 +1585,13 @@
       return;
     }
     if (online && !isWellFormedUrl(normalizeExternalUrl(online))) {
-      toast('Online must be a well-formed URL (https://…)', true);
+      toast('Location URL must be well-formed (https://…)', true);
       return;
     }
     const payload = {
       slug: state.slug,
       notes,
-      online_url: online ? normalizeExternalUrl(online) : '',
-      physical_text: physical,
+      location_text: row.querySelector('[data-loc-field="location"]')?.value.trim() || '',
     };
     if (row.dataset.locSaving === '1') return;
     row.dataset.locSaving = '1';
@@ -1881,13 +1898,15 @@
     const colCount = 6 + (showOrganiserCol ? 1 : 0);
 
     const body = `
+        <div class="attendee-table-panel">
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th><th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th>' : ''}</tr></thead>
+            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th><th title="Count of locations marked OK with me">Time slots/locations</th><th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th>' : ''}</tr></thead>
             <tbody>
               ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
           </table>
+        </div>
         </div>
         ${claiming ? renderClaimPinForm(claiming) : ''}
         ${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee, state) : ''}
@@ -1923,45 +1942,76 @@
   }
 
   function renderAddAttendeeForm(signedIn, attendee) {
+    const formId = 'add-attendee-form';
+    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn">Save Attendee</button>`;
     const modeRow = signedIn ? '' : `
         <div class="add-mode-row add-mode-inline add-mode-left">
           <div class="mode-options mode-options-inline mode-options-left">
             <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
             <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
           </div>
-          <p class="meta add-field-guide">Display name: any text including email. Initials: optional (defaults from name). Contact: optional — email, phone, or a comma-separated list. Passcode: optional — ${PASSCODE_TIP}</p>
+          <p class="meta add-field-guide">Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode: optional — ${PASSCODE_TIP}</p>
         </div>`;
-    const pinRow = signedIn ? '' : `
+    const pinField = `
           <label class="field-pin">Passcode <span class="label-hint">(optional)</span>
-            <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="22" size="22" title="${escapeHtml(PASSCODE_TIP)}">
+            <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="22" size="22" title="${escapeHtml(PASSCODE_TIP)}" placeholder="For Find my meetings">
           </label>`;
     const extras = signedIn ? '' : `
         <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link with them. They tick <strong>Me</strong> on their row to sign in.</p>`;
-    const intro = signedIn
-      ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong>. Use this form to add <strong>someone else</strong>. Display name: any text. Initials/contact optional (contact may be comma-separated).</p>`
-      : '<p class="meta">Add yourself as an attendee, or propose someone else.</p>';
+
+    if (signedIn) {
+      return `
+        <details class="add-attendee-block add-attendee-collapsible">
+          <summary class="add-attendee-summary row">
+            <span class="add-attendee-summary-label">Add another attendee</span>
+            ${saveBtn}
+          </summary>
+          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
+            <input type="hidden" name="add_mode" value="propose">
+            <p class="meta">Use this form to add <strong>someone else</strong>. Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free form text.</p>
+            <div class="add-attendee-fields">
+              <label class="field-name">Display name
+                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
+              </label>
+              <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
+                <input class="input-initials" name="initials" maxlength="4" title="Defaults from display name if blank">
+              </label>
+              ${pinField}
+              <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
+                <input class="input-contact" name="contact" maxlength="120" placeholder="email, URL, phone" autocomplete="email" title="Comma-separated email, URL, phone, or free text">
+              </label>
+            </div>
+            <button type="submit" class="add-attendee-submit-full">Save Attendee</button>
+          </form>
+        </details>`;
+    }
+
     return `
-        <div class="add-attendee-block">
-          <h3 class="section-title">${signedIn ? 'Add another attendee' : 'Add new attendee'}</h3>
-          ${intro}
-          <form class="inline-form add-attendee-form" data-form="add-attendee">
-            ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
+        <div class="add-attendee-block add-attendee-block-new">
+          <details class="add-attendee-collapsible"${autoDetailsOpen(true) ? ' open' : ''}>
+            <summary class="add-attendee-summary row">
+              <span class="add-attendee-summary-label">Add new attendee</span>
+              ${saveBtn}
+            </summary>
+          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
+            <p class="meta">Add yourself as an attendee, or propose someone else.</p>
             ${modeRow}
             <div class="add-attendee-fields">
               <label class="field-name">Display name
                 <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
               </label>
               <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-                <input class="input-initials" name="initials" maxlength="4">
+                <input class="input-initials" name="initials" maxlength="4" title="Defaults from display name if blank">
               </label>
+              ${pinField}
               <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
                 <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" autocomplete="email">
               </label>
-              ${pinRow}
             </div>
             ${extras}
-            <button type="submit">${signedIn ? 'Add another attendee' : 'Add attendee'}</button>
+            <button type="submit" class="add-attendee-submit-full">Save Attendee</button>
           </form>
+          </details>
         </div>`;
   }
 
@@ -2022,7 +2072,7 @@
       <td>${escapeHtml(a.display_name)}</td>
       <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
       <td>${renderContactCell(a)}</td>
-      <td>${countSlotsFor(m, a.id)}</td>
+      <td>${countLocationPrefsFor(m, a.id)}</td>
       <td>${pinCell}</td>
       ${organiserCell}
     </tr>`;
@@ -2073,8 +2123,7 @@
       const f = locationRowFields(loc);
       const parts = [];
       if (f.notes) parts.push(f.notes);
-      if (f.online) parts.push(f.online);
-      if (f.physical) parts.push(f.physical);
+      if (f.location) parts.push(f.location);
       return parts.join(' · ') || 'Location';
     }
     const kind = locationKindLabel(loc.kind);
@@ -2094,13 +2143,12 @@
       const f = locationRowFields(loc);
       const parts = [];
       if (f.notes) parts.push(escapeHtml(f.notes));
-      if (f.online) {
-        const href = normalizeExternalUrl(f.online);
+      if (f.location) {
+        const href = normalizeExternalUrl(f.location);
         parts.push(isWellFormedUrl(href)
-          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(f.online)}</a>`
-          : escapeHtml(f.online));
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(f.location)}</a>`
+          : escapeHtml(f.location));
       }
-      if (f.physical) parts.push(escapeHtml(f.physical));
       return parts.join(' · ') || escapeHtml(locationId);
     }
     const url = extractUrlFromDetail(loc.detail);
@@ -3289,6 +3337,7 @@
   function attendeeInitials(m, id) { const a = m.attendees.find((x) => x.id === id); return a ? (a.initials || deriveInitials(a.display_name)) : ''; }
   function deriveInitials(name) { return String(name).trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3).toUpperCase(); }
   function countSlotsFor(m, id) { return Object.values(m.availability).filter((ids) => ids.includes(id)).length; }
+  function countLocationPrefsFor(m, id) { return (m.location_preferences?.[id] || []).length; }
   function lines(v) { return String(v || '').split('\n').map((s) => s.trim()).filter(Boolean); }
   function shareUrl(slug) { return meetingUrl(slug); }
 
