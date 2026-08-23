@@ -19,7 +19,7 @@ Simon's Version
 
 ### Setting up a meeting (organiser)
 
-1. On the home page, enter a title and press **Create meeting**. Save the private URL.
+1. On the **landing page**, enter a title and press **Create meeting**. Save the private URL. Use **Find my meetings** (full-width pane below) with registered identity and passcode.
 2. Use **Getting started** for the checklist, or open tabs directly.
 3. **Meeting options** — edit title and description, meeting length, calendar slot duration, weekends, recurrence, and the earliest/latest date and daily hours.
 4. **Attendees** — add yourself first (you become organiser). Optionally set a **passcode** (2–20 characters, stored as lowercase) so you can use *Find my meetings* later.
@@ -35,7 +35,7 @@ Simon's Version
 2. On **Attendees**, press *This is me* or add yourself. Use your passcode if prompted.
 3. Mark availability on **My availability**; vote or propose on **Locations**.
 4. Open **Set confirmed meeting details** to see overlaps (organisers set the scheduled time; the accept button is disabled for others).
-5. Use **Agenda, Attachments and Records** for agenda, decisions, notes, and after-meeting materials.
+5. Use **Meeting Resources** for description, agenda, decisions, notes, and **attachments** (pre- and post-meeting assets — links or text in one table).
 
 ### Dashboard tabs
 
@@ -45,12 +45,12 @@ Simon's Version
 - **My availability** — Your free times on the calendar grid.
 - **Set confirmed meeting details** — Overlap view and organiser scheduling. Selecting a confirmed meeting time requires organiser status.
 - **Locations** — Propose and vote; see who OK’d each place.
-- **Agenda, Attachments and Records** — Agenda and notes; attachments; recordings, transcripts, and summaries.
-- **Meeting options** — Title, description, length, slot duration, date/time window, timezone, recurrence (organisers can edit; others may view read-only).
+- **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets).
+- **Calendar Options** — Meeting length, slot size, bookable dates and hours, timezone (organiser edits; others may view read-only).
 
 ### Passcodes {#passcodes}
 
-A passcode protects your attendee row and lets you find meetings from the home page without the URL.
+A passcode protects your attendee row and lets you find meetings from the landing page without the URL.
 
 - 2 to 20 characters: letters, digits, spaces, and safe specials (not `|`). Stored as all lowercase.
 - *Find my meetings* needs registered name **and** passcode.
@@ -65,7 +65,22 @@ A passcode protects your attendee row and lets you find meetings from the home p
 - **Scheduled** — organiser accepted a start time and both an Online and a Physical confirmed location (a Hybrid proposal can supply both).
 - **Rescheduled** — organiser changed a previously scheduled time or location.
 - **Past** — current time is after the scheduled start.
-- **Summarised** — past, and records/attachments exist.
+- **Summarised** — past, and attachments exist.
+
+### Pane colours (semantic)
+
+Coloured panes group related topics consistently across the app:
+
+| Tint | Meaning | Examples |
+|------|---------|----------|
+| Lavender | Dates & times | Calendar Options date/time fields, calendar grids, proposed time |
+| Blue | Free text | Description, agenda, decisions, notes |
+| Pink | People | Attendees table and forms |
+| Green | Places | Locations (online and physical are both places) |
+| Amber | Attachments | Meeting Resources attachment table |
+| Light blue / green | Landing page | Create meeting / Find my meetings panes |
+
+Expandable panes show **▸** when collapsed and **▼** when open. Pane open/closed state is remembered per meeting.
 
 > **Tip:** Design note for maintainers: availability is stored in UTC; the calendar grid hours use the meeting timezone so everyone marks the same slots. Each person also sees times in their browser timezone.
 
@@ -98,3 +113,36 @@ Deploy the `meet` tree to your web server (Apache recommended). Ensure `meet/dat
 ### Editing this guide
 
 This page is generated from **`docs/OPERATIONS.md`**. Edit that Markdown file only — do not maintain a second copy of the guide text.
+
+---
+
+## UI consistency audit (maintainers)
+
+Rules applied across the scheduler interface. After UI changes, walk each screen against this list.
+
+### Structure
+
+- **Landing page** — two panes: Create meeting (tint-create), Find my meetings (tint-find, full width; identity and passcode side by side).
+- **Tab working area** — green dashboard button names the destination; inside, brief lead text only (no duplicate title).
+- **Panes** — bordered, semantically tinted regions; tables and wide grids scroll inside the pane, not the window.
+- **Expand/collapse** — ▸ / ▼ on expandable panes; state persisted per meeting; first visit: main panes open; secondary panes (Add another attendee, Merge duplicates) closed; Overview and Getting started excepted.
+
+### Semantic tints
+
+- **Dates & times** — Calendar Options, My availability grid pane, Set confirmed time, Overview time blocks.
+- **Free text** — Description, agenda/decisions, notes.
+- **People** — Attendees registered table (includes Edit identity / Switch), separate panes for Add another attendee and Merge duplicates.
+- **Places** — Locations table (URL or place name; online = physical category).
+- **Attachments** — single table (label + content); URLs auto-detected; malformed URLs warned; no separate Records UI.
+
+### Behaviour
+
+- Checklist ticks only when the user completes a real in-app action (e.g. share step ticks on Copy meeting link, not a manual “mark done” button).
+- Save buttons labelled **Save** only on Meeting Resources panes.
+- Remove dead/unreachable UI code when found.
+
+### Documentation alignment
+
+- **How to use this** — mentions pane colour meanings.
+- **Getting started** — brief colour hint; steps reference attachments (not Records).
+- This audit list — update when rules change.

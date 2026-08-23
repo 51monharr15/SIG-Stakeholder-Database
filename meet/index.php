@@ -49,40 +49,42 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
       data-build="<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>">
   <?php if ($page === 'home'): ?>
   <header class="site-header">
-    <div class="wrap">
+    <div class="wrap wrap-landing">
       <a class="brand" href="./">Simon's Meeting Scheduler</a>
     </div>
   </header>
   <?php endif; ?>
 
-  <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : '' ?>">
+  <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : ' wrap-landing' ?>">
     <?php if ($page === 'home'): ?>
-      <section class="panel hero">
-        <h1>Find a meeting time everyone can make</h1>
-        <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
-        <p class="hint">Meeting locations can be online (URL) or physical. Times are shown to attendees in local timezone and UTC.</p>
-        <p class="hint" id="home-local-time">Your local time zone is …</p>
-        <form id="create-form" class="create-form">
-          <label>
-            Meeting title
-            <input type="text" name="title" placeholder="Board review" required>
-          </label>
-          <button type="submit">Create meeting</button>
-        </form>
-        <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it.</strong></p>
-        <details class="help-toggle home-collapse">
-          <summary>Find my meetings</summary>
-          <div class="help-body">
-            <p class="meta">Enter the <strong>registered identity</strong> (exactly as when you joined) and <strong>passcode</strong> for a list of matching meetings.</p>
-            <form id="list-meetings-form" class="create-form">
+      <div class="landing-stack">
+        <section class="pane-region tint-create">
+          <h1 class="section-title">Find a meeting time everyone can make</h1>
+          <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
+          <p class="hint">Meeting locations can be online (URL) or physical. Times are shown to attendees in local timezone and UTC.</p>
+          <p class="hint" id="home-local-time">Your local time zone is …</p>
+          <form id="create-form" class="create-form">
+            <label>
+              Meeting title
+              <input type="text" name="title" placeholder="Board review" required>
+            </label>
+            <button type="submit">Create meeting</button>
+          </form>
+          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it.</strong></p>
+        </section>
+        <section class="pane-region tint-find">
+          <h2 class="section-title">Find my meetings</h2>
+          <p class="meta">Enter the <strong>registered identity</strong> (exactly as when you joined) and <strong>passcode</strong> for a list of matching meetings.</p>
+          <form id="list-meetings-form" class="create-form">
+            <div class="find-meetings-fields">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
               <label>Passcode <input type="text" name="pin" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters."></label>
-              <button type="submit">List my meetings</button>
-            </form>
-            <div id="list-meetings-result" class="list-meetings-result" hidden></div>
-          </div>
-        </details>
-      </section>
+            </div>
+            <button type="submit">List my meetings</button>
+          </form>
+          <div id="list-meetings-result" class="list-meetings-result" hidden></div>
+        </section>
+      </div>
     <?php else: ?>
       <div id="app" class="app-loading">Loading meeting…</div>
     <?php endif; ?>

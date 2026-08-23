@@ -851,11 +851,15 @@ function handleUpdateAttachment(MeetStore $store, string $slug, array $input): v
             }
             $found = true;
             $att['label'] = $label;
-            if (($att['type'] ?? '') === 'url' && array_key_exists('url', $input)) {
+            if (array_key_exists('url', $input)) {
+                $att['type'] = 'url';
                 $att['url'] = normalizeAttachmentUrl(trim((string) $input['url']));
+                unset($att['body']);
             }
-            if (($att['type'] ?? '') === 'text' && array_key_exists('body', $input)) {
+            if (array_key_exists('body', $input)) {
+                $att['type'] = 'text';
                 $att['body'] = (string) $input['body'];
+                unset($att['url']);
             }
             break;
         }

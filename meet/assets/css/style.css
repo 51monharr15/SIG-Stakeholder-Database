@@ -1749,3 +1749,115 @@ details summary { cursor: pointer; }
   font-size: 0.72rem;
   padding: 0.28rem 0.12rem;
 }
+
+/* ─── Semantic pane tints (same meaning everywhere) ─── */
+.tint-dates { background: #faf5ff; border: 1px solid #e9d5ff; }
+.tint-text { background: #f0f9ff; border: 1px solid #bae6fd; }
+.tint-people { background: #fdf2f8; border: 1px solid #fbcfe8; }
+.tint-places { background: #ecfdf5; border: 1px solid #bbf7d0; }
+.tint-assets { background: #fffbeb; border: 1px solid #fde68a; }
+.tint-instruct { background: #f8fafc; border: 1px solid #e2e8f0; }
+.tint-create { background: #eff6ff; border: 1px solid #bfdbfe; }
+.tint-find { background: #f0fdf4; border: 1px solid #bbf7d0; }
+
+.pane-region,
+.pane-details {
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.65rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pane-details > summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+
+.pane-details > summary::-webkit-details-marker { display: none; }
+.pane-details > summary::before { content: '▸ '; color: var(--muted); }
+.pane-details[open] > summary::before { content: '▼ '; }
+
+.pane-details-body { margin-top: 0.25rem; }
+.pane-save-row { display: flex; justify-content: flex-end; gap: 0.35rem; margin-top: 0.35rem; }
+
+.pane-future { opacity: 0.72; }
+
+/* Landing page */
+.wrap-landing { width: 100%; max-width: none; padding: 0 0.75rem; box-sizing: border-box; }
+.landing-stack { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
+.find-meetings-fields {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(7rem, 14rem);
+  gap: 0.65rem 1rem;
+  align-items: end;
+}
+.find-meetings-fields label { display: flex; flex-direction: column; gap: 0.2rem; margin: 0; }
+
+/* Overview tinted expandable sections */
+.overview-block.tint-dates,
+.overview-block.tint-text,
+.overview-block.tint-people,
+.overview-block.tint-places,
+.overview-block.tint-assets {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.5rem;
+  border-top: none;
+}
+
+.overview-block.tint-dates { background: #faf5ff; border-color: #e9d5ff; }
+.overview-block.tint-text { background: #f0f9ff; border-color: #bae6fd; }
+.overview-block.tint-people { background: #fdf2f8; border-color: #fbcfe8; }
+.overview-block.tint-places { background: #ecfdf5; border-color: #bbf7d0; }
+.overview-block.tint-assets { background: #fffbeb; border-color: #fde68a; }
+
+.calendar-grid-pane { padding: 0.35rem; }
+
+.attachments-table {
+  width: 100%;
+  min-width: 28rem;
+  font-size: 0.88rem;
+  table-layout: fixed;
+}
+
+.attachments-table td,
+.attachments-table th { vertical-align: top; padding: 0.35rem 0.4rem; }
+
+.attachments-table input.attach-cell,
+.attachments-table textarea.attach-cell {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0.25rem;
+  font: inherit;
+  min-width: 0;
+}
+
+.attachments-table input.attach-cell:focus,
+.attachments-table textarea.attach-cell:focus {
+  outline: 1px solid #2563eb;
+  background: #fff;
+  border-radius: 2px;
+}
+
+.attachments-table textarea.attach-cell {
+  resize: vertical;
+  min-height: 3em;
+  max-height: 8em;
+  line-height: 1.25;
+}
+
+.attach-cell-label { width: 28%; }
+.attach-cell-content { width: 72%; }
+
+.attach-row-new td { background: #fafafa; }
+
+@media (max-width: 600px) {
+  .find-meetings-fields { grid-template-columns: 1fr; }
+}
