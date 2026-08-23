@@ -734,11 +734,16 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
     requireActingOrganizer($meet, $actingId);
 
     $meet = $store->update($meet['id'], function (array $m) use ($locationId) {
-        $confirmedIds = array_filter([
-            (string) ($m['confirmed_location'] ?? ''),
-            (string) ($m['confirmed_location_physical'] ?? ''),
-            (string) ($m['confirmed_location_online'] ?? ''),
-        ]);
+        $confirmedIds = array_values(array_unique(array_filter(array_map(
+            'strval',
+            $m['confirmed_location_ids'] ?? []
+        ))));
+        foreach (['confirmed_location', 'confirmed_location_physical', 'confirmed_location_online'] as $legacyKey) {
+            $legacyId = trim((string) ($m[$legacyKey] ?? ''));
+            if ($legacyId !== '' && !in_array($legacyId, $confirmedIds, true)) {
+                $confirmedIds[] = $legacyId;
+            }
+        }
         if (in_array($locationId, $confirmedIds, true)) {
             throw new \RuntimeException('Cannot delete a confirmed location. Clear it from Set confirmed meeting details first, then remove this one.', 400);
         }
@@ -921,14 +926,30 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
         if (!empty($input['confirmed_slot'])) {
             $m['confirmed_slot'] = trim((string) $input['confirmed_slot']);
         }
-        $hasDual = array_key_exists('confirmed_location_physical', $input)
-            || array_key_exists('confirmed_location_online', $input);
-        if ($hasDual) {
+        if (array_key_exists('confirmed_location_ids', $input)) {
+            $ids = $input['confirmed_location_ids'];
+            if (!is_array($ids)) {
+                Response::error('confirmed_location_ids must be an array');
+            }
+            $ids = array_values(array_unique(array_filter(array_map('strval', $ids))));
+            $m['confirmed_location_ids'] = $ids;
+            $m['confirmed_location'] = $ids[0] ?? null;
+            $m['confirmed_location_online'] = null;
+            $m['confirmed_location_physical'] = null;
+        } elseif (array_key_exists('confirmed_location_physical', $input)
+            || array_key_exists('confirmed_location_online', $input)) {
             $phys = trim((string) ($input['confirmed_location_physical'] ?? ''));
             $online = trim((string) ($input['confirmed_location_online'] ?? ''));
             $m['confirmed_location_physical'] = $phys !== '' ? $phys : null;
             $m['confirmed_location_online'] = $online !== '' ? $online : null;
             $m['confirmed_location'] = $online !== '' ? $online : ($phys !== '' ? $phys : null);
+            $ids = [];
+            foreach ([$online, $phys] as $id) {
+                if ($id !== '' && !in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+            $m['confirmed_location_ids'] = $ids;
         } elseif (!empty($input['confirmed_location'])) {
             // Legacy single-field confirm: map by kind.
             $id = trim((string) $input['confirmed_location']);
@@ -948,6 +969,7 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
                 $m['confirmed_location_physical'] = $id;
             }
             $m['confirmed_location'] = $id;
+            $m['confirmed_location_ids'] = array_values(array_unique(array_filter([$id])));
         }
         return $m;
     });

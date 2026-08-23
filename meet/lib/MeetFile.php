@@ -49,6 +49,8 @@ final class MeetFile
             'confirmed_location' => null,
             'confirmed_location_physical' => null,
             'confirmed_location_online' => null,
+            'confirmed_location_ids' => [],
+            'app_version' => '1.8.18',
         ];
     }
 
@@ -105,7 +107,7 @@ final class MeetFile
         $meet = self::normalize($meet);
         $out = ["@meet v{$meet['version']}"];
         $header = [
-            'id', 'slug', 'title', 'created', 'updated',
+            'id', 'slug', 'title', 'created', 'updated', 'app_version',
             'duration_minutes', 'slot_granularity_minutes',
             'range_start', 'range_end',
             'show_weekends', 'day_start', 'day_end', 'timezone',
@@ -134,6 +136,13 @@ final class MeetFile
         $compat = $online !== '' ? $online : ($phys !== '' ? $phys : $legacy);
         if ($compat !== '') {
             $out[] = 'confirmed_location: ' . $compat;
+        }
+        $confirmedIds = array_values(array_filter(array_map(
+            'strval',
+            $meet['confirmed_location_ids'] ?? []
+        )));
+        if ($confirmedIds !== []) {
+            $out[] = 'confirmed_location_ids: ' . implode(',', $confirmedIds);
         }
 
         $out[] = '';
@@ -400,6 +409,15 @@ final class MeetFile
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
         $meet['confirmed_location_physical'] = $meet['confirmed_location_physical'] ?? null;
         $meet['confirmed_location_online'] = $meet['confirmed_location_online'] ?? null;
+        $meet['app_version'] = trim((string) ($meet['app_version'] ?? ''));
+        $rawIds = $meet['confirmed_location_ids'] ?? [];
+        if (is_string($rawIds)) {
+            $rawIds = array_map('trim', explode(',', $rawIds));
+        }
+        $meet['confirmed_location_ids'] = array_values(array_unique(array_filter(array_map(
+            'strval',
+            is_array($rawIds) ? $rawIds : []
+        ))));
         // Migrate legacy single confirmed_location into physical/online by kind.
         $legacy = trim((string) ($meet['confirmed_location'] ?? ''));
         if ($legacy !== '') {
@@ -420,6 +438,14 @@ final class MeetFile
                     $meet['confirmed_location_online'] = $legacy;
                 } else {
                     $meet['confirmed_location_physical'] = $legacy;
+                }
+            }
+        }
+        if ($meet['confirmed_location_ids'] === []) {
+            foreach (['confirmed_location_online', 'confirmed_location_physical', 'confirmed_location'] as $key) {
+                $id = trim((string) ($meet[$key] ?? ''));
+                if ($id !== '' && !in_array($id, $meet['confirmed_location_ids'], true)) {
+                    $meet['confirmed_location_ids'][] = $id;
                 }
             }
         }
@@ -462,6 +488,9 @@ final class MeetFile
         }
         if (in_array($key, ['weekdays'], true)) {
             return array_map('intval', array_filter(array_map('trim', explode(',', $value))));
+        }
+        if ($key === 'confirmed_location_ids') {
+            return array_values(array_filter(array_map('trim', explode(',', $value))));
         }
         return $value;
     }

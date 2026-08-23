@@ -174,6 +174,8 @@ final class MeetStore
                 ?: ($meet['confirmed_location_physical'] ?: $meet['confirmed_location']),
             'confirmed_location_physical' => $meet['confirmed_location_physical'] ?? null,
             'confirmed_location_online' => $meet['confirmed_location_online'] ?? null,
+            'confirmed_location_ids' => array_values($meet['confirmed_location_ids'] ?? []),
+            'app_version' => $meet['app_version'] ?? '',
             'suggestions' => $suggestions,
         ];
     }

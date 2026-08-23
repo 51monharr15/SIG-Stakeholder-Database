@@ -838,12 +838,14 @@ button.linkish {
 
 .cal-header, .cal-body {
   display: grid;
-  grid-template-columns: 48px repeat(var(--cal-cols, 3), minmax(0, 1fr));
+  grid-template-columns: 40px repeat(var(--cal-cols, 3), minmax(0, 1fr));
   gap: 0.35rem;
 }
 
 .time-label {
-  font-size: 0.72rem;
+  font-size: 0.62rem;
+  line-height: 1.15;
+  word-break: break-word;
   color: var(--muted);
   text-align: right;
   padding-right: 0.25rem;
@@ -883,32 +885,25 @@ button.linkish {
   width: 100%;
 }
 
+.cal-nav-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.15rem;
+  width: 100%;
+}
+
 .cal-nav-btn {
-  font-size: 0.68rem;
-  padding: 0.12rem 0.08rem;
+  font-size: 0.62rem;
+  padding: 0.1rem 0.12rem;
   line-height: 1.2;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 @media (min-width: 900px) {
-  .cal-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.2rem;
-  }
-
   .cal-nav-btn {
-    flex: 1 1 auto;
-    min-width: 2rem;
-    font-size: 0.72rem;
-    padding: 0.2rem 0.15rem;
-  }
-}
-
-@media (max-width: 899px) {
-  .cal-nav-today {
-    display: none;
+    font-size: 0.68rem;
+    padding: 0.12rem 0.15rem;
   }
 }
 
@@ -1269,7 +1264,7 @@ details summary { cursor: pointer; }
 }
 
 @media (max-width: 600px) {
-  .cal-header, .cal-body { grid-template-columns: 42px repeat(var(--cal-cols, 3), minmax(0, 1fr)); }
+  .cal-header, .cal-body { grid-template-columns: 36px repeat(var(--cal-cols, 3), minmax(0, 1fr)); }
   .share-row { flex-direction: column; align-items: stretch; }
 }
 
@@ -1418,17 +1413,119 @@ details summary { cursor: pointer; }
   background: #f8fafc;
 }
 
-.cal-nav-screen,
-.cal-nav-jump {
-  font-size: 0.62rem;
-  padding: 0.1rem 0.05rem;
+/* My availability visual bands */
+.availability-mark-band {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
-@media (max-width: 899px) {
-  .cal-nav-screen,
-  .cal-nav-jump {
-    display: none;
-  }
+.availability-mark-band .calendar-instructions {
+  margin: 0;
+}
+
+.availability-save-band {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.availability-save-band .calendar-save-row {
+  margin: 0;
+}
+
+/* Set confirmed section panels */
+.confirm-section-time,
+.confirm-section-locations {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.confirm-section-time {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.confirm-section-locations {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.confirm-section-inner {
+  margin-top: 0.35rem;
+}
+
+.confirm-section-inner .confirm-action-btn {
+  margin-bottom: 0.35rem;
+}
+
+/* Meeting Resources */
+.notes-edit-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.notes-wysiwyg-block .fmt-toolbar {
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+}
+
+.notes-wysiwyg-block .fmt-btn {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.35rem;
+}
+
+.attachments-panel,
+.records-panel {
+  background: #fafafa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.attachments-panel .attachment,
+.attachments-panel .attachment-text {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  margin: 0.35rem 0;
+}
+
+/* Calendar Options groups */
+.options-group {
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.options-group-core {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+.options-group-booking {
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+}
+
+.options-date-stack,
+.options-time-stack {
+  grid-template-columns: 1fr;
+}
+
+.options-duration-grid {
+  align-items: end;
 }
 
 .day-head {
