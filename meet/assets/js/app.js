@@ -1,7 +1,26 @@
 (() => {
   'use strict';
 
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  function queryParam(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function resolveBrowserTz() {
+    const test = String(queryParam('meet_test_tz') || '').trim();
+    if (test) {
+      try {
+        Intl.DateTimeFormat('en-US', { timeZone: test }).format(new Date());
+        return test;
+      } catch (_) { /* ignore invalid test tz */ }
+    }
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+
+  const tz = resolveBrowserTz();
   // Prefer unambiguous abbreviations only — many letter codes collide worldwide (CST, IST, …).
   const TZ_ALIASES = {
     UTC: 'UTC', GMT: 'UTC',
@@ -23,7 +42,7 @@
   ];
   const TZ_REGION_ORDER = ['Shortlist', 'UTC', 'Africa', 'America', 'Antarctica', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Other'];
   const INTRO_PLACEHOLDER = 'Add a short description for attendees — shown in the status bar and Overview.';
-  const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+  const isTouchUi = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   function isNarrowScreen() { return window.innerWidth < 700; }
   function autoDetailsOpen(defaultOpen = true) { return !isNarrowScreen() && defaultOpen; }
   const page = document.body.dataset.page;
@@ -42,7 +61,9 @@
   const PASSCODE_LEN_ERR = 'Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).';
   const FIND_IDENTITY_KEY = 'meet_find_identity';
 
-  document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
+  document.getElementById('footer-tz')?.replaceChildren(
+    document.createTextNode(queryParam('meet_test_tz') ? `${tz} (test)` : tz)
+  );
 
   if (page === 'home') {
     initHome();
@@ -169,6 +190,10 @@
       lastNarrow: isNarrowScreen(),
       expandedLocFields: new Set(),
       expandedAttachFields: new Set(),
+      altTzIndex: 0,
+      resourceDrafts: null,
+      swipeStartX: null,
+      swipeStartY: null,
     };
 
     try {
@@ -217,6 +242,10 @@
     root.addEventListener('submit', (e) => handleSubmit(e, root, state));
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
     root.addEventListener('pointerover', (e) => handlePointerOver(e, root, state));
+    if (isTouchUi) {
+      root.addEventListener('touchstart', (e) => handlePanelSwipeStart(e, state), { passive: true });
+      root.addEventListener('touchend', (e) => handlePanelSwipeEnd(e, root, state), { passive: true });
+    }
     window.addEventListener('pointerup', () => { state.dragging = false; });
     window.addEventListener('resize', () => {
       if (!state.meet) return;
@@ -269,16 +298,44 @@
     return formatDurationForInput(m.duration_minutes);
   }
 
-  function formatWallHourDisplay(hm, m, refDateStr) {
+  function recordedTimezones(m) {
+    const list = [];
+    const add = (z) => {
+      const n = normalizeTimezone(z);
+      if (n && !list.includes(n)) list.push(n);
+    };
+    add(m.timezone);
+    (m.recorded_timezones || []).forEach(add);
+    return list;
+  }
+
+  function alternateTimezones(m) {
+    return recordedTimezones(m).filter((z) => z !== tz);
+  }
+
+  function currentAltTimezone(state, m) {
+    const alts = alternateTimezones(m);
+    if (!alts.length) return null;
+    const i = ((state.altTzIndex % alts.length) + alts.length) % alts.length;
+    return alts[i];
+  }
+
+  function formatWallHourDisplay(hm, m, refDateStr, state = null) {
     const wall = formatWallHour(hm);
     const mtz = meetingTz(m);
-    if (!SHOW_ORGANISER_TIME_IN_GUTTER || mtz === tz) return wall;
     const dateStr = refDateStr || meetingTodayStr(m);
     const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     const local = new Date(iso).toLocaleTimeString(undefined, {
-      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz,
     });
-    return `${local} (${wall})`;
+    const altTz = state ? currentAltTimezone(state, m) : null;
+    if (!altTz) {
+      return `<span class="tz-local">${escapeHtml(local)}</span>`;
+    }
+    const alt = new Date(iso).toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: altTz,
+    });
+    return `<span class="tz-local">${escapeHtml(local)}</span><button type="button" class="tz-alt-btn" data-action="cycle-alt-tz" title="Next timezone: ${escapeHtml(altTz)}">${escapeHtml(alt)}</button>`;
   }
 
   /** Parse slot size or custom duration: plain minutes, 90m, 1.5h, 2,5h (comma decimal). */
@@ -797,21 +854,49 @@
       ${timeHtml}
       ${recurrenceHtml}
       ${locHtml}
-      ${renderStatusDescription(m)}
+      ${renderStatusExpanders(m)}
     </div>`;
   }
 
-  function renderStatusDescription(m) {
+  function renderStatusExpanders(m) {
     const desc = (m.organizer_intro || '').trim();
-    const plain = desc ? desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-    const preview = plain ? plain.slice(0, 72) + (plain.length > 72 ? '…' : '') : 'Set in meeting resources.';
-    const body = desc
+    const descPlain = desc ? desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    const descSummary = descPlain
+      ? `Description: ${descPlain.slice(0, 72)}${descPlain.length > 72 ? '…' : ''}`
+      : 'Description: needs setting';
+    const descBody = desc
       ? `<div class="meet-intro-body status-desc-body">${sanitizeHtml(desc)}</div>`
       : '<p class="meta">No description yet — set one in <strong>Meeting Resources</strong>.</p>';
-    return `<details class="status-desc"${autoDetailsOpen(false) ? ' open' : ''}>
-      <summary class="meta status-desc-summary">Description: ${escapeHtml(preview)}</summary>
-      ${body}
-    </details>`;
+
+    const agenda = m.agenda || [];
+    const agendaSummary = agenda.length
+      ? `Agenda: ${agenda.length} item${agenda.length === 1 ? '' : 's'}`
+      : 'Agenda: needs setting';
+    const agendaBody = agenda.length
+      ? `<ul class="list-plain status-expand-list">${agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta">No agenda yet — set one in <strong>Meeting Resources</strong>.</p>';
+
+    const decisions = m.decisions || [];
+    const decisionsSummary = decisions.length
+      ? `Decisions required: ${decisions.length}`
+      : 'Decisions required: needs setting';
+    const decisionsBody = decisions.length
+      ? `<ul class="list-plain status-expand-list">${decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta">No decisions listed yet — set them in <strong>Meeting Resources</strong>.</p>';
+
+    return `
+      <details class="status-desc">
+        <summary class="meta status-desc-summary">${escapeHtml(descSummary)}</summary>
+        ${descBody}
+      </details>
+      <details class="status-desc">
+        <summary class="meta status-desc-summary">${escapeHtml(agendaSummary)}</summary>
+        ${agendaBody}
+      </details>
+      <details class="status-desc">
+        <summary class="meta status-desc-summary">${escapeHtml(decisionsSummary)}</summary>
+        ${decisionsBody}
+      </details>`;
   }
 
   // ─── Help panel ──────────────────────────────────────────────────────────────
@@ -831,8 +916,8 @@
               <h3 class="help-heading">Setting up a meeting (organiser)</h3>
               <ol class="help-steps">
                 <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
-                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours, timezone. Save when done.</li>
-                <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments (pre- and post-meeting).</li>
+                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours (edited in your local timezone; stored consistently for everyone). Save when done.</li>
+                <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments (preparation and post-meeting).</li>
                 <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
                 <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
@@ -984,9 +1069,12 @@
             ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
             : '<p class="meta">No locations proposed yet.</p>'}
         </details>
-        ${recordsOpen && m.attachments.length ? `<details class="overview-block tint-assets" open><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments (${m.attachments.length})</summary>
-          ${m.attachments.map((a) => renderAttachment(a, attendee)).join('')}
-        </details>` : ''}
+        <details class="overview-block tint-assets"${(m.attachments || []).length ? ' open' : ''}>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments (${(m.attachments || []).length})</summary>
+          ${(m.attachments || []).length
+            ? m.attachments.map((a) => renderAttachment(a, attendee)).join('')
+            : '<p class="meta">No attachments yet — add preparation or follow-up files in <strong>Meeting Resources</strong>.</p>'}
+        </details>
       </section>`;
   }
 
@@ -1106,23 +1194,24 @@
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
           <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell.</p>
           <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
-          <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} in <strong>${escapeHtml(mtz)}</strong>${SHOW_ORGANISER_TIME_IN_GUTTER && mtz !== tz ? ` · your timezone: <strong>${escapeHtml(tz)}</strong> (times at left show yours, organiser wall time in parentheses)` : ` (and UTC). Your browser timezone: <strong>${escapeHtml(tz)}</strong>.`}</p>
+          <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle other attendees’ timezones' : ''}.</p>
         </details>
         </div>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         <div class="pane-region tint-dates calendar-grid-pane">
+        ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
+        <div class="calendar-scroll">
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz })}
           <div class="cal-body">
             ${hours.map((hm) => `
-              <div class="time-label" title="Time${SHOW_ORGANISER_TIME_IN_GUTTER && mtz !== tz ? ' — yours (organiser wall time in parentheses)' : ''}">${escapeHtml(formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr))}</div>
+              <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
               ${days.map((day, i) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
         </div>
         </div>
-        <div class="availability-save-band">
-        ${renderSaveRow(state, m, { showTopDuplicate: false })}
+        ${renderSaveRow(state, m, { showTopDuplicate: false, showBottomButton: true })}
         </div>
       </section>`;
   }
@@ -1235,7 +1324,7 @@
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
                 ${hours.map((hm) => `
-                  <div class="time-label" title="Time${SHOW_ORGANISER_TIME_IN_GUTTER && mtz !== tz ? ' — yours (organiser wall time in parentheses)' : ''}">${escapeHtml(formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr))}</div>
+                  <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
                   ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
                 `).join('')}
               </div>
@@ -1710,7 +1799,7 @@
       <tr class="loc-row loc-row-new" data-location-row data-location-id="">
         ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
       </tr>` : '';
-    return `<div class="pane-region tint-places locations-table-scroll"><table class="data-table locations-table">
+    return `<div class="pane-region tint-places"><div class="locations-table-scroll"><table class="data-table locations-table">
       <thead><tr>
         <th>Notes</th>
         <th>Location</th>
@@ -1719,7 +1808,7 @@
         ${confirmCol}
       </tr></thead>
       <tbody>${newRow}${existingRows}</tbody>
-    </table></div>`;
+    </table></div></div>`;
   }
 
   function renderLocationsTab(m, state, attendee) {
@@ -1866,7 +1955,7 @@
       const url = normalizeExternalUrl(single);
       if (isWellFormedUrl(url)) return { type: 'url', url };
     }
-    return { type: 'text', body: raw };
+    return { type: 'text', body: text };
   }
 
   function renderAttachFieldDisplay(state, attId, value, { readOnly }) {
@@ -1967,45 +2056,56 @@
 
   function renderAgendaTab(m, state, attendee) {
     const canEditDesc = !!attendee;
-    const saveBtn = `<button type="submit" class="compact-btn">Save</button>`;
+    const drafts = state.resourceDrafts || {};
+    const introVal = drafts.organizer_intro != null ? drafts.organizer_intro : (m.organizer_intro || '');
+    const agendaVal = drafts.agenda != null ? drafts.agenda : (m.agenda || []).join('\n');
+    const decisionsVal = drafts.decisions != null ? drafts.decisions : (m.decisions || []).join('\n');
+    const notesVal = drafts.notes != null ? drafts.notes : (m.notes || '');
+    const saveBtn = (formId) => `<button type="submit" form="${formId}" class="compact-btn">Save</button>`;
+    const attachCount = (m.attachments || []).length;
+
     return `
       <section class="panel stack" id="meeting-agenda-pane">
         <p class="meta pane-lead">Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.</p>
-        <div class="pane-region tint-text">
-          <form class="inline-form" data-form="update-description">
-            <label>Description for attendees <span class="label-hint">(simple HTML — status bar &amp; Overview)</span>
-              ${canEditDesc ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
-              <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}"${canEditDesc ? '' : ' readonly'}>${escapeHtml(m.organizer_intro || '')}</textarea>
-            </label>
-            ${canEditDesc ? `<div class="pane-save-row">${saveBtn}</div>` : '<p class="meta">Sign in on Attendees to edit.</p>'}
-          </form>
-        </div>
-        <details ${paneDetailsAttrs(state, 'mr-agenda', { extraClass: 'tint-text' })}>
-          <summary>Agenda &amp; decisions</summary>
+        <details ${paneDetailsAttrs(state, 'mr-description', { extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Description for attendees <span class="label-hint">(simple HTML — status bar &amp; Overview)</span></span>${canEditDesc ? saveBtn('form-update-description') : ''}</summary>
           <div class="pane-details-body">
-          <form class="inline-form" data-form="update-agenda">
-            <label>Agenda <span class="label-hint">(each line is a bullet on Overview)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
-            <label>Decisions required <span class="label-hint">(each line is a bullet on Overview)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
-            ${canEditDesc ? `<div class="pane-save-row">${saveBtn}</div>` : ''}
+          <form class="inline-form" data-form="update-description" id="form-update-description">
+            ${canEditDesc ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
+            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}"${canEditDesc ? '' : ' readonly'}>${escapeHtml(introVal)}</textarea>
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-description')}</div>` : '<p class="meta">Sign in on Attendees to edit.</p>'}
           </form>
           </div>
         </details>
-        <details ${paneDetailsAttrs(state, 'mr-notes', { extraClass: 'tint-text' })}>
-          <summary>Notes</summary>
+        <details ${paneDetailsAttrs(state, 'mr-agenda', { secondary: true, extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Agenda &amp; decisions</span>${canEditDesc ? saveBtn('form-update-agenda') : ''}</summary>
           <div class="pane-details-body">
-          <form class="inline-form" data-form="update-notes">
+          <form class="inline-form" data-form="update-agenda" id="form-update-agenda">
+            <label>Agenda <span class="label-hint">(each line is a bullet on Overview and status strip)</span><textarea name="agenda" rows="4">${escapeHtml(agendaVal)}</textarea></label>
+            <label>Decisions required <span class="label-hint">(each line is a bullet on Overview and status strip)</span><textarea name="decisions" rows="3">${escapeHtml(decisionsVal)}</textarea></label>
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-agenda')}</div>` : ''}
+          </form>
+          </div>
+        </details>
+        <details ${paneDetailsAttrs(state, 'mr-notes', { secondary: true, extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Notes</span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
+          <div class="pane-details-body">
+          <form class="inline-form" data-form="update-notes" id="form-update-notes">
             <label>Notes <span class="label-hint">(simple HTML)</span>
               ${canEditDesc ? formatToolbar('notes', { withHelp: false }) : ''}
-              <textarea name="notes" rows="5">${escapeHtml(m.notes || '')}</textarea>
+              <textarea name="notes" rows="5">${escapeHtml(notesVal)}</textarea>
             </label>
-            ${canEditDesc ? `<div class="pane-save-row">${saveBtn}</div>` : ''}
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-notes')}</div>` : ''}
           </form>
           </div>
         </details>
-        <div class="pane-region tint-assets">
-          <p class="meta">Attachments — links or text (recordings, transcripts, summaries). Top row adds on tab out.</p>
-          ${canEditDesc ? renderAttachmentsTable(m, state, attendee) : (m.attachments.length ? renderAttachmentsTable(m, state, attendee) : '<p class="meta">No attachments yet.</p>')}
-        </div>
+        <details ${paneDetailsAttrs(state, 'mr-attachments', { extraClass: 'tint-assets' })}>
+          <summary>Attachments (${attachCount})</summary>
+          <div class="pane-details-body">
+            <p class="meta">Preparation or follow-up links/text. Edit a cell and tab out to save. Leading spaces on URLs are stripped.</p>
+            ${canEditDesc || attachCount ? renderAttachmentsTable(m, state, attendee) : '<p class="meta">No attachments yet.</p>'}
+          </div>
+        </details>
       </section>`;
   }
 
@@ -2037,12 +2137,38 @@
     return null;
   }
 
+  function meetingWallToLocalTimeValue(wallHm, m) {
+    const mtz = meetingTz(m);
+    const dateStr = meetingTodayStr(m);
+    const hm = parseTime(wallHm) || { hour: 9, minute: 0 };
+    const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+    return new Date(iso).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz,
+    });
+  }
+
+  function localTimeValueToMeetingWall(localHm, m) {
+    const mtz = meetingTz(m);
+    const dateStr = meetingTodayStr(m);
+    const hm = parseTime(localHm) || { hour: 9, minute: 0 };
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    const iso = wallTimeToUtcIso(y, mo, d, hm.hour, hm.minute, tz);
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: mtz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date(iso)).map((x) => [x.type, x.value])
+    );
+    return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+  }
+
   function renderOptionsTab(m, state, attendee) {
     const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
     const saveBtn = canEdit ? '<button type="submit">Save</button>' : '';
     const headerSaveBtn = canEdit ? '<button type="submit" form="update-settings-form">Save</button>' : '';
     const rangeEndDisplay = optionsRangeEnd(m);
+    const localStart = meetingWallToLocalTimeValue(m.day_start, m);
+    const localEnd = meetingWallToLocalTimeValue(m.day_end, m);
     return `
       <section class="panel stack">
         <div class="pane-title-row row">
@@ -2054,10 +2180,11 @@
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
         </div>` : ''}
         <form id="update-settings-form" class="inline-form organizer-form" data-form="update-settings">
+          <input type="hidden" name="timezone" value="${escapeHtml(mtz)}">
           ${canEdit ? '' : formSaveHeader('')}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <details ${paneDetailsAttrs(state, 'opts-length', { extraClass: 'tint-dates' })}>
-            <summary>Meeting length &amp; calendar</summary>
+            <summary class="pane-summary-with-save"><span>Meeting length &amp; calendar</span>${canEdit ? headerSaveBtn : ''}</summary>
             <div class="pane-details-body">
             <div class="form-grid">
               <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
@@ -2072,27 +2199,20 @@
               <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
             </div>
             <p class="meta options-duration-hint"><strong>Calendar slot size</strong> is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''} Changing meeting length or slot size does <strong>not</strong> remap saved availability — attendees should review <strong>My availability</strong> and save again.</p>
+            ${canEdit ? `<div class="pane-save-row">${headerSaveBtn}</div>` : ''}
             </div>
           </details>
           <details ${paneDetailsAttrs(state, 'opts-booking', { extraClass: 'tint-dates' })}>
-            <summary>Bookable dates &amp; daily hours</summary>
+            <summary class="pane-summary-with-save"><span>Bookable dates &amp; daily hours</span>${canEdit ? headerSaveBtn : ''}</summary>
             <div class="pane-details-body">
+            <p class="meta">Daily hours are edited in <strong>your</strong> local timezone (${escapeHtml(tz)}) and stored in UTC so everyone sees consistent local times. Meeting base timezone (first attendee): ${escapeHtml(mtz)}.</p>
             <div class="options-booking-grid">
               <label title="Earliest date this meeting is open for scheduling.">Start date<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
-              <label title="Earliest start time on the calendar grid each day (meeting timezone).">Start time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
+              <label title="Earliest start time each day in your local timezone.">Start time <span class="label-hint">(${escapeHtml(tz)})</span><input type="time" name="day_start_local" value="${escapeHtml(localStart)}"></label>
               <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">End date <span class="label-hint">(optional)</span><input type="date" name="range_end" value="${escapeHtml(rangeEndDisplay)}"></label>
-              <label title="Latest end time on the calendar grid each day (meeting timezone).">End time <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
+              <label title="Latest end time each day in your local timezone.">End time <span class="label-hint">(${escapeHtml(tz)})</span><input type="time" name="day_end_local" value="${escapeHtml(localEnd)}"></label>
             </div>
-            </div>
-          </details>
-          <details ${paneDetailsAttrs(state, 'opts-timezone', { extraClass: 'tint-dates' })}>
-            <summary>Calendar hours &amp; timezone</summary>
-            <div class="pane-details-body">
-            <p class="meta">${escapeHtml(mtz)} · ${escapeHtml(formatWallHour(parseTime(m.day_start)))}–${escapeHtml(formatWallHour(parseTime(m.day_end)))} · ${escapeHtml(optionsRangeStart(m))}${rangeEndDisplay ? ` – ${escapeHtml(rangeEndDisplay)}` : ' – open-ended'}</p>
-            <p class="meta">Times on the calendar grid are shown in each person’s local timezone (and UTC in slot details). The timezone below defines which wall-clock hours ${escapeHtml(formatWallHour(parseTime(m.day_start)))}–${escapeHtml(formatWallHour(parseTime(m.day_end)))} refer to — everyone marks the same underlying slots.</p>
-            <label>Timezone
-              <select name="timezone">${timezoneOptions(m.timezone)}</select>
-            </label>
+            ${canEdit ? `<div class="pane-save-row">${headerSaveBtn}</div>` : ''}
             </div>
           </details>
           <details ${paneDetailsAttrs(state, 'opts-recurrence', { secondary: true, extraClass: 'tint-dates pane-future' })}>
@@ -2102,7 +2222,7 @@
             </div>
           </details>
           </fieldset>
-          ${saveBtn}
+          ${canEdit ? `<div class="row">${saveBtn}</div>` : ''}
         </form>
       </section>`;
   }
@@ -2596,6 +2716,46 @@
 
   // ─── Event handlers ───────────────────────────────────────────────────────────
 
+  function captureResourceDrafts(root) {
+    const drafts = {};
+    const intro = root.querySelector('[data-form="update-description"] [name="organizer_intro"]');
+    const agenda = root.querySelector('[data-form="update-agenda"] [name="agenda"]');
+    const decisions = root.querySelector('[data-form="update-agenda"] [name="decisions"]');
+    const notes = root.querySelector('[data-form="update-notes"] [name="notes"]');
+    if (intro) drafts.organizer_intro = intro.value;
+    if (agenda) drafts.agenda = agenda.value;
+    if (decisions) drafts.decisions = decisions.value;
+    if (notes) drafts.notes = notes.value;
+    return drafts;
+  }
+
+  function handlePanelSwipeStart(e, state) {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (e.target.closest('.calendar, .cal-body, .locations-table-scroll, .attendee-table-wrap, input, textarea, select, button, a')) return;
+    state.swipeStartX = e.touches[0].clientX;
+    state.swipeStartY = e.touches[0].clientY;
+  }
+
+  function handlePanelSwipeEnd(e, root, state) {
+    if (state.swipeStartX == null || !e.changedTouches || !e.changedTouches.length) {
+      state.swipeStartX = null;
+      state.swipeStartY = null;
+      return;
+    }
+    const dx = e.changedTouches[0].clientX - state.swipeStartX;
+    const dy = e.changedTouches[0].clientY - state.swipeStartY;
+    state.swipeStartX = null;
+    state.swipeStartY = null;
+    if (Math.abs(dx) < 80 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    const tabs = allValidTabs(state.meet, state.meet.attendees.find((a) => a.id === state.attendeeId));
+    const idx = tabs.indexOf(state.activeTab);
+    if (idx < 0 || tabs.length < 2) return;
+    const next = dx < 0
+      ? tabs[(idx + 1) % tabs.length]
+      : tabs[(idx - 1 + tabs.length) % tabs.length];
+    gotoTab(root, state, next);
+  }
+
   async function handleSubmit(e, root, state) {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
@@ -2639,8 +2799,14 @@
         }
         const parsed = parseDurationField(fd.get('duration_input'), state.meet);
         let duration = parsed.duration;
-        let dayStart = parsed.day_start || fd.get('day_start');
-        let dayEnd = parsed.day_end || fd.get('day_end');
+        let dayStart = parsed.day_start;
+        let dayEnd = parsed.day_end;
+        if (!dayStart) {
+          dayStart = localTimeValueToMeetingWall(fd.get('day_start_local') || fd.get('day_start'), state.meet);
+        }
+        if (!dayEnd) {
+          dayEnd = localTimeValueToMeetingWall(fd.get('day_end_local') || fd.get('day_end'), state.meet);
+        }
         if (!duration) throw new Error('Enter meeting length: minutes, 1.5h, 2,5h, AM, or PM.');
         const slotGran = parseDurationInput(fd.get('slot_granularity_input'));
         const durationErr = validateDurationSlotPair(duration, slotGran);
@@ -2654,8 +2820,9 @@
           slot_granularity_minutes: slotGran,
           day_start: dayStart, day_end: dayEnd,
           range_start: rangeStart, range_end: rangeEnd,
-          timezone: normalizeTimezone(fd.get('timezone')),
+          timezone: normalizeTimezone(fd.get('timezone') || state.meet.timezone),
           show_weekends: fd.get('show_weekends') === 'on',
+          client_timezone: tz,
         });
       } else if (kind === 'add-location-row') {
         const onlineLabel = String(fd.get('online_label') || '').trim();
@@ -2677,26 +2844,40 @@
         }
         form.reset();
       } else if (kind === 'update-description') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.organizer_intro = String(fd.get('organizer_intro') || '');
         const payload = {
           action: 'update_meta', slug: state.slug,
           organizer_intro: fd.get('organizer_intro'),
+          client_timezone: tz,
         };
         if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
         data = await apiPost(payload);
+        delete state.resourceDrafts.organizer_intro;
       } else if (kind === 'update-agenda') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.agenda = String(fd.get('agenda') || '');
+        state.resourceDrafts.decisions = String(fd.get('decisions') || '');
         const payload = {
           action: 'update_meta', slug: state.slug,
           agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')),
+          client_timezone: tz,
         };
         if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
         data = await apiPost(payload);
+        delete state.resourceDrafts.agenda;
+        delete state.resourceDrafts.decisions;
       } else if (kind === 'update-notes') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.notes = String(fd.get('notes') || '');
         const payload = {
           action: 'update_meta', slug: state.slug,
           notes: fd.get('notes'),
+          client_timezone: tz,
         };
         if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
         data = await apiPost(payload);
+        delete state.resourceDrafts.notes;
       } else if (kind === 'update-meta') {
         const payload = {
           action: 'update_meta', slug: state.slug,
@@ -2936,6 +3117,12 @@
           if (el) selectElementContents(el);
         });
       }
+      return;
+    }
+
+    if (action === 'cycle-alt-tz') {
+      state.altTzIndex = (state.altTzIndex || 0) + 1;
+      render(root, state);
       return;
     }
 
@@ -3352,7 +3539,7 @@
 
     if (action === 'save-availability') {
       try {
-        const data = await apiPost({ action: 'save_availability', slug: state.slug, attendee_id: state.attendeeId, slots: [...state.selectedSlots] });
+        const data = await apiPost({ action: 'save_availability', slug: state.slug, attendee_id: state.attendeeId, slots: [...state.selectedSlots], client_timezone: tz });
         localStorage.setItem(slotsKey(state.slug, state.attendeeId), JSON.stringify([...state.selectedSlots]));
         state.meet = data.meet;
         render(root, state);

@@ -704,11 +704,22 @@ button.linkish {
 .locations-table-scroll {
   overflow-x: auto;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
-.calendar-grid-pane .cal-header-nav {
-  position: static;
-  box-shadow: none;
+.calendar-scroll {
+  overflow: auto;
+  max-height: min(70vh, 36rem);
+  -webkit-overflow-scrolling: touch;
+}
+
+.calendar-grid-pane .calendar-scroll .cal-header-nav {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--panel, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .loc-ok-toggle:not(.on) {
@@ -828,6 +839,53 @@ button.linkish {
 .status-desc-body {
   margin-top: 0.35rem;
   font-size: 0.88rem;
+}
+
+.status-expand-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.tz-local {
+  display: block;
+  line-height: 1.15;
+}
+
+.tz-alt-btn {
+  display: block;
+  margin-top: 0.1rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tz-alt-btn:hover,
+.tz-alt-btn:focus-visible {
+  color: var(--text, #0f172a);
+}
+
+.pane-summary-with-save {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.pane-summary-with-save > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pane-summary-with-save button {
+  flex: 0 0 auto;
 }
 
 .slot-legend-note { margin-top: 0.25rem; }
@@ -1663,10 +1721,12 @@ details summary { cursor: pointer; }
   text-align: left;
   background: transparent;
   border: none;
-  padding: 0;
+  padding: 0.45rem 0.35rem;
+  min-height: 2.5rem;
   font: inherit;
   color: inherit;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .loc-text-clamp {

@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.33  
+**Build:** 1.8.34  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -22,6 +22,16 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 **Tints:** lavender = dates/times · clearer blue `#e0f2fe` = text · pink = people · teal places `#ccfbf1` = places · amber = attachments · light blue = create · lime find `#f7fee7` = find
 
 **Pane IDs** (persisted): see § Pane ID reference at end.
+
+### Timezone test (query string)
+
+Browser timezone is normally `Intl.DateTimeFormat().resolvedOptions().timeZone`. For QA, append a **URL query parameter** (query string):
+
+- `?meet_test_tz=Europe/Paris` on a fresh URL, or `&meet_test_tz=Europe/Paris` when other query params already exist.
+
+When that parameter is present and valid, the site footer shows `{tz} (test)` (e.g. `Europe/Paris (test)`). Invalid values are ignored and the browser’s real timezone is used. The browser **cannot** read OS environment variables for a timezone override — only this query string (or the device/browser locale settings) applies.
+
+Meeting **base timezone** is set from the **first attendee** (their client timezone on join). Bookable daily hours in Calendar Options are edited in the **viewer’s local timezone** and stored consistently (UTC / meeting wall) so everyone sees matching local times. There is **no** Calendar Options timezone-picker pane (`opts-timezone` removed).
 
 ---
 
@@ -62,6 +72,7 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 
 ### Site footer
 - Build {version} · Local times · {tz} · Installation, Operations and Maintenance Guide
+- With `meet_test_tz` query param: Build {version} · Local times · {tz} (test) · Installation, Operations and Maintenance Guide
 
 ### Scheduler shell (before render)
 - Loading meeting…
@@ -88,6 +99,8 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 
 ### Status strip
 
+Always shows three expandable summaries (Description / Agenda / Decisions required). Empty fields use **needs setting**; bodies expand to show content or guidance.
+
 | Kind | Text |
 |------|------|
 | Label | Status: |
@@ -98,12 +111,26 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 | Time (none) | No date and time selected |
 | Recurrence | Recurrence: {label} — default **One-off** |
 | Locations | Locations: {list} / Locations (proposed): {list} / No locations confirmed |
-| Description summary | Description: {preview} — fallback **Set in meeting resources.** |
+| Description (set) | Description: {preview up to 72 chars, then …} |
+| Description (empty) | Description: needs setting |
 | Description empty body | No description yet — set one in **Meeting Resources**. |
+| Agenda (set) | Agenda: {N} item / Agenda: {N} items |
+| Agenda (empty) | Agenda: needs setting |
+| Agenda empty body | No agenda yet — set one in **Meeting Resources**. |
+| Decisions (set) | Decisions required: {N} |
+| Decisions (empty) | Decisions required: needs setting |
+| Decisions empty body | No decisions listed yet — set them in **Meeting Resources**. |
+
+**Past** and **Summarised** are status labels (after the scheduled start; Summarised when attachments exist). There is **no** Past dashboard tab.
+
+### Compact status (narrow + collapsed header)
+- Status: {label} only (same STATUS tip).
 
 ### Dashboard nav (green buttons)
 
 Nav aria-label: Meeting sections
+
+On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swipe on the meeting content cycles dashboard tabs **circularly** (wraps from last to first and first to last). Swipe is not registered on desktop / non-touch UIs, and is ignored when the gesture starts on calendars, location/attendee scroll areas, or form controls.
 
 | Button | Tooltip (exact) |
 |--------|-----------------|
@@ -126,8 +153,8 @@ Nav aria-label: Meeting sections
 | Note | Most fields have tooltips on hover (may not show on mobile). Coloured panes group related topics — dates & times (lavender), free text (blue), people (pink), places (green), attachments (amber). |
 | Organiser heading | Setting up a meeting (organiser) |
 | Organiser step 1 | **Attendees** — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later. |
-| Organiser step 2 | **Calendar Options** — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours, timezone. Save when done. |
-| Organiser step 3 | **Meeting Resources** — optional description, agenda, decisions, notes, attachments (pre- and post-meeting). |
+| Organiser step 2 | **Calendar Options** — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours (edited in your local timezone; stored consistently for everyone). Save when done. |
+| Organiser step 3 | **Meeting Resources** — optional description, agenda, decisions, notes, attachments (preparation and post-meeting). |
 | Organiser step 4 | **My availability** — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press *Save*. |
 | Organiser step 5 | **Locations** — propose online and/or physical places; attendees vote which work for them. |
 | Organiser step 6 | **Share the link** — *Copy meeting link* and send it to attendees. |
@@ -185,8 +212,6 @@ Completed steps show a leading ✓. Step **names** are restored in the wording; 
 | Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places. |
 | Expand title | Tap or click the triangle to expand/collapse |
 
-Hint has **no** attachments line (attachments appear only as their own pane when Past/Summarised with content).
-
 ### Time · Recurrence *tint-dates* (lavender)
 
 | Kind | Text |
@@ -205,6 +230,7 @@ Hint has **no** attachments line (attachments appear only as their own pane when
 | Agenda empty | No agenda yet — go to **Meeting Resources** to set it. |
 | Decisions | **Decisions required:** {bullets} |
 | Decisions empty | No decisions listed yet — go to **Meeting Resources** to set them. |
+| Notes | When notes HTML is set, it renders below agenda/decisions in this pane |
 
 ### Attendees *tint-people*
 
@@ -239,11 +265,12 @@ Teal places tint — locations no longer sit in the lavender Time pane.
 
 ### Attachments *tint-assets*
 
-Shown only when status is Past or Summarised **and** there is at least one attachment.
+**Always present** on Overview (preparation docs included — not limited to Past / Summarised). Opens by default when there is at least one attachment.
 
 | Kind | Text |
 |------|------|
 | Summary | Attachments ({N}) |
+| Empty | No attachments yet — add preparation or follow-up files in **Meeting Resources**. |
 
 ---
 
@@ -347,6 +374,8 @@ Shown when already signed in (or after attendees exist and the add-another path 
 
 ### Locations table *tint-places* (teal `#ccfbf1`)
 
+Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Well-formed http(s) URLs render as links; long/overflow cells use expand hit targets (`min-height` expand buttons). **OK with** = initials of voters; **OK with me** = your toggle (? / Yes).
+
 | Kind | Text |
 |------|------|
 | Headers | Notes · Location · OK with · OK / with me · Confirmed *(Set confirmed tab only)* |
@@ -356,6 +385,7 @@ Shown when already signed in (or after attendees exist and the add-another path 
 | Placeholders | Notes · URL or place name |
 | OK with me cell | ? · Yes |
 | OK with me button titles | OK with me — saves immediately / Remove — OK with me |
+| OK with me aria-label | OK with me |
 | Confirm button title | Confirmed for meeting |
 | Expand / Copy | Show full link (selects all for copy) · Show all (selects for copy) · Open · Copy (title: Copy link to clipboard) · Full link — selected for copy |
 
@@ -374,19 +404,26 @@ Shown when already signed in (or after attendees exist and the add-another path 
 | slotHint (single) | Each slot is {gran} — one slot covers the full meeting. |
 | Initials | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. |
 | Nav hint | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
-| Hours | Meeting hours {start}–{end} in **{meetingTz}** (and UTC). Your browser timezone: **{tz}**. |
+| Hours | Meeting hours {start}–{end} (meeting base). Times at left show **your** local timezone ({tz}){; tap the second time to cycle other attendees’ timezones when recorded attendee timezones exist}. |
 
 ### Calendar grid *tint-dates*
+
+Scrollable body (`.calendar-scroll`); **day headers stick** inside that scroll area (`.cal-header-nav` sticky at top of the scroll pane).
 
 | Kind | Text |
 |------|------|
 | Gutter title | Day ◀▶ · screen «» · first/last ⇤⇥ |
 | Nav buttons | ◀ Previous weekday · ▶ Next weekday · « Back one screen of dates · » Forward one screen of dates · ⇤ Jump to earliest bookable date · ⇥ Jump to latest bookable date |
 | Day extras | today · recurring |
+| Time labels | Local time at left; optional second time is a button (title: Next timezone: {altTz}) cycling recorded attendee timezones |
+| Time label title | Local time · tap second time to cycle attendee timezones *(when alternates exist)* |
 
-### Save band
+### Save band (dual Save)
+
+Shown when signed in. **Save** appears **above** the grid (form-save header) and again **below** the grid.
+
 - **Save** (title: Save your currently selected availability slots to the meeting)
-- {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)*
+- {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
 
 ---
 
@@ -395,31 +432,34 @@ Shown when already signed in (or after attendees exist and the add-another path 
 ### Lead
 - Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.
 
-### Description *tint-text* (clearer blue `#e0f2fe`)
-- **Description for attendees** *(simple HTML — status bar & Overview)*
+Collapsible panes. Where edit is allowed, **Save** sits on the pane **summary** (title left, Save top-right via `pane-summary-with-save`) and again at the bottom of the pane body (**dual Save**). Attachments use **tab-out save only** (no Save on the summary).
+
+### Description `mr-description` *tint-text* (clearer blue `#e0f2fe`)
+- Summary: **Description for attendees** *(simple HTML — status bar & Overview)* · **Save** *(when signed in)*
 - Placeholder: Add a short description for attendees — shown in the status bar and Overview.
-- **Save** / Sign in on Attendees to edit.
+- Bottom: **Save** / Sign in on Attendees to edit.
 
 Format toolbar: **?** Help for meeting description · Bold · Italic · Paragraph · Line break · Link · List
 
 Help body: Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Allowed: paragraphs, line breaks, bold, italic, links, and lists.
 
-### Agenda & decisions `mr-agenda`
-- **Agenda & decisions**
-- Agenda *(each line is a bullet on Overview)*
-- Decisions required *(each line is a bullet on Overview)*
-- **Save**
+### Agenda & decisions `mr-agenda` `[secondary]` *tint-text*
+- Summary: **Agenda & decisions** · **Save** *(when signed in)*
+- Agenda *(each line is a bullet on Overview and status strip)*
+- Decisions required *(each line is a bullet on Overview and status strip)*
+- Bottom: **Save**
 
-### Notes `mr-notes`
-- **Notes**
-- Notes *(simple HTML)*
-- **Save**
+### Notes `mr-notes` `[secondary]` *tint-text*
+- Summary: **Notes** · **Save** *(when signed in)*
+- Notes *(simple HTML)* (+ format toolbar without help toggle)
+- Bottom: **Save**
 
-### Attachments *tint-assets*
-- Attachments — links or text (recordings, transcripts, summaries). Top row adds on tab out.
+### Attachments `mr-attachments` *tint-assets*
+- Summary: **Attachments ({N})** *(no Save on summary)*
+- Lead: Preparation or follow-up links/text. Edit a cell and tab out to save. Leading spaces on URLs are stripped.
 - Columns: Label · Content
 - Placeholders: Label · URL or text (simple HTML)
-- Empty: No attachments yet.
+- Empty (unsigned-in, none): No attachments yet.
 
 ---
 
@@ -427,8 +467,9 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 
 ### Lead
 - **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
-- Header/footer: **Save**
+- Header **Save**; each editable pane summary and pane body also carry **Save**; form footer **Save**
 - Nav when no attendees yet: Back to Getting started · Next step: Attendees →
+- Meeting base timezone is a **hidden** field (first attendee); there is **no** timezone-picker pane.
 
 Saving Calendar Options is what marks Getting started step **Set Calendar Options** with ✓.
 
@@ -436,7 +477,7 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 
 | Kind | Text |
 |------|------|
-| Summary | **Meeting length & calendar** |
+| Summary | **Meeting length & calendar** · **Save** *(organiser)* |
 | Fields | Title · Meeting length · Calendar slot size · Include weekends |
 | Meeting length title | Minutes, 1.5h, 2,5h, or AM / PM (sets default bookable hours) |
 | Meeting length placeholder | e.g. 60, 1.5h, AM, PM |
@@ -450,20 +491,12 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 
 | Kind | Text |
 |------|------|
-| Summary | **Bookable dates & daily hours** |
+| Summary | **Bookable dates & daily hours** · **Save** *(organiser)* |
+| Explain | Daily hours are edited in **your** local timezone ({tz}) and stored in UTC so everyone sees consistent local times. Meeting base timezone (first attendee): {meetingTz}. |
 | Start date | Earliest date this meeting is open for scheduling. |
-| Start time | Earliest start time on the calendar grid each day (meeting timezone). Label includes ({meetingTz}). |
+| Start time | Earliest start time each day in your local timezone. Label: Start time ({tz}) |
 | End date | Latest date this meeting is open for scheduling. Leave blank for open-ended. Label: End date *(optional)* |
-| End time | Latest end time on the calendar grid each day (meeting timezone). |
-
-### Calendar hours & timezone `opts-timezone`
-
-| Kind | Text |
-|------|------|
-| Summary | **Calendar hours & timezone** |
-| Line | {tz} · {day_start}–{day_end} · {range_start} – {range_end\|open-ended} |
-| Explain | Times on the calendar grid are shown in each person’s local timezone (and UTC in slot details). The timezone below defines which wall-clock hours {day_start}–{day_end} refer to — everyone marks the same underlying slots. |
-| Label | Timezone |
+| End time | Latest end time each day in your local timezone. Label: End time ({tz}) |
 
 ### Recurrence (future feature) `opts-recurrence` `[secondary]`
 - **Recurrence (future feature)**
@@ -494,6 +527,7 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 | Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
 | Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. |
 | Initials note | **Initials** in cells show who marked that slot on My availability. |
+| Time labels | Same local (+ optional cycling alt timezone) behaviour as My availability |
 
 ### Legend
 - Light green = all attendees, full meeting — Every attendee marked enough consecutive slots for the full meeting length
@@ -504,7 +538,7 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 ### Proposed locations `group-locations` *tint-places* (teal `#ccfbf1`)
 - **Proposed locations**
 - Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab.
-- Same locations table as Locations + **Confirmed** column
+- Same locations table as Locations + **Confirmed** column (horizontal scroll)
 
 ---
 
@@ -523,17 +557,20 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `att-add` | Attendees — Add another attendee |
 | `att-add-first` | Attendees — Add yourself (collapsible when attendees already exist) |
 | `att-merge` | Attendees — Merge duplicates |
+| `mr-description` | Meeting Resources — Description for attendees |
 | `mr-agenda` | Meeting Resources — Agenda & decisions |
 | `mr-notes` | Meeting Resources — Notes |
+| `mr-attachments` | Meeting Resources — Attachments |
 | `opts-length` | Calendar Options — Meeting length & calendar |
 | `opts-booking` | Calendar Options — Bookable dates & daily hours |
-| `opts-timezone` | Calendar Options — Calendar hours & timezone |
 | `opts-recurrence` | Calendar Options — Recurrence (future) |
 | `group-link` | Set confirmed — Meeting link |
 | `group-time` | Set confirmed — Proposed meeting time |
 | `group-locations` | Set confirmed — Proposed locations |
 
-Overview and Getting started do not use persisted pane IDs. First-add attendee pane (no attendees yet) is a non-collapsible `pane-region` and has no pane ID.
+**Removed:** `opts-timezone` (Calendar hours & timezone picker — no longer in the UI).
+
+Overview and Getting started do not use persisted pane IDs. First-add attendee pane (no attendees yet) is a non-collapsible `pane-region` and has no pane ID. My availability calendar grid is a `pane-region` without a persisted pane ID.
 
 ---
 

@@ -42,6 +42,7 @@ final class MeetFile
             'pm_start' => '12:00',
             'pm_end' => '16:00',
             'timezone' => '',
+            'recorded_timezones' => [],
             'organizer_intro' => '',
             'page_times_intro' => '',
             'page_after_intro' => '',
@@ -50,7 +51,7 @@ final class MeetFile
             'confirmed_location_physical' => null,
             'confirmed_location_online' => null,
             'confirmed_location_ids' => [],
-            'app_version' => '1.8.33',
+            'app_version' => '1.8.34',
         ];
     }
 
@@ -122,6 +123,10 @@ final class MeetFile
 
         if (!empty($meet['confirmed_slot'])) {
             $out[] = 'confirmed_slot: ' . $meet['confirmed_slot'];
+        }
+        $recordedTzs = array_values(array_filter(array_map('strval', $meet['recorded_timezones'] ?? [])));
+        if ($recordedTzs !== []) {
+            $out[] = 'recorded_timezones: ' . implode(',', $recordedTzs);
         }
         // Prefer explicit dual fields; keep legacy confirmed_location for older readers.
         $phys = trim((string) ($meet['confirmed_location_physical'] ?? ''));
@@ -404,6 +409,14 @@ final class MeetFile
         $meet['pm_start'] = $meet['pm_start'] ?? '12:00';
         $meet['pm_end'] = $meet['pm_end'] ?? '16:00';
         $meet['timezone'] = Timezone::normalize((string) ($meet['timezone'] ?? ''));
+        $rawRecorded = $meet['recorded_timezones'] ?? [];
+        if (is_string($rawRecorded)) {
+            $rawRecorded = array_map('trim', explode(',', $rawRecorded));
+        }
+        $meet['recorded_timezones'] = array_values(array_unique(array_filter(array_map(
+            static fn ($z) => Timezone::normalize((string) $z),
+            is_array($rawRecorded) ? $rawRecorded : []
+        ), static fn ($z) => $z !== '')));
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
@@ -513,6 +526,9 @@ final class MeetFile
             return array_map('intval', array_filter(array_map('trim', explode(',', $value))));
         }
         if ($key === 'confirmed_location_ids') {
+            return array_values(array_filter(array_map('trim', explode(',', $value))));
+        }
+        if ($key === 'recorded_timezones') {
             return array_values(array_filter(array_map('trim', explode(',', $value))));
         }
         return $value;

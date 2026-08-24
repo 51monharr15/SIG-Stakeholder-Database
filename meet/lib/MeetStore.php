@@ -174,6 +174,7 @@ final class MeetStore
             'pm_start' => $meet['pm_start'] ?? '12:00',
             'pm_end' => $meet['pm_end'] ?? '16:00',
             'timezone' => $normTz,
+            'recorded_timezones' => array_values($meet['recorded_timezones'] ?? []),
             'timezone_needs_save' => $rawTz !== $normTz,
             'organizer_intro' => $meet['organizer_intro'] ?? '',
             'page_times_intro' => $meet['page_times_intro'] ?? '',

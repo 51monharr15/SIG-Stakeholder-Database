@@ -158,7 +158,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
             applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
             maybeSetAttendeePin($m['attendees'][$idx], $pin);
             $resolvedId = $m['attendees'][$idx]['id'];
-            return $m;
+            return recordClientTimezone($m, $clientTz);
         }
 
         $matchedId = matchExistingAttendee($m['attendees'], $displayName, $alias, $initials);
@@ -168,7 +168,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
                 applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
                 maybeSetAttendeePin($m['attendees'][$idx], $pin);
                 $resolvedId = $matchedId;
-                return $m;
+                return recordClientTimezone($m, $clientTz);
             }
         }
 
@@ -187,6 +187,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         if ($isFirst || !Timezone::isValid((string) ($m['timezone'] ?? ''))) {
             $m['timezone'] = Timezone::normalize((string) ($m['timezone'] ?? ''), $clientTz !== '' ? $clientTz : 'UTC');
         }
+        $m = recordClientTimezone($m, $clientTz);
         return $m;
     });
 
@@ -379,6 +380,25 @@ function verifyAttendeePin(array $attendee, string $pin): bool
     return $pin === sanitizePasscode((string) ($attendee['pin'] ?? ''));
 }
 
+/** @param array<string, mixed> $meet */
+function recordClientTimezone(array $meet, string $clientTz): array
+{
+    $norm = Timezone::normalize($clientTz);
+    if ($norm === '' || !Timezone::isValid($norm)) {
+        return $meet;
+    }
+    $list = $meet['recorded_timezones'] ?? [];
+    if (!is_array($list)) {
+        $list = array_filter(array_map('trim', explode(',', (string) $list)));
+    }
+    $list = array_values(array_unique(array_filter(array_map('strval', $list))));
+    if (!in_array($norm, $list, true)) {
+        $list[] = $norm;
+    }
+    $meet['recorded_timezones'] = $list;
+    return $meet;
+}
+
 /** @param array<string, mixed> $attendee */
 function setAttendeePin(array &$attendee, string $pin): void
 {
@@ -550,7 +570,8 @@ function handleSaveAvailability(MeetStore $store, string $slug, array $input): v
     }
 
     $meet = $store->loadBySlug($slug);
-    $meet = $store->update($meet['id'], function (array $m) use ($attendeeId, $slots) {
+    $clientTz = trim((string) ($input['client_timezone'] ?? ''));
+    $meet = $store->update($meet['id'], function (array $m) use ($attendeeId, $slots, $clientTz) {
         foreach ($m['availability'] as $slot => $ids) {
             $m['availability'][$slot] = array_values(array_filter($ids, fn ($id) => $id !== $attendeeId));
             if ($m['availability'][$slot] === []) {
@@ -567,7 +588,7 @@ function handleSaveAvailability(MeetStore $store, string $slug, array $input): v
                 $m['availability'][$slot][] = $attendeeId;
             }
         }
-        return $m;
+        return recordClientTimezone($m, $clientTz);
     });
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
@@ -627,7 +648,8 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         if ($slotErr !== null) {
             throw new \RuntimeException($slotErr, 400);
         }
-        return $m;
+        $clientTz = trim((string) ($input['client_timezone'] ?? ''));
+        return recordClientTimezone($m, $clientTz);
     });
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
