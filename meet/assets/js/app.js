@@ -974,41 +974,41 @@
         <ol class="setup-steps">
           <li>
             <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
-            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> (Everyone) —
+            Everyone (E): ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
             First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
             <strong>${setup.stepOptions ? '✓ ' : ''}</strong>
-            <strong>Set Calendar Options</strong> (Organiser) —
+            Organiser (O): <strong>Set Calendar Options</strong> —
             Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed.
             ${go('options', 'Go to Calendar Options')}
           </li>
           <li>
             <strong>${setup.stepResources ? '✓ ' : ''}</strong>
-            <strong>(Optional)</strong> ${go('agenda', 'Go to Meeting Resources')} (Everyone / Organiser) and edit meeting's title, set / edit description, agenda, attachments, etc.
+            (O/E): <strong>(Optional)</strong> ${go('agenda', 'Go to Meeting Resources')} and edit meeting's title, set / edit description, agenda, attachments, etc.
           </li>
           <li>
             <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
-            <strong>(Optional)</strong> ${go('attendees', 'Go to Attendees')} (Everyone / Organiser) — Add others as proposed attendees.
+            (O/E): <strong>(Optional)</strong> ${go('attendees', 'Go to Attendees')} — Add others as proposed attendees.
             Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
           </li>
           <li>
             <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
-            ${go('calendar', 'Go to My availability')} (Everyone) and select time slots that work for you. Select enough booking slots for partial or full availability.
+            (E): ${go('calendar', 'Go to My availability')} and select time slots that work for you. Select enough booking slots for partial or full availability.
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
-            ${go('locations', 'Go to Locations')} (Everyone) — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
+            (E): ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
           </li>
           <li>
             <strong>${setup.stepConfirm ? '✓ ' : ''}</strong>
-            <strong>Set Confirmed Meeting Details</strong> (Organiser) —
+            (O): <strong>Set Confirmed Meeting Details</strong> —
             <strong>Organiser status required to edit.</strong> All can view. Confirm a meeting date, time and location(s). (Can be amended.)
             ${go('group', 'Go to Set confirmed meeting details')}
           </li>
           <li>
             <strong>${setup.stepShare ? '✓ ' : ''}</strong>
-            <strong>Share the link</strong> (Everyone) —
+            (E): <strong>Share the link</strong> —
             Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
             <span class="row setup-share-row">
               <button type="button" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>

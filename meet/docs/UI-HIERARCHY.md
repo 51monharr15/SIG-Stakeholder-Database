@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.34  
+**Build:** 1.8.35  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -184,20 +184,20 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 
 ### Checklist steps
 
-Completed steps show a leading ✓. Step **names** are restored in the wording; audience tags **(Everyone)**, **(Organiser)**, or **(Everyone / Organiser)** appear immediately after the step name (or after the Go-to link that carries the name).
+Completed steps show a leading ✓. Audience markers sit at the **start** of each step (not mid-sentence): first steps spell out **Everyone (E)** and **Organiser (O)**; later steps use **(E)**, **(O)**, or **(O/E)**.
 
-**Calendar Options ✓** is set only after the organiser presses **Save** on Calendar Options (persisted per meeting in localStorage) — not merely by visiting the tab.
+**Calendar Options ✓** is set only after the organiser presses **Save** on Calendar Options (persisted per meeting in localStorage) — not merely by visiting the tab. Do not tick Calendar Options on first view with no edits.
 
 | Step | Text |
 |------|------|
-| 1 | **Go to Attendees** and **Add yourself as an attendee** (Everyone) — First attendee becomes Meeting Organiser by default and can give others Organiser privilege. |
-| 2 | **Set Calendar Options** (Organiser) — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed. **Go to Calendar Options** |
-| 3 | **(Optional)** **Go to Meeting Resources** (Everyone / Organiser) and edit meeting's title, set / edit description, agenda, attachments, etc. |
-| 4 | **(Optional)** **Go to Attendees** (Everyone / Organiser) — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
-| 5 | **Go to My availability** (Everyone) and select time slots that work for you. Select enough booking slots for partial or full availability. |
-| 6 | **Go to Locations** (Everyone) — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
-| 7 | **Set Confirmed Meeting Details** (Organiser) — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
-| 8 | **Share the link** (Everyone) — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
+| 1 Everyone (E) | **Go to Attendees** and **Add yourself as an attendee** — First attendee becomes Meeting Organiser by default and can give others Organiser privilege. |
+| 2 Organiser (O) | **Set Calendar Options** — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed. **Go to Calendar Options** |
+| 3 (O/E) | **(Optional)** **Go to Meeting Resources** and edit meeting's title, set / edit description, agenda, attachments, etc. |
+| 4 (O/E) | **(Optional)** **Go to Attendees** — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
+| 5 (E) | **Go to My availability** and select time slots that work for you. Select enough booking slots for partial or full availability. |
+| 6 (E) | **Go to Locations** — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
+| 7 (O) | **Set Confirmed Meeting Details** — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
+| 8 (E) | **Share the link** — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
 | Done (complete) | **Setup complete.** You can keep using this checklist any time, or move on to Overview and the other tabs. |
 | Done (incomplete) | This checklist stays visible at all times. |
 | Link | **Go to Overview** — View a summary of current meeting details |
