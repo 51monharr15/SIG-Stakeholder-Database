@@ -712,13 +712,22 @@ button.linkish {
   overflow: auto;
   max-height: min(70vh, 36rem);
   -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.calendar-scroll .cal-header-nav {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--panel, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .calendar-grid-pane .calendar-scroll .cal-header-nav {
   position: sticky;
   top: 0;
   z-index: 6;
-  background: var(--panel, #fff);
+  background: #faf5ff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
@@ -835,6 +844,15 @@ button.linkish {
 }
 
 .status-desc-summary::-webkit-details-marker { display: none; }
+
+.status-desc-summary::before {
+  content: '▸ ';
+  color: var(--muted);
+}
+
+.status-desc[open] > .status-desc-summary::before {
+  content: '▼ ';
+}
 
 .status-desc-body {
   margin-top: 0.35rem;
@@ -998,12 +1016,9 @@ button.linkish {
 }
 
 .cal-header-nav {
-  position: sticky;
-  top: var(--sticky-h, 0px);
   z-index: 5;
   background: var(--panel, #fff);
   padding-bottom: 0.2rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .cal-nav-gutter {

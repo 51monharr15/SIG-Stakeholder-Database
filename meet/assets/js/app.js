@@ -863,26 +863,24 @@
     const descPlain = desc ? desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
     const descSummary = descPlain
       ? `Description: ${descPlain.slice(0, 72)}${descPlain.length > 72 ? '…' : ''}`
-      : 'Description: needs setting';
+      : 'Description: none';
     const descBody = desc
       ? `<div class="meet-intro-body status-desc-body">${sanitizeHtml(desc)}</div>`
-      : '<p class="meta">No description yet — set one in <strong>Meeting Resources</strong>.</p>';
+      : '<p class="meta">No description yet — go to <strong>Meeting Resources</strong> to add one.</p>';
 
     const agenda = m.agenda || [];
-    const agendaSummary = agenda.length
-      ? `Agenda: ${agenda.length} item${agenda.length === 1 ? '' : 's'}`
-      : 'Agenda: needs setting';
+    const attachCount = (m.attachments || []).length;
+    const attachBit = attachCount ? ` · Attachments (${attachCount})` : '';
+    const agendaSummary = `Agenda: ${agenda.length}${attachBit}`;
     const agendaBody = agenda.length
       ? `<ul class="list-plain status-expand-list">${agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
-      : '<p class="meta">No agenda yet — set one in <strong>Meeting Resources</strong>.</p>';
+      : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to add items.</p>';
 
     const decisions = m.decisions || [];
-    const decisionsSummary = decisions.length
-      ? `Decisions required: ${decisions.length}`
-      : 'Decisions required: needs setting';
+    const decisionsSummary = `Decisions required: ${decisions.length}`;
     const decisionsBody = decisions.length
       ? `<ul class="list-plain status-expand-list">${decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
-      : '<p class="meta">No decisions listed yet — set them in <strong>Meeting Resources</strong>.</p>';
+      : '<p class="meta">No decisions listed yet — go to <strong>Meeting Resources</strong> to add them.</p>';
 
     return `
       <details class="status-desc">
@@ -1311,7 +1309,7 @@
           </div>
         </details>
         <details ${paneDetailsAttrs(state, 'group-time', { extraClass: 'confirm-section confirm-section-time tint-dates' })}>
-          <summary title="Pick a meeting start from the Group calendar">Proposed meeting time</summary>
+          <summary title="Pick a meeting start from the Group calendar">Proposed meeting date &amp; time</summary>
           <div class="confirm-section-inner stack">
             ${renderAcceptTimeButton(isOrg, state, m)}
             <p class="meta">Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC.</p>
@@ -1320,6 +1318,7 @@
               <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
             </div>
             ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
+            <div class="calendar-scroll">
             <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
@@ -1329,16 +1328,17 @@
                 `).join('')}
               </div>
             </div>
+            </div>
+            <p class="meta slot-legend-note"><strong>Initials</strong> in cells show who marked that slot on My availability.</p>
+            <div class="row group-legend">
+              <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees, full meeting</span>
+              <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, partial meeting</span>
+              <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees available</span>
+              <span class="legend-chip selected" title="Your current proposed start before Confirm">Dark green border = selected start</span>
+            </div>
             ${renderAcceptTimeButton(isOrg, state, m)}
           </div>
         </details>
-        <p class="meta slot-legend-note"><strong>Initials</strong> in cells show who marked that slot on My availability.</p>
-        <div class="row group-legend">
-          <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees, full meeting</span>
-          <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, partial meeting</span>
-          <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees available</span>
-          <span class="legend-chip selected" title="Your current proposed start before Accept">Dark green border = selected start</span>
-        </div>
         <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations tint-places' })}>
           <summary>Proposed locations</summary>
           <div class="confirm-section-inner">
@@ -1356,16 +1356,16 @@
     let disabled = false;
     let title;
     if (alreadyAccepted) {
-      label = `Accepted: ${formatSlotLocal(m.confirmed_slot)}`;
+      label = `Confirmed: ${formatSlotLocal(m.confirmed_slot)}`;
       disabled = true;
-      title = 'This start is already scheduled';
+      title = 'This date and time is already scheduled';
     } else if (slot) {
-      label = `Accept date: ${formatSlotLocal(slot)}`;
+      label = `Confirm date & time: ${formatSlotLocal(slot)}`;
       title = m.confirmed_slot
-        ? 'Accept this new start as the scheduled time (reschedules the meeting)'
-        : 'Accept this start as the scheduled time';
+        ? 'Confirm this new start as the scheduled date and time (reschedules the meeting)'
+        : 'Confirm this start as the scheduled date and time';
     } else {
-      label = 'Accept date: None proposed';
+      label = 'Confirm date & time: None proposed';
       disabled = true;
       title = 'Select a start slot below first';
     }
@@ -1760,7 +1760,7 @@
     const isConfirmed = loc && confirmedIds.includes(loc.id);
 
     const notesCell = canEdit
-      ? `<textarea class="loc-cell loc-cell-textarea" data-loc-field="notes" rows="3" placeholder="Notes" title="Notes">${escapeHtml(f.notes)}</textarea>`
+      ? `<textarea class="loc-cell loc-cell-textarea" data-loc-field="notes" rows="3" placeholder="${loc ? 'Notes' : 'Add new…'}" title="Notes">${escapeHtml(f.notes)}</textarea>`
       : renderLocFieldDisplay(m, state, id, 'notes', f.notes, { readOnly: true });
 
     const locationCell = canEdit
@@ -1986,7 +1986,7 @@
       </tr>`;
     }).join('');
     const newRow = canEdit ? `<tr class="attach-row attach-row-new" data-attachment-row data-attachment-id="">
-      <td class="attach-cell-label"><input type="text" class="attach-cell" data-attach-field="label" placeholder="Label"></td>
+      <td class="attach-cell-label"><input type="text" class="attach-cell" data-attach-field="label" placeholder="Add new…"></td>
       <td class="attach-cell-content"><textarea class="attach-cell" data-attach-field="content" rows="3" placeholder="URL or text (simple HTML)"></textarea></td>
     </tr>` : '';
     return `<div class="pane-region-scroll attachments-table-scroll"><table class="data-table attachments-table">

@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.35  
+**Build:** 1.8.36  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -99,7 +99,7 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 
 ### Status strip
 
-Always shows three expandable summaries (Description / Agenda / Decisions required). Empty fields use **needs setting**; bodies expand to show content or guidance.
+Always shows three expandable summaries with a **▸ / ▼** triangle. Counts use **0** when empty (not “needs setting”). When attachments exist, Agenda summary also shows **· Attachments (N)**.
 
 | Kind | Text |
 |------|------|
@@ -112,14 +112,12 @@ Always shows three expandable summaries (Description / Agenda / Decisions requir
 | Recurrence | Recurrence: {label} — default **One-off** |
 | Locations | Locations: {list} / Locations (proposed): {list} / No locations confirmed |
 | Description (set) | Description: {preview up to 72 chars, then …} |
-| Description (empty) | Description: needs setting |
-| Description empty body | No description yet — set one in **Meeting Resources**. |
-| Agenda (set) | Agenda: {N} item / Agenda: {N} items |
-| Agenda (empty) | Agenda: needs setting |
-| Agenda empty body | No agenda yet — set one in **Meeting Resources**. |
-| Decisions (set) | Decisions required: {N} |
-| Decisions (empty) | Decisions required: needs setting |
-| Decisions empty body | No decisions listed yet — set them in **Meeting Resources**. |
+| Description (empty) | Description: none |
+| Description empty body | No description yet — go to **Meeting Resources** to add one. |
+| Agenda | Agenda: {N} · optionally **· Attachments ({A})** when A &gt; 0 |
+| Agenda empty body | No agenda yet — go to **Meeting Resources** to add items. |
+| Decisions | Decisions required: {N} |
+| Decisions empty body | No decisions listed yet — go to **Meeting Resources** to add them. |
 
 **Past** and **Summarised** are status labels (after the scheduled start; Summarised when attachments exist). There is **no** Past dashboard tab.
 
@@ -382,7 +380,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | OK with title | Initials of attendees who marked OK with me |
 | OK with me title | Toggle if this location works for you |
 | Confirmed title | Organiser confirms for the meeting |
-| Placeholders | Notes · URL or place name |
+| Placeholders | New row first field (Notes): **Add new…** · Location: URL or place name |
 | OK with me cell | ? · Yes |
 | OK with me button titles | OK with me — saves immediately / Remove — OK with me |
 | OK with me aria-label | OK with me |
@@ -458,7 +456,7 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 - Summary: **Attachments ({N})** *(no Save on summary)*
 - Lead: Preparation or follow-up links/text. Edit a cell and tab out to save. Leading spaces on URLs are stripped.
 - Columns: Label · Content
-- Placeholders: Label · URL or text (simple HTML)
+- Placeholders: New row first field (Label): **Add new…** · Content: URL or text (simple HTML)
 - Empty (unsigned-in, none): No attachments yet.
 
 ---
@@ -468,6 +466,7 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 ### Lead
 - **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
 - Header **Save**; each editable pane summary and pane body also carry **Save**; form footer **Save**
+- **All Save buttons on this tab do the same thing:** they submit the whole Calendar Options form (`update-settings`) — title, length, slot size, weekends, bookable dates, and daily hours together. Panel-level Saves are not limited to one pane.
 - Nav when no attendees yet: Back to Getting started · Next step: Attendees →
 - Meeting base timezone is a **hidden** field (first attendee); there is **no** timezone-picker pane.
 
@@ -513,28 +512,24 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 - **Meeting link** (title: Share this link so others can open the meeting)
 - **Copy meeting link** (title: Copy meeting link to clipboard)
 
-### Proposed meeting time `group-time` *tint-dates*
+### Proposed meeting date & time `group-time` *tint-dates*
+
+Day column headers stick at the top of the scrollable calendar body (do not scroll away with the slots). Colour key sits **inside this pane** (applies to the calendar).
 
 | Kind | Text |
 |------|------|
-| Summary | **Proposed meeting time** (title: Pick a meeting start from the Group calendar) |
-| Accept (proposed) | Accept date: {time} |
-| Accept (none) | Accept date: None proposed |
-| Accepted (scheduled) | Accepted: {time} (disabled) |
-| Titles | Accept this start as the scheduled time / Accept this new start as the scheduled time (reschedules the meeting) / Select a start slot below first / This start is already scheduled / Organiser status required |
+| Summary | **Proposed meeting date & time** (title: Pick a meeting start from the Group calendar) |
+| Confirm (proposed) | Confirm date & time: {time} |
+| Confirm (none) | Confirm date & time: None proposed |
+| Confirmed (scheduled) | Confirmed: {time} (disabled) |
+| Titles | Confirm this start as the scheduled date and time / Confirm this new start as the scheduled date and time (reschedules the meeting) / Select a start slot below first / This date and time is already scheduled / Organiser status required |
 | Hint | Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC. |
 | Selected | **Currently selected meeting start:** {pair} / none selected yet — tap a slot below to set it |
 | Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
 | Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. |
 | Initials note | **Initials** in cells show who marked that slot on My availability. |
 | Time labels | Same local (+ optional cycling alt timezone) behaviour as My availability |
-
-### Legend
-- Light green = all attendees, full meeting — Every attendee marked enough consecutive slots for the full meeting length
-- Amber = all attendees, partial meeting — Everyone marked something at this start, but not all for the full meeting length
-- Purple = some attendees available — Some but not all attendees marked this start
-- Dark green border = selected start — Your current proposed start before Accept
-
+| Legend | Light green = all attendees, full meeting · Amber = all attendees, partial meeting · Purple = some attendees available · Dark green border = selected start |
 ### Proposed locations `group-locations` *tint-places* (teal `#ccfbf1`)
 - **Proposed locations**
 - Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab.
@@ -565,7 +560,7 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `opts-booking` | Calendar Options — Bookable dates & daily hours |
 | `opts-recurrence` | Calendar Options — Recurrence (future) |
 | `group-link` | Set confirmed — Meeting link |
-| `group-time` | Set confirmed — Proposed meeting time |
+| `group-time` | Set confirmed — Proposed meeting date & time |
 | `group-locations` | Set confirmed — Proposed locations |
 
 **Removed:** `opts-timezone` (Calendar hours & timezone picker — no longer in the UI).

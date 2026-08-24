@@ -51,7 +51,7 @@ final class MeetFile
             'confirmed_location_physical' => null,
             'confirmed_location_online' => null,
             'confirmed_location_ids' => [],
-            'app_version' => '1.8.35',
+            'app_version' => '1.8.36',
         ];
     }
 
