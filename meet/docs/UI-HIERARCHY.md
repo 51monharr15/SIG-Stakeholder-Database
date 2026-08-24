@@ -1,12 +1,12 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.31  
+**Build:** 1.8.32  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
 Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `operations.php`), and API/toast error strings from `meet/api.php`.
 
-**Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations) so reviews and amendments stay unambiguous.
+**Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations). **Panels** are level-2 headings. **Panes** are level-3 headings.
 
 ### Legend
 
@@ -24,12 +24,13 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 
 ---
 
-## 1. Landing page
+## Landing page
 
 ### Site header
 - Simon's Meeting Scheduler
 
-### Pane: Create meeting *tint-create*
+### Create meeting *tint-create*
+
 | Kind | Text |
 |------|------|
 | Heading | Find a meeting time everyone can make |
@@ -39,9 +40,10 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | Label | Meeting title |
 | Placeholder | Board review |
 | Button | Create meeting |
-| Hint | The **Create meeting** button generates a private link with a random URL. **Save it.** |
+| Hint | The **Create meeting** button generates a private link with a random URL. **Save it and SEND to other proposed Attendees.** |
 
-### Pane: Find my meetings *tint-find*
+### Find my meetings *tint-find*
+
 | Kind | Text |
 |------|------|
 | Heading | Find my meetings |
@@ -49,10 +51,10 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | Label | Registered identity |
 | Placeholder | e.g. Alice@gmail.com or Bob |
 | Label | Passcode |
-| Passcode input title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. |
-| Reveal button title / aria | Show or hide passcode / Show passcode (toggles to Hide passcode) |
+| Passcode title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. |
+| Passcode field | Password input (no show/hide eye button) |
 | Button | List my meetings |
-| Results (empty) | No meetings found for that name and passcode. Check spelling and that you set a passcode when you registered. |
+| Results (empty) | No meetings found for that name and passcode. Identity misspelt or Passcode not matching. |
 | Results (count) | 1 meeting found / {N} meetings found |
 | Validation | Enter a passcode of 2 to 20 characters. |
 
@@ -64,20 +66,24 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 
 ---
 
-## 2. Chrome (always visible on meeting page)
+## Meeting page header (always visible)
+
+This is the persistent bar at the top of a meeting (title, actions, status, green nav). It is not named “Chrome” — that word means the browser’s own frame, and is easy to confuse with Google Chrome.
 
 ### Sticky header actions
+
 | Text | Notes |
 |------|-------|
-| More ▾ / Less ▴ | Narrow screens only; title: Collapse/Expand for narrow screens |
-| How to use this | title: How to use this meeting scheduler |
-| Copy meeting link | title: Copy meeting link |
+| More ▾ / Less ▴ | Narrow screens only. Title: Collapse/Expand for narrow screens |
+| How to use this | Title: How to use this meeting scheduler |
+| Copy meeting link | Title: Copy meeting link |
 
 ### Signed-in banner
 - Currently signed in as **{name}** (Organiser \| Attendee)
-- title: Manage attendee identities on the Attendees tab
+- Title: Manage attendee identities on the Attendees tab
 
 ### Status strip
+
 | Kind | Text |
 |------|------|
 | Label | Status: |
@@ -92,25 +98,27 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | Description empty body | No description yet — set one in **Meeting Resources**. |
 
 ### Dashboard nav (green buttons)
+
+Nav aria-label: Meeting sections
+
 | Button | Tooltip (exact) |
 |--------|-----------------|
 | Getting started | Step-by-step checklist for setting up this meeting. |
 | Overview | Summary of the meeting — status, attendees, and best overlap times. |
-| Attendees | Register yourself, add others, and manage the attendee list. |
-| Locations | Propose meeting locations and mark your preferences. |
-| My availability | Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday. |
-| Meeting Resources | Description, agenda, decisions, notes, and attachments (pre- and post-meeting assets). |
-| Calendar Options | Meeting length (minutes, hours, or AM/PM), calendar slot size (partial availability), bookable dates and hours. Organiser only. |
-| Set confirmed meeting details | Group calendar: everyone’s availability on one grid. Organiser picks start time (partial overlap OK) and location(s). Use ◀ ▶ beside dates to move by weekday. |
-
-Nav aria-label: Meeting sections
+| Attendees | Register yourself, add others, manage. |
+| Locations | Propose locations, mark preferences. |
+| My availability | Mark free slots. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday. |
+| Meeting Resources | Description, agenda, notes, attachments. |
+| Calendar Options | Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly). |
+| Set confirmed meeting details | Group’s calendar; organiser picks start date & time and location(s) URL / physical address. |
 
 ### Help panel *(opens on “How to use this”)*
-| Section | Text |
-|---------|------|
+
+| Kind | Text |
+|------|------|
 | Title | How to use this meeting scheduler |
-| Close | Close (title: Close help panel) |
-| Close footer | Close / Collapse (title: Close help panel) |
+| Close (header) | Close (title: Close help panel) |
+| Close (footer) | Close / Collapse (title: Close help panel) |
 | Note | Most fields have tooltips on hover (may not show on mobile). Coloured panes group related topics — dates & times (lavender), free text (blue), people (pink), places (green), attachments (amber). |
 | Organiser heading | Setting up a meeting (organiser) |
 | Organiser step 1 | **Attendees** — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later. |
@@ -128,110 +136,199 @@ Nav aria-label: Meeting sections
 | Attendee step 5 | Open **Set confirmed meeting details** to see the *Group calendar* — how times overlap and what is proposed or scheduled. |
 | Attendee step 6 | Check the top status line for the current scheduled time and location. |
 | Attendee step 7 | Repeat any of these steps as the meeting evolves — there is no fixed order. |
-| Footer | The **Copy meeting link** button copies the meeting link. Save the link — it is the only way back to this meeting unless you set a passcode. The *Find my meetings* option on the home page lets you look up a meeting but requires a registered name and matching passcode. |
+| Footer | The **meeting link** is the only way back to this meeting unless you set a passcode. The *Find my meetings* option on the home page lets you look up a list of meetings **if** you know a registered name **and matching passcode.** |
 
 ---
 
-## 2.1 Getting started panel
+## Getting started
 
-| Location | Text |
-|----------|------|
-| Title | Getting started |
-| [expand] summary | Instructions for organisers and attendees |
-| Intro | Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — full details in **How to use this** above. Essential steps for all Attendees: sign in on **Attendees**, mark **My availability**, vote on **Locations**. Optionally review everything! |
-| Intro (second) | For fuller guidance, open **How to use this** at the top of the page, or the [operations manual](operations.php). |
-| Step 1 | **Go to Attendees** and **Add yourself** — First attendee becomes first Meeting Organiser by default and can give others Organiser privilege. |
-| Step 2 | **Set Calendar Options** — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence if needed. **Go to Calendar Options** |
-| Step 3 | **(Optional)** **Go to Meeting Resources** — Set/edit title, description, agenda, attachments, etc. |
-| Step 4 | **(Optional)** **Go to Attendees** — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
-| Step 5 | **Go to My availability** and select slots when you are free — use the green navigation buttons (◀ ▶ beside dates) to move by day or screen. Select enough consecutive slots to cover the full meeting if you can. |
-| Step 6 | **Go to Locations** — Select/ Propose locations (Online and Physical) for attendees to vote on. Any attendee can propose locations. Organisers can (re-)select a confirmed location at any time. |
-| Step 7 | **Set Confirmed Meeting Details** — Organiser status required. Pick an agreed meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
-| Step 8 | **Share the link** — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
+### Instructions for organisers and attendees `[expand]`
+
+| Kind | Text |
+|------|------|
+| Panel title | Getting started |
+| Summary | Instructions for organisers and attendees. Completed steps marked with a ✓ |
+| Intro | Steps below are aimed at the meeting organiser. Attendees skip organiser-only steps. Essential steps for **all** attendees: sign in on **Attendees**, mark **My availability**, vote on **Locations**. |
+| Intro (second) | For fuller guidance, open **How to use this** at the top of the page, or the [operations manual](operations.php) at the foot of the page. |
+
+### Checklist steps
+
+Completed steps show a leading ✓.
+
+| Step | Text |
+|------|------|
+| 1 Everyone (E) | **Go to Attendees** and **Add yourself as an attendee** — First attendee becomes Meeting Organiser by default and can give others Organiser privilege. |
+| 2 Organiser (O) | **Set Calendar Options** — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed. **Go to Calendar Options** |
+| 3 (O/E) | **(Optional)** **Go to Meeting Resources** and edit meeting's title, set / edit description, agenda, attachments, etc. |
+| 4 (O/E) | **(Optional)** **Go to Attendees** — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
+| 5 (E) | **Go to My availability** and select time slots that work for you. Select enough booking slots for partial or full availability. |
+| 6 (E) | **Go to Locations** — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
+| 7 (O) | **Set Confirmed Meeting Details** — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
+| 8 (E) | **Share the link** — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
 | Done (complete) | **Setup complete.** You can keep using this checklist any time, or move on to Overview and the other tabs. |
 | Done (incomplete) | This checklist stays visible at all times. |
-| Link | **Go to Overview** |
-
-*(Completed steps show a leading ✓ on the step title.)*
+| Link | **Go to Overview** — View a summary of current meeting details |
 
 ---
 
-## 2.2 Overview panel
+## Overview
 
-| Pane | Summary / key text |
-|------|-------------------|
+| Kind | Text |
+|------|------|
 | Header | Overview — tap ▸ headings to expand |
-| Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places, amber attachments. |
-| *tint-dates* Time · Recurrence · Locations | summary title: Tap or click the triangle to expand/collapse |
-| | **Scheduled time:** / **Proposed time:** {pair} \| {pair} (proposed) \| None selected yet |
-| | **Meeting length:** {dur} · **Calendar slot:** {slot} |
-| | **Recurrence:** {label} (default One-off) |
-| | **Confirmed locations:** / **Proposed locations:** {list} \| None yet |
-| *tint-text* Agenda and decisions | Agenda and decisions *(Set in Meeting Resources)* |
-| | **Agenda:** {bullets} / No agenda yet — go to **Meeting Resources** to set it. |
-| | **Decisions required:** {bullets} / No decisions listed yet — go to **Meeting Resources** to set them. |
-| *tint-people* Attendees | Attendees registered ({N}) · Availability entered ({count}) |
-| | Empty: No attendees registered yet. |
-| | Table columns: Name · Time slots / locations · Role (Organiser \| Attendee) |
-| *tint-dates* Top start times | Top start times ({shown} of {total}) — best attendance |
-| | Suggestion lines: {time} — {n} of {total} free for full meeting ({dur}) / {n} of {total} for full {dur}; {p} partial / {n} of {total} marked (partial overlap) |
-| | Confirm one with **Set confirmed meeting details**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
-| | Empty: No overlap times yet — attendees need to mark availability on **My availability**, then check **Set confirmed meeting details**. |
-| *tint-places* Top locations | Top locations ({shown} of {total}) — by popularity |
-| | {location} — {N} preference / preferences |
-| | Empty: No locations proposed yet. |
-| *tint-assets* Attachments | Attachments ({N}) — when past/summarised |
+| Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places. |
+| Expand title | Tap or click the triangle to expand/collapse |
+
+### Time · Recurrence *tint-dates*
+
+| Kind | Text |
+|------|------|
+| Summary | Time · Recurrence |
+| Time | **Scheduled time:** / **Proposed time:** {pair} / {pair} (proposed) / None selected yet |
+| Length | **Meeting length:** {dur} · **Calendar slot:** {slot} |
+| Recurrence | **Recurrence:** {label} (default One-off) |
+
+### Agenda and decisions *tint-text*
+
+| Kind | Text |
+|------|------|
+| Summary | Agenda and decisions *(Set in Meeting Resources)* |
+| Agenda | **Agenda:** {bullets} |
+| Agenda empty | No agenda yet — go to **Meeting Resources** to set it. |
+| Decisions | **Decisions required:** {bullets} |
+| Decisions empty | No decisions listed yet — go to **Meeting Resources** to set them. |
+
+### Attendees *tint-people*
+
+| Kind | Text |
+|------|------|
+| Summary | Attendees registered ({N}) · Availability entered ({count}) |
+| Empty | No attendees registered yet. |
+| Table columns | Name · Time slots / locations · Role (Organiser \| Attendee) |
+| Time slots / locations title | Availability slots marked and locations marked OK with me |
+
+### Top start times *tint-dates*
+
+| Kind | Text |
+|------|------|
+| Summary | Top start times ({shown} of {total}) — best attendance |
+| Line (full) | {time} — {n} of {total} free for full meeting ({dur}) |
+| Line (mixed) | {time} — {n} of {total} for full {dur}; {p} partial |
+| Line (partial) | {time} — {n} of {total} marked (partial overlap) |
+| Hint | Confirm one with **Set confirmed meeting details**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
+| Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Set confirmed meeting details**. |
+
+### Top locations *tint-places*
+
+Green places tint (locations no longer sit in the lavender Time pane).
+
+| Kind | Text |
+|------|------|
+| Summary | Top locations ({shown} of {total}) — by popularity |
+| Confirmed / proposed | **Confirmed locations:** / **Proposed locations:** {list} / None yet |
+| Ranked line | {location} — {N} preference / preferences |
+| Empty | No locations proposed yet. |
+
+### Attachments *tint-assets*
+
+Shown only when status is Past or Summarised **and** there is at least one attachment.
+
+| Kind | Text |
+|------|------|
+| Summary | Attachments ({N}) |
 
 ---
 
-## 2.3 Attendees panel
+## Attendees
 
-| Pane ID | Summary / key text |
-|---------|-------------------|
-| Lead (signed in, organiser) | Toggle Organiser rights for others. **Delete** removes a row. Expand **Merge duplicate attendees** if needed. |
-| Lead (signed in, attendee) | Duplicate rows can be merged — expand **Merge duplicate attendees** if needed. |
-| Lead (not signed in) | Toggle sign-in if you are listed (enter passcode if set), or add yourself below. |
-| Identity bar | **Edit identity** (title: Edit your display name, contact, or passcode) · **Switch user** (title: Sign out on this browser) |
-| `att-registered` | **Registered attendees ({N})** / **Registered attendees (none yet)** |
+### Lead
+
+| Who | Text |
+|-----|------|
+| Not signed in | Toggle sign-in if you are listed (enter passcode if set), or add yourself below. |
+| Signed-in attendee | Duplicate rows can be merged — expand **Merge duplicate attendees** if needed. |
+| Signed-in organiser | Toggle Organiser rights for others. **Delete** removes a row. Expand **Merge duplicate attendees** if needed. |
+
+### Identity bar
+- **Edit identity** (title: Edit your display name, contact, or passcode)
+- **Switch user** (title: Sign out on this browser)
+
+### Registered attendees `att-registered`
+
+| Kind | Text |
+|------|------|
+| Summary | **Registered attendees ({N})** / **Registered attendees (none yet)** |
 | Table headers | Signed-in as · Name · Initials · Contact · Time slots / locations · Passcode · Organiser · Delete *(organiser)* |
-| Time slots / locations head title | Availability slots marked and locations marked OK with me |
+| Signed-in as title | Toggle sign-in for this row |
+| Organiser title | Toggle organiser rights |
 | Empty row | None yet |
 | Passcode cell | Set / Not set |
-| Sign-in toggle titles | Sign in as this attendee / Sign out / Merge duplicate into your row |
+| Sign-in titles | Sign in as this attendee / Sign out / Merge duplicate into your row |
 | Delete | Delete (title: Remove this attendee from the meeting) |
-| `att-add-first` | **Add yourself as an attendee** · Save |
-| Add first lead | Add yourself as an attendee, or propose someone else. |
-| Mode choices | Myself / Someone else |
+
+### Add yourself as an attendee `att-add-first`
+
+| Kind | Text |
+|------|------|
+| Summary | Add yourself as an attendee |
+| Lead | Add yourself as an attendee, or propose someone else. |
+| Mode | Myself / Someone else |
 | Field guide | Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode: optional — 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links. |
 | Propose hint | They are not emailed — share the meeting link with them. They tick **Me** on their row to sign in. |
 | Labels | Display name · Initials (opt.) · Passcode (optional) · Contact (opt.) |
 | Placeholders | e.g. name or email · For Find my meetings · email, phone (first-add) / email, URL, phone (add-another) |
 | Button | Save |
-| `att-add` `[secondary]` | **Add another attendee** — Add **someone else**. Share the meeting link with them. |
-| Edit form | **Edit my details** |
-| | Display name · Initials (opt.) · Contact (opt.) |
-| | **Change passcode** / **Set passcode** |
-| | You are already signed in — current passcode is not required. Leave blank to keep your existing passcode. |
-| | Remove passcode instead of setting a new one |
-| | New passcode / Passcode · placeholder: leave blank to keep |
-| | **Save my details** · **Cancel** |
-| Claim form | **{name}** — enter your passcode to sign in / optionally set a passcode, then press Continue |
-| | Passcode / Passcode (optional) · **Continue** · **Cancel** |
-| `att-merge` `[secondary]` | **Merge duplicate attendees** · Keep row 1 / Remove row 2 · **Merge** |
-| | Availability from the removed row is combined into the kept row. |
-| Continue (embed) | Continue to My availability → · Mark your availability on **My availability**. / Add yourself above, then go to **My availability**. |
+
+### Add another attendee `att-add` `[secondary]`
+- **Add another attendee** — Add **someone else**. Share the meeting link with them.
+
+### Edit my details
+
+| Kind | Text |
+|------|------|
+| Title | Edit my details |
+| Labels | Display name · Initials (opt.) · Contact (opt.) |
+| Toggle | **Change passcode** / **Set passcode** |
+| Note | You are already signed in — current passcode is not required. Leave blank to keep your existing passcode. |
+| Checkbox | Remove passcode instead of setting a new one |
+| New passcode | New passcode / Passcode · placeholder: leave blank to keep |
+| Buttons | **Save my details** · **Cancel** (title: Cancel and return without saving) |
+
+### Claim / sign-in form
+- **{name}** — enter your passcode to sign in
+- **{name}** — optionally set a passcode, then press Continue
+- Passcode / Passcode (optional) · **Continue** · **Cancel** (title: Cancel and return)
+
+### Merge duplicate attendees `att-merge` `[secondary]`
+- **Merge duplicate attendees**
+- Keep row 1 / Remove row 2 · **Merge**
+- Availability from the removed row is combined into the kept row.
+
+### Continue (embed on My availability when not established)
+- Continue to My availability → (title: Open My availability)
+- Mark your availability on **My availability**.
+- Add yourself above, then go to **My availability**.
 
 ---
 
-## 2.4 Locations panel
+## Locations
 
-| Location | Text |
-|----------|------|
-| Lead (signed in) | Proposed URLs or place names in the **top row** are added to the table. Tab out of an amended cell to save. |
-| | Toggle **OK with me** to record your preference. Tap/click overflow cells to expand; use **Copy** after expanding a link. |
-| Lead (not signed in) | Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me. |
-| Table headers | Notes · Location · OK with · OK with me · Confirmed *(Set confirmed tab only)* |
-| Header titles | OK with: Initials of attendees who marked OK with me · OK with me: Toggle if this location works for you · Confirmed: Organiser confirms for the meeting |
+### Lead
+
+| Who | Text |
+|-----|------|
+| Signed in | Proposed URLs or place names in the **top row** are added to the table. Tab out of an amended cell to save. |
+| Signed in (2) | Toggle **OK with me** to record your preference. Tap/click overflow cells to expand; use **Copy** after expanding a link. |
+| Not signed in | Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me. |
+
+### Locations table *tint-places*
+
+| Kind | Text |
+|------|------|
+| Headers | Notes · Location · OK with · OK / with me · Confirmed *(Set confirmed tab only)* |
+| OK with title | Initials of attendees who marked OK with me |
+| OK with me title | Toggle if this location works for you |
+| Confirmed title | Organiser confirms for the meeting |
 | Placeholders | Notes · URL or place name |
 | OK with me cell | ? · Yes |
 | OK with me button titles | OK with me — saves immediately / Remove — OK with me |
@@ -240,106 +337,154 @@ Nav aria-label: Meeting sections
 
 ---
 
-## 2.5 My availability panel
+## My availability
 
-| Pane | Text |
+### Mark when you are free `[expand]`
+
+| Kind | Text |
 |------|------|
-| [expand] summary | Mark when you are free (title: How to mark your availability on the calendar) |
-| Expand body | Each cell is one **calendar slot** ({slot}). Drag or tap to select. Use **Save** in the band below the grid. Tap a selected slot again to deselect — save again after changes. |
-| | **Meeting length** is {dur}.{slotHint} Finer slots let you show partial availability if you cannot make the whole meeting. |
-| | slotHint (multi): Select {N} consecutive {gran} slot(s) to cover the full {dur} meeting. |
-| | slotHint (single): Each slot is {gran} — one slot covers the full meeting. |
-| | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. |
-| | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
-| | Meeting hours {start}–{end} in **{meetingTz}** (and UTC). Your browser timezone: **{tz}**. |
-| Nav gutter title | Day ◀▶ · screen «» · first/last ⇤⇥ |
+| Summary | Mark when you are free (title: How to mark your availability on the calendar) |
+| Body 1 | Each cell is one **calendar slot** ({slot}). Drag or tap to select. Use **Save** in the band below the grid. Tap a selected slot again to deselect — save again after changes. |
+| Body 2 | **Meeting length** is {dur}.{slotHint} Finer slots let you show partial availability if you cannot make the whole meeting. |
+| slotHint (multi) | Select {N} consecutive {gran} slot(s) to cover the full {dur} meeting. |
+| slotHint (single) | Each slot is {gran} — one slot covers the full meeting. |
+| Initials | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. |
+| Nav hint | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
+| Hours | Meeting hours {start}–{end} in **{meetingTz}** (and UTC). Your browser timezone: **{tz}**. |
+
+### Calendar grid *tint-dates*
+
+| Kind | Text |
+|------|------|
+| Gutter title | Day ◀▶ · screen «» · first/last ⇤⇥ |
 | Nav buttons | ◀ Previous weekday · ▶ Next weekday · « Back one screen of dates · » Forward one screen of dates · ⇤ Jump to earliest bookable date · ⇥ Jump to latest bookable date |
-| Day head extras | today · recurring |
-| *tint-dates* Calendar grid | (slot cells — dynamic initials/counts) |
-| Save band | **Save** (title: Save your currently selected availability slots to the meeting) · {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)* |
+| Day extras | today · recurring |
+
+### Save band
+- **Save** (title: Save your currently selected availability slots to the meeting)
+- {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)*
 
 ---
 
-## 2.6 Meeting Resources panel
+## Meeting Resources
 
-| Pane ID | Text |
-|---------|------|
-| Lead | Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place. |
-| Description *tint-text* | **Description for attendees** *(simple HTML — status bar & Overview)* |
-| | Placeholder: Add a short description for attendees — shown in the status bar and Overview. |
-| | **Save** / Sign in on Attendees to edit. |
-| `mr-agenda` | **Agenda & decisions** |
-| | Agenda *(each line is a bullet on Overview)* · Decisions required *(each line is a bullet on Overview)* · **Save** |
-| `mr-notes` | **Notes** |
-| | Notes *(simple HTML)* · **Save** |
-| Attachments *tint-assets* | Attachments — links or text (recordings, transcripts, summaries). Top row adds on tab out. |
-| | Columns: Label · Content |
-| | Placeholders: Label · URL or text (simple HTML) |
-| | Empty (unsigned, none): No attachments yet. |
+### Lead
+- Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.
 
-Format toolbar (description; notes omit Help): **?** Help for meeting description · Bold · Italic · Paragraph · Line break · Link · List
+### Description *tint-text*
+- **Description for attendees** *(simple HTML — status bar & Overview)*
+- Placeholder: Add a short description for attendees — shown in the status bar and Overview.
+- **Save** / Sign in on Attendees to edit.
+
+Format toolbar: **?** Help for meeting description · Bold · Italic · Paragraph · Line break · Link · List
 
 Help body: Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Allowed: paragraphs, line breaks, bold, italic, links, and lists.
 
----
+### Agenda & decisions `mr-agenda`
+- **Agenda & decisions**
+- Agenda *(each line is a bullet on Overview)*
+- Decisions required *(each line is a bullet on Overview)*
+- **Save**
 
-## 2.7 Calendar Options panel
+### Notes `mr-notes`
+- **Notes**
+- Notes *(simple HTML)*
+- **Save**
 
-| Pane ID | Text |
-|---------|------|
-| Lead | **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)* |
-| Header/footer | **Save** |
-| Nav (no attendees yet) | Back to Getting started · Next step: Attendees → |
-| `opts-length` | **Meeting length & calendar** |
-| | Title |
-| | Meeting length (title: Minutes, 1.5h, 2,5h, or AM / PM (sets default bookable hours); placeholder: e.g. 60, 1.5h, AM, PM) |
-| | Calendar slot size (title: Granularity for partial availability — must divide meeting length evenly; placeholder: e.g. 30, 15m) |
-| | Include weekends (title: When off, Saturday and Sunday are hidden from calendar navigation) |
-| | Hint: **Calendar slot size** is one granularity at which attendees can confirm availability to indicate partial attendance. *(optional: Slot size must divide meeting length evenly.)* Changing meeting length or slot size does **not** remap saved availability — attendees should review **My availability** and save again. |
-| `opts-booking` | **Bookable dates & daily hours** |
-| | Start date (title: Earliest date this meeting is open for scheduling.) |
-| | Start time *({meetingTz})* (title: Earliest start time on the calendar grid each day (meeting timezone).) |
-| | End date *(optional)* (title: Latest date this meeting is open for scheduling. Leave blank for open-ended.) |
-| | End time *({meetingTz})* (title: Latest end time on the calendar grid each day (meeting timezone).) |
-| `opts-timezone` | **Calendar hours & timezone** |
-| | Summary line: {tz} · {day_start}–{day_end} · {range_start} – {range_end\|open-ended} |
-| | Times on the calendar grid are shown in each person’s local timezone (and UTC in slot details). The timezone below defines which wall-clock hours {day_start}–{day_end} refer to — everyone marks the same underlying slots. |
-| | Timezone |
-| `opts-recurrence` `[secondary]` | **Recurrence (future feature)** |
-| | One-off scheduling only for now. Recurrence design is parked. |
+### Attachments *tint-assets*
+- Attachments — links or text (recordings, transcripts, summaries). Top row adds on tab out.
+- Columns: Label · Content
+- Placeholders: Label · URL or text (simple HTML)
+- Empty: No attachments yet.
 
 ---
 
-## 2.8 Set confirmed meeting details panel
+## Calendar Options
 
-| Pane ID | Text |
-|---------|------|
-| Lead | **Group calendar** — everyone’s availability on one grid. Meeting length {dur}; slots {gran} each.{slotHint} |
-| `group-link` *tint-text* | **Meeting link** (title: Share this link so others can open the meeting) · **Copy meeting link** (title: Copy meeting link to clipboard) |
-| `group-time` *tint-dates* | **Proposed meeting time** (title: Pick a meeting start from the Group calendar) |
-| Accept button (proposed) | Accept date: {time} |
-| Accept button (none) | Accept date: None proposed |
-| Accept button (already scheduled) | Accepted: {time} |
-| Accept titles | Accept this start as the scheduled time / Accept this new start as the scheduled time (reschedules the meeting) / Select a start slot below first / This start is already scheduled / Organiser status required |
-| | Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC. |
-| | **Currently selected meeting start:** {pair} / none selected yet — tap a slot below to set it |
-| | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
-| | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. |
+### Lead
+- **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
+- Header/footer: **Save**
+- Nav when no attendees yet: Back to Getting started · Next step: Attendees →
+
+### Meeting length & calendar `opts-length`
+
+| Kind | Text |
+|------|------|
+| Summary | **Meeting length & calendar** |
+| Fields | Title · Meeting length · Calendar slot size · Include weekends |
+| Meeting length title | Minutes, 1.5h, 2,5h, or AM / PM (sets default bookable hours) |
+| Meeting length placeholder | e.g. 60, 1.5h, AM, PM |
+| Slot size title | Granularity for partial availability — must divide meeting length evenly |
+| Slot size placeholder | e.g. 30, 15m |
+| Weekends title | When off, Saturday and Sunday are hidden from calendar navigation |
+| Hint | **Calendar slot size** is one granularity at which attendees can confirm availability to indicate partial attendance. Changing meeting length or slot size does **not** remap saved availability — attendees should review **My availability** and save again. |
+| Extra when invalid | Slot size must divide meeting length evenly. |
+
+### Bookable dates & daily hours `opts-booking`
+
+| Kind | Text |
+|------|------|
+| Summary | **Bookable dates & daily hours** |
+| Start date | Earliest date this meeting is open for scheduling. |
+| Start time | Earliest start time on the calendar grid each day (meeting timezone). Label includes ({meetingTz}). |
+| End date | Latest date this meeting is open for scheduling. Leave blank for open-ended. Label: End date *(optional)* |
+| End time | Latest end time on the calendar grid each day (meeting timezone). |
+
+### Calendar hours & timezone `opts-timezone`
+
+| Kind | Text |
+|------|------|
+| Summary | **Calendar hours & timezone** |
+| Line | {tz} · {day_start}–{day_end} · {range_start} – {range_end\|open-ended} |
+| Explain | Times on the calendar grid are shown in each person’s local timezone (and UTC in slot details). The timezone below defines which wall-clock hours {day_start}–{day_end} refer to — everyone marks the same underlying slots. |
+| Label | Timezone |
+
+### Recurrence (future feature) `opts-recurrence` `[secondary]`
+- **Recurrence (future feature)**
+- One-off scheduling only for now. Recurrence design is parked.
+
+---
+
+## Set confirmed meeting details
+
+### Lead
+- **Group calendar** — everyone’s availability on one grid. Meeting length {dur}; slots {gran} each.{slotHint}
+
+### Meeting link `group-link` *tint-text*
+- **Meeting link** (title: Share this link so others can open the meeting)
+- **Copy meeting link** (title: Copy meeting link to clipboard)
+
+### Proposed meeting time `group-time` *tint-dates*
+
+| Kind | Text |
+|------|------|
+| Summary | **Proposed meeting time** (title: Pick a meeting start from the Group calendar) |
+| Accept (proposed) | Accept date: {time} |
+| Accept (none) | Accept date: None proposed |
+| Accepted (scheduled) | Accepted: {time} (disabled) |
+| Titles | Accept this start as the scheduled time / Accept this new start as the scheduled time (reschedules the meeting) / Select a start slot below first / This start is already scheduled / Organiser status required |
+| Hint | Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC. |
+| Selected | **Currently selected meeting start:** {pair} / none selected yet — tap a slot below to set it |
+| Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
+| Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. |
 | Initials note | **Initials** in cells show who marked that slot on My availability. |
-| Legend | Light green = all attendees, full meeting |
-| | Amber = all attendees, partial meeting |
-| | Purple = some attendees available |
-| | Dark green border = selected start |
-| Legend titles | Every attendee marked enough consecutive slots for the full meeting length · Everyone marked something at this start, but not all for the full meeting length · Some but not all attendees marked this start · Your current proposed start before Accept |
-| `group-locations` *tint-places* | **Proposed locations** |
-| | Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab. |
-| | Same locations table as §2.4 + **Confirmed** column |
+
+### Legend
+- Light green = all attendees, full meeting — Every attendee marked enough consecutive slots for the full meeting length
+- Amber = all attendees, partial meeting — Everyone marked something at this start, but not all for the full meeting length
+- Purple = some attendees available — Some but not all attendees marked this start
+- Dark green border = selected start — Your current proposed start before Accept
+
+### Proposed locations `group-locations` *tint-places*
+- **Proposed locations**
+- Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab.
+- Same locations table as Locations + **Confirmed** column
 
 ---
 
-## 3. Operations guide
+## Operations guide
 
-URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes).
+URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linked from the site footer as **Installation, Operations and Maintenance Guide**, and from Getting started as **operations manual**.
 
 ---
 
@@ -370,6 +515,6 @@ Overview and Getting started do not use persisted pane IDs.
 
 To request a wording change, cite **section + pane + current text**, e.g.:
 
-> §2.4 Locations panel, OK with me column: change **?** to **—** when unsigned in.
+> Locations → Locations table, OK with me column: change **?** to **—** when unsigned in.
 
 This file is the reference; code lives in `meet/assets/js/app.js` and `meet/index.php`.

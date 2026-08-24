@@ -70,7 +70,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
             </label>
             <button type="submit">Create meeting</button>
           </form>
-          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it.</strong></p>
+          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it and SEND to other proposed Attendees.</strong></p>
         </section>
         <section class="pane-region tint-find">
           <h2 class="section-title">Find my meetings</h2>
@@ -79,10 +79,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
             <div class="find-meetings-fields">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
               <label>Passcode
-                <span class="pin-field-wrap">
-                  <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters.">
-                  <button type="button" class="pin-reveal-btn" id="find-pin-toggle" title="Show or hide passcode" aria-label="Show passcode">👁</button>
-                </span>
+                <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters.">
               </label>
             </div>
             <button type="submit">List my meetings</button>

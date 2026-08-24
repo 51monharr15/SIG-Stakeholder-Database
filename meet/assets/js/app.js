@@ -71,18 +71,6 @@
       }
     });
 
-    const pinInput = document.getElementById('find-pin-input');
-    document.getElementById('find-pin-toggle')?.addEventListener('click', () => {
-      if (!pinInput) return;
-      const show = pinInput.type === 'password';
-      pinInput.type = show ? 'text' : 'password';
-      const btn = document.getElementById('find-pin-toggle');
-      if (btn) {
-        btn.title = show ? 'Hide passcode' : 'Show passcode';
-        btn.setAttribute('aria-label', show ? 'Hide passcode' : 'Show passcode');
-      }
-    });
-
     document.getElementById('list-meetings-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(e.target);
@@ -100,7 +88,7 @@
         if (!box) return;
         box.hidden = false;
         if (!res.meetings?.length) {
-          box.innerHTML = '<p class="meta">No meetings found for that name and passcode. Check spelling and that you set a passcode when you registered.</p>';
+          box.innerHTML = '<p class="meta">No meetings found for that name and passcode. Identity misspelt or Passcode not matching.</p>';
           return;
         }
         const countLabel = res.meetings.length === 1 ? '1 meeting found' : `${res.meetings.length} meetings found`;
@@ -633,12 +621,12 @@
   const TAB_DEFS = [
     { id: 'getting-started', label: 'Getting started', tip: 'Step-by-step checklist for setting up this meeting.' },
     { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
-    { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, and manage the attendee list.' },
-    { id: 'locations',  label: 'Locations',          tip: 'Propose meeting locations and mark your preferences.' },
-    { id: 'calendar',   label: 'My availability',   tip: 'Mark when you are free. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday.' },
-    { id: 'agenda',     label: 'Meeting Resources', tip: 'Description, agenda, decisions, notes, and attachments (pre- and post-meeting assets).' },
-    { id: 'options',    label: 'Calendar Options',    tip: 'Meeting length (minutes, hours, or AM/PM), calendar slot size (partial availability), bookable dates and hours. Organiser only.' },
-    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group calendar: everyone’s availability on one grid. Organiser picks start time (partial overlap OK) and location(s). Use ◀ ▶ beside dates to move by weekday.' },
+    { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, manage.' },
+    { id: 'locations',  label: 'Locations',          tip: 'Propose locations, mark preferences.' },
+    { id: 'calendar',   label: 'My availability',   tip: 'Mark free slots. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday.' },
+    { id: 'agenda',     label: 'Meeting Resources', tip: 'Description, agenda, notes, attachments.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly).' },
+    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group’s calendar; organiser picks start date & time and location(s) URL / physical address.' },
   ];
 
   function allValidTabs(m, attendee) {
@@ -865,7 +853,7 @@
             </div>
           </div>
           <div class="help-footer">
-            <p class="meta">The <strong>Copy meeting link</strong> button copies the meeting link. Save the link — it is the only way back to this meeting unless you set a passcode. The <em>Find my meetings</em> option on the home page lets you look up a meeting but requires a registered name and matching passcode.</p>
+            <p class="meta">The <strong>meeting link</strong> is the only way back to this meeting unless you set a passcode. The <em>Find my meetings</em> option on the home page lets you look up a list of meetings <strong>if</strong> you know a registered name <strong>and matching passcode.</strong></p>
           </div>
           <div class="help-panel-footer-close row">
             <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="Close help panel">Close / Collapse</button>
@@ -894,46 +882,50 @@
       <section class="panel stack overview-panel">
         <h2 class="section-title">Getting started</h2>
         <details class="getting-started-intro"${autoDetailsOpen(true) ? ' open' : ''}>
-          <summary class="section-title">Instructions for organisers and attendees</summary>
-          <p class="meta">Steps below are aimed at the meeting organiser. Attendees can skip organiser-only steps — full details in <strong>How to use this</strong> above. Essential steps for all Attendees: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>. Optionally review everything!</p>
-          <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a>.</p>
+          <summary class="section-title">Instructions for organisers and attendees. Completed steps marked with a ✓</summary>
+          <p class="meta">Steps below are aimed at the meeting organiser. Attendees skip organiser-only steps. Essential steps for <strong>all</strong> attendees: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>.</p>
+          <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a> at the foot of the page.</p>
         </details>
         <ol class="setup-steps">
           <li>
             <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
-            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself</strong> —
-            First attendee becomes first Meeting Organiser by default and can give others Organiser privilege.
+            Everyone (E): ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
+            First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
-            <strong>${setup.stepOptions ? '✓ ' : ''}Set Calendar Options</strong> —
-            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence if needed.
+            <strong>${setup.stepOptions ? '✓ ' : ''}</strong>
+            Organiser (O): <strong>Set Calendar Options</strong> —
+            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed.
             ${go('options', 'Go to Calendar Options')}
           </li>
           <li>
-            <strong>${setup.stepResources ? '✓ ' : ''}(Optional)</strong>
-            ${go('agenda', 'Go to Meeting Resources')} — Set/edit title, description, agenda, attachments, etc.
+            <strong>${setup.stepResources ? '✓ ' : ''}</strong>
+            (O/E): <strong>(Optional)</strong>
+            ${go('agenda', 'Go to Meeting Resources')} and edit meeting's title, set / edit description, agenda, attachments, etc.
           </li>
           <li>
-            <strong>${setup.stepOthers ? '✓ ' : ''}(Optional)</strong>
+            <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
+            (O/E): <strong>(Optional)</strong>
             ${go('attendees', 'Go to Attendees')} — Add others as proposed attendees.
             Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
           </li>
           <li>
             <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
-            ${go('calendar', 'Go to My availability')} and select slots when you are free — use the green navigation buttons (◀ ▶ beside dates) to move by day or screen. Select enough consecutive slots to cover the full meeting if you can.
+            (E): ${go('calendar', 'Go to My availability')} and select time slots that work for you. Select enough booking slots for partial or full availability.
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
-            ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and Physical) for attendees to vote on.
-            Any attendee can propose locations. Organisers can (re-)select a confirmed location at any time.
+            (E): ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
           </li>
           <li>
-            <strong>${setup.stepConfirm ? '✓ ' : ''}Set Confirmed Meeting Details</strong> —
-            Organiser status required. Pick an agreed meeting date, time and location(s). (Can be amended.)
+            <strong>${setup.stepConfirm ? '✓ ' : ''}</strong>
+            (O): <strong>Set Confirmed Meeting Details</strong> —
+            <strong>Organiser status required to edit.</strong> All can view. Confirm a meeting date, time and location(s). (Can be amended.)
             ${go('group', 'Go to Set confirmed meeting details')}
           </li>
           <li>
-            <strong>${setup.stepShare ? '✓ ' : ''}Share the link</strong> —
+            <strong>${setup.stepShare ? '✓ ' : ''}</strong>
+            (E): <strong>Share the link</strong> —
             Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
             <span class="row setup-share-row">
               <button type="button" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
@@ -941,7 +933,7 @@
           </li>
         </ol>
         ${setup.allDone ? '<p class="meta"><strong>Setup complete.</strong> You can keep using this checklist any time, or move on to Overview and the other tabs.</p>' : '<p class="meta">This checklist stays visible at all times.</p>'}
-        <p class="meta">${go('overview', 'Go to Overview')}</p>
+        <p class="meta">${go('overview', 'Go to Overview')} — View a summary of current meeting details</p>
       </section>`;
   }
 
@@ -967,13 +959,12 @@
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▸ headings to expand</span></h2>
-        <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places, amber attachments.</p>
+        <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places.</p>
         <details class="overview-block tint-dates"${autoDetailsOpen(true) ? ' open' : ''}>
-          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence · Locations</summary>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence</summary>
           <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'} time:</strong> ${timeSummary}</p>
           <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
           <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
-          ${renderConfirmedLocationsSummary(m, state, scheduled)}
         </details>
         <details class="overview-block tint-text"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to set it.</p>'}
@@ -990,6 +981,7 @@
             : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Set confirmed meeting details</strong>.</p>'}
         </details>
         <details class="overview-block tint-places"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
+          ${renderConfirmedLocationsSummary(m, state, scheduled)}
           ${topLocations.length
             ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
             : '<p class="meta">No locations proposed yet.</p>'}
