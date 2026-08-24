@@ -415,7 +415,7 @@ Scrollable body (`.calendar-scroll`); **day headers stick** inside that scroll a
 | Gutter title | Day ◀▶ · screen «» · first/last ⇤⇥ |
 | Nav buttons | ◀ Previous weekday · ▶ Next weekday · « Back one screen of dates · » Forward one screen of dates · ⇤ Jump to earliest bookable date · ⇥ Jump to latest bookable date |
 | Day extras | today · recurring |
-| Time labels | Local time at left; optional second time is a button (title: Next timezone: {altTz}) cycling recorded attendee timezones |
+| Time labels | Local / test timezone on top (larger); optional alternate timezone below (smaller, underlined) — tap to cycle recorded attendee timezones |
 | Time label title | Local time · tap second time to cycle attendee timezones *(when alternates exist)* |
 
 ### Save band (dual Save)
