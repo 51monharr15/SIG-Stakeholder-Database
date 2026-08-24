@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.38  
+**Build:** 1.8.39  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -408,7 +408,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Calendar grid *tint-dates*
 
-Scrollable body (`.calendar-scroll`); **day headers stick** inside that scroll area (`.cal-header-nav` sticky at top of the scroll pane).
+Scrollable body (`.calendar-scroll`); **day headers stick** inside that scroll area. `.calendar` is a column flex (not a grid of header+body) so sticky day headings work on both **My availability** and **Group calendar**.
 
 | Kind | Text |
 |------|------|
@@ -516,7 +516,7 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 
 ### Proposed meeting date & time `group-time` *tint-dates*
 
-Day column headers stick at the top of the scrollable calendar body (do not scroll away with the slots). Colour key sits **inside this pane** (applies to the calendar).
+Day column headers stick at the top of the scrollable calendar body (do not scroll away with the slots). Colour key sits **inside this pane** (applies to the calendar). Same sticky structure as My availability (`.calendar` column flex + `.calendar-scroll`).
 
 | Kind | Text |
 |------|------|

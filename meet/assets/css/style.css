@@ -2014,6 +2014,12 @@ details summary { cursor: pointer; }
   min-width: 0;
 }
 
+/* Let the inner .calendar-scroll own vertical scrolling so day headings can stick. */
+.pane-region.calendar-grid-pane,
+.pane-details.confirm-section-time {
+  overflow: visible;
+}
+
 .pane-details > summary {
   cursor: pointer;
   list-style: none;
