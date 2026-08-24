@@ -715,20 +715,18 @@ button.linkish {
   position: relative;
 }
 
+/* Day headings stick inside the calendar scroll area (not the page). */
 .calendar-scroll .cal-header-nav {
   position: sticky;
   top: 0;
   z-index: 6;
-  background: var(--panel, #fff);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: #faf5ff;
+  padding: 0.15rem 0 0.35rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
 }
 
 .calendar-grid-pane .calendar-scroll .cal-header-nav {
-  position: sticky;
-  top: 0;
-  z-index: 6;
   background: #faf5ff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .loc-ok-toggle:not(.on) {
@@ -999,7 +997,14 @@ button.linkish {
   }
 }
 
-.calendar { display: grid; gap: 0.35rem; width: 100%; }
+/* Block/flex — not a grid of header+body — so sticky day headings can stick
+   while the slot body scrolls inside .calendar-scroll. */
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
 
 .cal-header, .cal-body {
   display: grid;
@@ -1016,6 +1021,12 @@ button.linkish {
   padding-right: 0.25rem;
 }
 
+.cal-header-nav {
+  z-index: 5;
+  background: #faf5ff;
+  padding-bottom: 0.2rem;
+}
+
 .day-head {
   text-align: center;
   font-size: 0.78rem;
@@ -1023,12 +1034,6 @@ button.linkish {
   padding: 0.35rem 0.2rem;
   border-radius: 6px;
   background: #f8fafc;
-}
-
-.cal-header-nav {
-  z-index: 5;
-  background: var(--panel, #fff);
-  padding-bottom: 0.2rem;
 }
 
 .cal-nav-gutter {
