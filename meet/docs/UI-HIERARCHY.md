@@ -430,7 +430,7 @@ Shown when signed in. **Save** appears **above** the grid (form-save header) and
 ## Meeting Resources
 
 ### Lead
-- Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.
+- Description, agenda, decisions, notes, and attachments — preparation and follow-up assets in one place.
 
 Collapsible panes. Where edit is allowed, **Save** sits on the pane **summary** (title left, Save top-right via `pane-summary-with-save`) and again at the bottom of the pane body (**dual Save**). Attachments use **tab-out save only** (no Save on the summary).
 
