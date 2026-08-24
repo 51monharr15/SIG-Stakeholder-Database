@@ -38,7 +38,8 @@
     const p = sanitizePasscode(raw);
     return (p.length >= 2 && p.length <= 20) ? p : '';
   }
-  const PASSCODE_TIP = '0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
+  const PASSCODE_TIP = '2 to 20 characters: 0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
+  const PASSCODE_LEN_ERR = 'Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).';
   const FIND_IDENTITY_KEY = 'meet_find_identity';
 
   document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
@@ -78,7 +79,7 @@
       try {
         const passcode = normalizePasscode(data.get('pin'));
         if (!passcode && String(data.get('pin') || '').trim()) {
-          throw new Error('Enter a passcode of 2 to 20 characters.');
+          throw new Error(PASSCODE_LEN_ERR);
         }
         const res = await apiPost({
           action: 'list_meetings',
@@ -543,8 +544,7 @@
   function setupChecklistState(m, state, attendee) {
     const isOrg = !!attendee?.is_organizer;
     const stepSelf = !!attendee;
-    const stepOptions = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes'
-      || !!(m.title?.trim());
+    const stepOptions = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes';
     const stepResources = !!(m.organizer_intro?.trim() || m.agenda?.length || m.decisions?.length
       || (m.notes || '').trim() || m.attachments?.length);
     const stepOthers = (m.attendees?.length || 0) > 1;
@@ -889,43 +889,41 @@
         <ol class="setup-steps">
           <li>
             <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
-            Everyone (E): ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
+            ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> (Everyone) —
             First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
           </li>
           <li>
             <strong>${setup.stepOptions ? '✓ ' : ''}</strong>
-            Organiser (O): <strong>Set Calendar Options</strong> —
+            <strong>Set Calendar Options</strong> (Organiser) —
             Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed.
             ${go('options', 'Go to Calendar Options')}
           </li>
           <li>
             <strong>${setup.stepResources ? '✓ ' : ''}</strong>
-            (O/E): <strong>(Optional)</strong>
-            ${go('agenda', 'Go to Meeting Resources')} and edit meeting's title, set / edit description, agenda, attachments, etc.
+            <strong>(Optional)</strong> ${go('agenda', 'Go to Meeting Resources')} (Everyone / Organiser) and edit meeting's title, set / edit description, agenda, attachments, etc.
           </li>
           <li>
             <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
-            (O/E): <strong>(Optional)</strong>
-            ${go('attendees', 'Go to Attendees')} — Add others as proposed attendees.
+            <strong>(Optional)</strong> ${go('attendees', 'Go to Attendees')} (Everyone / Organiser) — Add others as proposed attendees.
             Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
           </li>
           <li>
             <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
-            (E): ${go('calendar', 'Go to My availability')} and select time slots that work for you. Select enough booking slots for partial or full availability.
+            ${go('calendar', 'Go to My availability')} (Everyone) and select time slots that work for you. Select enough booking slots for partial or full availability.
           </li>
           <li>
             <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
-            (E): ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
+            ${go('locations', 'Go to Locations')} (Everyone) — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
           </li>
           <li>
             <strong>${setup.stepConfirm ? '✓ ' : ''}</strong>
-            (O): <strong>Set Confirmed Meeting Details</strong> —
+            <strong>Set Confirmed Meeting Details</strong> (Organiser) —
             <strong>Organiser status required to edit.</strong> All can view. Confirm a meeting date, time and location(s). (Can be amended.)
             ${go('group', 'Go to Set confirmed meeting details')}
           </li>
           <li>
             <strong>${setup.stepShare ? '✓ ' : ''}</strong>
-            (E): <strong>Share the link</strong> —
+            <strong>Share the link</strong> (Everyone) —
             Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
             <span class="row setup-share-row">
               <button type="button" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
@@ -2162,18 +2160,16 @@
       ? `${identityBar}${tableBlock}${claiming ? renderClaimPinForm(claiming) : ''}${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee, state) : ''}`
       : '';
 
-    const addPane = signedIn ? renderAddAttendeeForm(true, attendee, state) : (m.attendees.length ? renderAddAttendeeForm(false, attendee, state) : '');
+    const addPane = (signedIn || m.attendees.length)
+      ? renderAddAttendeeForm(!!attendee, m, state)
+      : '';
     const mergePane = signedIn && attendee?.is_organizer ? renderOrganiserMergePanel(m, state) : '';
     const tail = `${addPane}${mergePane}${showContinue ? renderContinueToCalendar(state) : ''}`;
 
     if (!signedIn && !m.attendees.length) {
-      const firstAdd = renderAddAttendeeForm(false, attendee, state);
-      if (standalone) return `<p class="meta pane-lead">${listHint}</p>${firstAdd}${tail}`;
-      return `
-      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
-        <summary class="attendee-block-summary">Add yourself as an attendee</summary>
-        <div class="attendee-block-body stack">${firstAdd}${tail}</div>
-      </details>`;
+      const firstAdd = renderAddAttendeeForm(false, m, state);
+      if (standalone) return `<p class="meta pane-lead">${listHint}</p>${firstAdd}`;
+      return `<div class="attendee-block stack attendee-block-first"><div class="attendee-block-body stack">${firstAdd}</div></div>`;
     }
 
     const registeredPane = `<details ${paneDetailsAttrs(state, regPaneId, { extraClass: 'tint-people' })}>
@@ -2205,82 +2201,70 @@
     </div>`;
   }
 
-  function renderAddAttendeeForm(signedIn, attendee, state) {
+  function renderAddAttendeeForm(signedIn, m, state) {
     const formId = 'add-attendee-form';
-    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn">Save</button>`;
-    const modeRow = signedIn ? '' : `
-        <div class="add-mode-row add-mode-inline add-mode-left">
-          <div class="mode-options mode-options-inline mode-options-left">
-            <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
-            <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
-          </div>
-          <p class="meta add-field-guide">Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode: optional — ${PASSCODE_TIP}</p>
-        </div>`;
-    const pinField = `
-          <label class="field-pin">Passcode <span class="label-hint">(optional)</span>
-            <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="22" size="22" title="${escapeHtml(PASSCODE_TIP)}" placeholder="For Find my meetings">
-          </label>`;
-    const extras = signedIn ? '' : `
-        <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link with them. They tick <strong>Me</strong> on their row to sign in.</p>`;
+    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn add-summary-save">Save Attendee Identity</button>`;
+    const fieldGuide = `<p class="meta add-field-guide">Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode optional — ${PASSCODE_TIP}</p>`;
+    const fields = `
+            <div class="add-attendee-fields">
+              <label class="field-name">Display name
+                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email" title="Any text identifying this attendee">
+              </label>
+              <label class="field-initials">Initials (optional)
+                <input class="input-initials" name="initials" maxlength="6" size="6" title="Defaults from display name if blank">
+              </label>
+              <label class="field-pin">Passcode (optional)
+                <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="20" size="12" title="${escapeHtml(PASSCODE_TIP)}" placeholder="For Find my meetings">
+              </label>
+              <label class="field-contact">Contact (optional)
+                <input class="input-contact" name="contact" maxlength="120" placeholder="email, URL, phone" autocomplete="email" title="Comma-separated email, URL, phone, or free text">
+              </label>
+            </div>`;
 
     if (signedIn) {
       return `
         <details ${paneDetailsAttrs(state, 'att-add', { secondary: true, extraClass: 'tint-people' })}>
-          <summary class="row"><span>Add another attendee</span>${saveBtn}</summary>
+          <summary class="add-attendee-summary row"><span>Add another attendee</span>${saveBtn}</summary>
           <div class="pane-details-body">
           <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
-            <input type="hidden" name="add_mode" value="propose">
-            <p class="meta">Add <strong>someone else</strong>. Share the meeting link with them.</p>
-            <div class="add-attendee-fields">
-              <label class="field-name">Display name
-                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
-              </label>
-              <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-                <input class="input-initials" name="initials" maxlength="4" title="Defaults from display name if blank">
-              </label>
-              ${pinField}
-              <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-                <input class="input-contact" name="contact" maxlength="120" placeholder="email, URL, phone" autocomplete="email" title="Comma-separated email, URL, phone, or free text">
-              </label>
-            </div>
-            <button type="submit" class="add-attendee-submit-full">Save</button>
+            ${fieldGuide}
+            <p class="meta">They are not emailed — share the meeting link. They can sign in from the table (passcode required if you set one). You stay signed in as yourself.</p>
+            ${fields}
           </form>
           </div>
         </details>`;
     }
 
+    const hasOthers = (m.attendees?.length || 0) > 0;
+    const summary = hasOthers
+      ? 'Add yourself as an attendee'
+      : 'Add yourself as an attendee';
+    const body = `
+          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
+            ${fieldGuide}
+            ${fields}
+            <button type="submit" class="add-attendee-submit-full">Save Attendee Identity</button>
+          </form>`;
+
+    if (!hasOthers) {
+      return `<div class="pane-region tint-people add-attendee-first">
+          <p class="section-title add-attendee-first-title">${escapeHtml(summary)}</p>
+          ${body}
+        </div>`;
+    }
+
     return `
         <details ${paneDetailsAttrs(state, 'att-add-first', { extraClass: 'tint-people' })}>
             <summary class="add-attendee-summary row">
-              <span class="add-attendee-summary-label">Add yourself as an attendee</span>
+              <span class="add-attendee-summary-label">${escapeHtml(summary)}</span>
               ${saveBtn}
             </summary>
-          <div class="pane-details-body">
-          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
-            <p class="meta">Add yourself as an attendee, or propose someone else.</p>
-            ${modeRow}
-            <div class="add-attendee-fields">
-              <label class="field-name">Display name
-                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
-              </label>
-              <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-                <input class="input-initials" name="initials" maxlength="4" title="Defaults from display name if blank">
-              </label>
-              ${pinField}
-              <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-                <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" autocomplete="email">
-              </label>
-            </div>
-            ${extras}
-            <button type="submit" class="add-attendee-submit-full">Save</button>
-          </form>
-          </div>
+          <div class="pane-details-body">${body}</div>
         </details>`;
   }
 
   function renderEditAttendeeForm(a, state) {
     const hasPinAlready = a.has_pin;
-    const changingPin = !!state.changingPin;
     return `
         <form class="inline-form edit-attendee-form" data-form="edit-attendee">
           <h3 class="section-title">Edit my details</h3>
@@ -2289,22 +2273,21 @@
             <label class="field-name">Display name
               <input class="input-name" name="display_name" required maxlength="80" value="${escapeHtml(a.display_name)}">
             </label>
-            <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-              <input class="input-initials" name="initials" maxlength="4" value="${escapeHtml(a.initials || '')}">
+            <label class="field-initials">Initials (optional)
+              <input class="input-initials" name="initials" maxlength="6" size="6" value="${escapeHtml(a.initials || '')}" title="Defaults from display name if blank">
             </label>
-            <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
+            <label class="field-contact">Contact (optional)
               <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" value="${escapeHtml(a.contact || '')}">
             </label>
           </div>
           <div class="pin-change-block">
-            <h4 class="section-title">${hasPinAlready ? 'Change passcode' : 'Set passcode'}</h4>
-            <p class="meta">You are already signed in — current passcode is not required. Leave blank to keep your existing passcode.</p>
-            ${hasPinAlready ? `<label class="checkbox-label"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove passcode instead of setting a new one</label>` : ''}
             <div class="pin-inline-row">
-              <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode' : 'Passcode'}
-                <input name="new_pin" type="text" maxlength="22" size="14" autocomplete="new-password" title="${escapeHtml(PASSCODE_TIP)}" placeholder="${hasPinAlready && !changingPin ? 'leave blank to keep' : ''}">
+              <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode (optional)' : 'Passcode (optional)'}
+                <input name="new_pin" type="text" maxlength="20" size="12" autocomplete="new-password" title="${escapeHtml(PASSCODE_TIP)}" placeholder="${hasPinAlready ? 'leave blank to keep' : '2 to 20 characters'}">
               </label>
+              ${hasPinAlready ? `<label class="checkbox-label pin-clear-inline"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove passcode</label>` : ''}
             </div>
+            <p class="meta">Already signed in — current passcode not required. ${PASSCODE_TIP}</p>
           </div>
           <div class="row">
             <button type="submit">Save my details</button>
@@ -2622,26 +2605,24 @@
     try {
       let data;
       if (kind === 'add-attendee') {
-        const mode = fd.get('add_mode') || 'self';
         const contact = validateContact(fd.get('contact'));
+        const wasSignedIn = !!state.attendeeId;
+        const rawPin = String(fd.get('pin') || '').trim();
+        const normPin = normalizePasscode(rawPin);
+        if (rawPin !== '' && normPin === '') {
+          throw new Error(PASSCODE_LEN_ERR);
+        }
         const payload = {
           action: 'join', slug: state.slug,
           display_name: fd.get('display_name'), contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
           client_timezone: tz,
         };
-        if (mode === 'self') {
-          const rawPin = String(fd.get('pin') || '').trim();
-          const normPin = normalizePasscode(rawPin);
-          if (rawPin !== '' && normPin === '') {
-            throw new Error('Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).');
-          }
-          payload.pin = normPin || undefined;
-          data = await apiPost(payload);
+        if (normPin) payload.pin = normPin;
+        data = await apiPost(payload);
+        if (!wasSignedIn) {
           state.attendeeId = data.attendee_id;
           localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
-        } else {
-          data = await apiPost(payload);
         }
         form.reset();
       } else if (kind === 'claim') {
@@ -2809,7 +2790,7 @@
         const newPinRaw = String(fd.get('new_pin') || '').trim();
         const newPin = normalizePasscode(newPinRaw);
         if (newPinRaw !== '' && newPin === '') {
-          throw new Error('Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).');
+          throw new Error(PASSCODE_LEN_ERR);
         }
         const clearPin = fd.get('clear_pin') === 'on';
         const payload = {
@@ -2833,7 +2814,7 @@
       } else return;
 
       state.meet = data.meet;
-      if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
+      if (kind === 'add-attendee' && state.attendeeId === data.attendee_id) restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
       if (kind === 'update-settings') localStorage.setItem(setupOptionsSavedKey(state.slug), 'yes');
       if (kind === 'update-meta') state.openNotesEditor = false;
@@ -2846,7 +2827,11 @@
 
       if (kind === 'add-location') toast('Location saved');
       else if (kind === 'add-location-row') toast('Location(s) added');
-      else if (kind === 'add-attendee') toast((fd.get('add_mode') || 'self') === 'self' ? 'You are signed in. Next: mark availability, then share the meeting link.' : 'Attendee saved');
+      else if (kind === 'add-attendee') {
+        toast(state.attendeeId === data.attendee_id
+          ? 'You are signed in. Next: mark availability, then share the meeting link.'
+          : 'Attendee saved — you stay signed in as yourself.');
+      }
       else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'Passcode removed' : 'Your details were updated');
       else if (kind === 'confirm') toast('Meeting time agreed — status updated');
       else if (kind === 'update-settings') {
@@ -3442,15 +3427,6 @@
     if (e.target.name === 'clear_pin') {
       syncClearPinFields(e.target.closest('form'));
       if (e.target.checked) e.target.closest('form')?.querySelector('[name="current_pin"]')?.focus();
-      return;
-    }
-    if (e.target.name === 'add_mode') {
-      const form = e.target.closest('form');
-      if (!form) return;
-      const isSelf = e.target.value === 'self';
-      const pin = form.querySelector('.field-pin');
-      if (pin) pin.hidden = !isSelf;
-      form.querySelector('[data-show-when="propose"]')?.toggleAttribute('hidden', isSelf);
       return;
     }
     if (e.target.name === 'recurrence_type') {

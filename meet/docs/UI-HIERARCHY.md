@@ -1,9 +1,10 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.32  
+**Build:** 1.8.33  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
+Tints from `meet/assets/css/style.css`.  
 Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `operations.php`), and API/toast error strings from `meet/api.php`.
 
 **Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations). **Panels** are level-2 headings. **Panes** are level-3 headings.
@@ -18,7 +19,7 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | `[secondary]` | Closed on first visit |
 | *tint* | Semantic background colour |
 
-**Tints:** lavender = dates/times · blue = text · pink = people · green = places · amber = attachments · light blue = create · light green = find
+**Tints:** lavender = dates/times · clearer blue `#e0f2fe` = text · pink = people · teal places `#ccfbf1` = places · amber = attachments · light blue = create · lime find `#f7fee7` = find
 
 **Pane IDs** (persisted): see § Pane ID reference at end.
 
@@ -42,7 +43,7 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | Button | Create meeting |
 | Hint | The **Create meeting** button generates a private link with a random URL. **Save it and SEND to other proposed Attendees.** |
 
-### Find my meetings *tint-find*
+### Find my meetings *tint-find* (lime `#f7fee7`)
 
 | Kind | Text |
 |------|------|
@@ -52,11 +53,12 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | Placeholder | e.g. Alice@gmail.com or Bob |
 | Label | Passcode |
 | Passcode title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. |
-| Passcode field | Password input (no show/hide eye button) |
+| Passcode field | Password input (no show/hide eye button); maxlength 20 |
 | Button | List my meetings |
 | Results (empty) | No meetings found for that name and passcode. Identity misspelt or Passcode not matching. |
 | Results (count) | 1 meeting found / {N} meetings found |
-| Validation | Enter a passcode of 2 to 20 characters. |
+| Validation | Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not \|). |
+| Passcode rule | Length 2–20 everywhere; never silently discarded — invalid length surfaces the validation error. |
 
 ### Site footer
 - Build {version} · Local times · {tz} · Installation, Operations and Maintenance Guide
@@ -71,6 +73,8 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 This is the persistent bar at the top of a meeting (title, actions, status, green nav). It is not named “Chrome” — that word means the browser’s own frame, and is easy to confuse with Google Chrome.
 
 ### Sticky header actions
+
+Header action buttons are fully clickable (`pointer-events: auto`, elevated z-index). On narrow screens (max-width 700px) the action row stacks under the meeting title (single-column grid).
 
 | Text | Notes |
 |------|-------|
@@ -153,18 +157,20 @@ Nav aria-label: Meeting sections
 
 ### Checklist steps
 
-Completed steps show a leading ✓.
+Completed steps show a leading ✓. Step **names** are restored in the wording; audience tags **(Everyone)**, **(Organiser)**, or **(Everyone / Organiser)** appear immediately after the step name (or after the Go-to link that carries the name).
+
+**Calendar Options ✓** is set only after the organiser presses **Save** on Calendar Options (persisted per meeting in localStorage) — not merely by visiting the tab.
 
 | Step | Text |
 |------|------|
-| 1 Everyone (E) | **Go to Attendees** and **Add yourself as an attendee** — First attendee becomes Meeting Organiser by default and can give others Organiser privilege. |
-| 2 Organiser (O) | **Set Calendar Options** — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed. **Go to Calendar Options** |
-| 3 (O/E) | **(Optional)** **Go to Meeting Resources** and edit meeting's title, set / edit description, agenda, attachments, etc. |
-| 4 (O/E) | **(Optional)** **Go to Attendees** — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
-| 5 (E) | **Go to My availability** and select time slots that work for you. Select enough booking slots for partial or full availability. |
-| 6 (E) | **Go to Locations** — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
-| 7 (O) | **Set Confirmed Meeting Details** — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
-| 8 (E) | **Share the link** — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
+| 1 | **Go to Attendees** and **Add yourself as an attendee** (Everyone) — First attendee becomes Meeting Organiser by default and can give others Organiser privilege. |
+| 2 | **Set Calendar Options** (Organiser) — Organiser status required. Set **meeting length** (full meeting) and **calendar slot size** (partial availability — must divide meeting length evenly). Use **AM/PM presets** for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed. **Go to Calendar Options** |
+| 3 | **(Optional)** **Go to Meeting Resources** (Everyone / Organiser) and edit meeting's title, set / edit description, agenda, attachments, etc. |
+| 4 | **(Optional)** **Go to Attendees** (Everyone / Organiser) — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
+| 5 | **Go to My availability** (Everyone) and select time slots that work for you. Select enough booking slots for partial or full availability. |
+| 6 | **Go to Locations** (Everyone) — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
+| 7 | **Set Confirmed Meeting Details** (Organiser) — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
+| 8 | **Share the link** (Everyone) — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
 | Done (complete) | **Setup complete.** You can keep using this checklist any time, or move on to Overview and the other tabs. |
 | Done (incomplete) | This checklist stays visible at all times. |
 | Link | **Go to Overview** — View a summary of current meeting details |
@@ -179,7 +185,9 @@ Completed steps show a leading ✓.
 | Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places. |
 | Expand title | Tap or click the triangle to expand/collapse |
 
-### Time · Recurrence *tint-dates*
+Hint has **no** attachments line (attachments appear only as their own pane when Past/Summarised with content).
+
+### Time · Recurrence *tint-dates* (lavender)
 
 | Kind | Text |
 |------|------|
@@ -188,7 +196,7 @@ Completed steps show a leading ✓.
 | Length | **Meeting length:** {dur} · **Calendar slot:** {slot} |
 | Recurrence | **Recurrence:** {label} (default One-off) |
 
-### Agenda and decisions *tint-text*
+### Agenda and decisions *tint-text* (clearer blue `#e0f2fe`)
 
 | Kind | Text |
 |------|------|
@@ -207,7 +215,7 @@ Completed steps show a leading ✓.
 | Table columns | Name · Time slots / locations · Role (Organiser \| Attendee) |
 | Time slots / locations title | Availability slots marked and locations marked OK with me |
 
-### Top start times *tint-dates*
+### Top start times *tint-dates* (lavender)
 
 | Kind | Text |
 |------|------|
@@ -218,9 +226,9 @@ Completed steps show a leading ✓.
 | Hint | Confirm one with **Set confirmed meeting details**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
 | Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Set confirmed meeting details**. |
 
-### Top locations *tint-places*
+### Top locations *tint-places* (teal `#ccfbf1`)
 
-Green places tint (locations no longer sit in the lavender Time pane).
+Teal places tint — locations no longer sit in the lavender Time pane.
 
 | Kind | Text |
 |------|------|
@@ -268,36 +276,52 @@ Shown only when status is Past or Summarised **and** there is at least one attac
 
 ### Add yourself as an attendee `att-add-first`
 
+**No Myself / Someone else radios.** Behaviour:
+
+- **Not signed in:** submitting saves the new person and signs you in as that person.
+- **Signed in:** use **Add another attendee** instead — you stay signed in as the original person; the new person is saved with an optional passcode.
+- **First add (no attendees yet):** non-collapsible pane (`pane-region tint-people`, not a `<details>`).
+- **Later (attendees already exist, not signed in):** collapsible `att-add-first` details pane.
+
 | Kind | Text |
 |------|------|
 | Summary | Add yourself as an attendee |
-| Lead | Add yourself as an attendee, or propose someone else. |
-| Mode | Myself / Someone else |
-| Field guide | Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode: optional — 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links. |
-| Propose hint | They are not emailed — share the meeting link with them. They tick **Me** on their row to sign in. |
-| Labels | Display name · Initials (opt.) · Passcode (optional) · Contact (opt.) |
-| Placeholders | e.g. name or email · For Find my meetings · email, phone (first-add) / email, URL, phone (add-another) |
-| Button | Save |
+| Field guide | Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode optional — 2 to 20 characters: 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links. |
+| Labels | Display name · Initials (optional) · Passcode (optional) · Contact (optional) |
+| Placeholders | e.g. name or email · For Find my meetings · email, URL, phone |
+| Passcode title | 2 to 20 characters: 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links. |
+| Button | **Save Attendee Identity** |
+| Validation | Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not \|). (Never silently discarded.) |
 
 ### Add another attendee `att-add` `[secondary]`
-- **Add another attendee** — Add **someone else**. Share the meeting link with them.
+
+Shown when already signed in (or after attendees exist and the add-another path applies).
+
+| Kind | Text |
+|------|------|
+| Summary | Add another attendee |
+| Hint | They are not emailed — share the meeting link. They can sign in from the table (passcode required if you set one). You stay signed in as yourself. |
+| Field guide | Same as Add yourself |
+| Button | **Save Attendee Identity** (also on the summary row) |
 
 ### Edit my details
 
 | Kind | Text |
 |------|------|
 | Title | Edit my details |
-| Labels | Display name · Initials (opt.) · Contact (opt.) |
-| Toggle | **Change passcode** / **Set passcode** |
-| Note | You are already signed in — current passcode is not required. Leave blank to keep your existing passcode. |
-| Checkbox | Remove passcode instead of setting a new one |
-| New passcode | New passcode / Passcode · placeholder: leave blank to keep |
+| Labels | Display name · Initials (optional) · Contact (optional) |
+| Passcode label | **New passcode (optional)** / **Passcode (optional)** |
+| Note | Already signed in — current passcode not required. 2 to 20 characters: 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links. |
+| Checkbox | Remove passcode |
+| Placeholders | leave blank to keep / 2 to 20 characters |
 | Buttons | **Save my details** · **Cancel** (title: Cancel and return without saving) |
+| Validation | Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not \|). |
 
 ### Claim / sign-in form
 - **{name}** — enter your passcode to sign in
 - **{name}** — optionally set a passcode, then press Continue
 - Passcode / Passcode (optional) · **Continue** · **Cancel** (title: Cancel and return)
+- Passcode title: 2 to 20 characters: 0–9 a–z and safe specials (not \|). Leading spaces removed. Needed to find lost meeting links.
 
 ### Merge duplicate attendees `att-merge` `[secondary]`
 - **Merge duplicate attendees**
@@ -321,7 +345,7 @@ Shown only when status is Past or Summarised **and** there is at least one attac
 | Signed in (2) | Toggle **OK with me** to record your preference. Tap/click overflow cells to expand; use **Copy** after expanding a link. |
 | Not signed in | Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me. |
 
-### Locations table *tint-places*
+### Locations table *tint-places* (teal `#ccfbf1`)
 
 | Kind | Text |
 |------|------|
@@ -371,7 +395,7 @@ Shown only when status is Past or Summarised **and** there is at least one attac
 ### Lead
 - Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.
 
-### Description *tint-text*
+### Description *tint-text* (clearer blue `#e0f2fe`)
 - **Description for attendees** *(simple HTML — status bar & Overview)*
 - Placeholder: Add a short description for attendees — shown in the status bar and Overview.
 - **Save** / Sign in on Attendees to edit.
@@ -405,6 +429,8 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 - **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
 - Header/footer: **Save**
 - Nav when no attendees yet: Back to Getting started · Next step: Attendees →
+
+Saving Calendar Options is what marks Getting started step **Set Calendar Options** with ✓.
 
 ### Meeting length & calendar `opts-length`
 
@@ -475,7 +501,7 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 - Purple = some attendees available — Some but not all attendees marked this start
 - Dark green border = selected start — Your current proposed start before Accept
 
-### Proposed locations `group-locations` *tint-places*
+### Proposed locations `group-locations` *tint-places* (teal `#ccfbf1`)
 - **Proposed locations**
 - Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab.
 - Same locations table as Locations + **Confirmed** column
@@ -495,7 +521,7 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `att-registered` | Attendees — Registered attendees |
 | `att-registered-cal` | My availability embed |
 | `att-add` | Attendees — Add another attendee |
-| `att-add-first` | Attendees — Add yourself |
+| `att-add-first` | Attendees — Add yourself (collapsible when attendees already exist) |
 | `att-merge` | Attendees — Merge duplicates |
 | `mr-agenda` | Meeting Resources — Agenda & decisions |
 | `mr-notes` | Meeting Resources — Notes |
@@ -507,7 +533,7 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `group-time` | Set confirmed — Proposed meeting time |
 | `group-locations` | Set confirmed — Proposed locations |
 
-Overview and Getting started do not use persisted pane IDs.
+Overview and Getting started do not use persisted pane IDs. First-add attendee pane (no attendees yet) is a non-collapsible `pane-region` and has no pane ID.
 
 ---
 

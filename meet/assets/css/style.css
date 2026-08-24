@@ -414,18 +414,24 @@ button.linkish {
   margin: 0;
   font-size: 1.25rem;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+  position: relative;
+  z-index: 0;
+  grid-column: 1;
 }
 
 .sticky-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 0.5rem;
+  gap: 0.5rem 0.75rem;
   min-width: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .sticky-head-actions {
@@ -433,7 +439,11 @@ button.linkish {
   flex-wrap: wrap;
   justify-content: flex-end;
   position: relative;
-  z-index: 5;
+  z-index: 10;
+  isolation: isolate;
+  pointer-events: auto;
+  grid-column: 2;
+  max-width: 100%;
 }
 
 .share-row { margin: 0.5rem 0; gap: 0.4rem; }
@@ -456,7 +466,17 @@ button.linkish {
   .sticky-top-inner { padding: 0.5rem 0.65rem; }
   .meet-title { font-size: 1.05rem; }
   .tab { padding: 0.28rem 0.5rem; font-size: 0.72rem; }
-  .sticky-head { gap: 0.35rem; }
+  .sticky-head {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+  .meet-title,
+  .sticky-head-actions {
+    grid-column: 1;
+  }
+  .sticky-head-actions {
+    justify-content: flex-start;
+  }
   .dashboard-nav {
     flex-wrap: wrap;
     overflow-x: visible;
@@ -1284,8 +1304,8 @@ button.linkish {
 
 .add-attendee-fields {
   display: grid;
-  grid-template-columns: minmax(10rem, 2fr) minmax(5.5rem, 0.45fr) minmax(10rem, 2fr) minmax(7rem, 0.55fr);
-  gap: 0.65rem 1rem;
+  grid-template-columns: minmax(8rem, 2fr) auto auto minmax(8rem, 1.5fr);
+  gap: 0.5rem 0.75rem;
   align-items: end;
   width: 100%;
   grid-column: 1 / -1;
@@ -1298,6 +1318,7 @@ button.linkish {
   font-size: 0.9rem;
   margin: 0;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .add-attendee-fields input {
@@ -1305,8 +1326,44 @@ button.linkish {
   min-width: 0;
 }
 
-.field-initials input { min-width: 4.5rem; }
-.field-pin input { min-width: 6.5rem; }
+.field-initials {
+  width: auto;
+}
+.field-initials input {
+  width: 6ch;
+  min-width: 6ch;
+  max-width: 6ch;
+  box-sizing: content-box;
+}
+.field-pin input {
+  min-width: 8rem;
+  max-width: 12rem;
+}
+
+.add-attendee-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+.add-attendee-summary .add-summary-save {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.add-attendee-first-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.add-field-guide {
+  margin: 0 0 0.5rem;
+}
+.pin-clear-inline {
+  align-self: end;
+  margin: 0;
+  white-space: nowrap;
+}
 
 .add-mode-row {
   display: flex;
@@ -1850,13 +1907,13 @@ details summary { cursor: pointer; }
 
 /* ─── Semantic pane tints (same meaning everywhere) ─── */
 .tint-dates { background: #faf5ff; border: 1px solid #e9d5ff; }
-.tint-text { background: #f0f9ff; border: 1px solid #bae6fd; }
+.tint-text { background: #e0f2fe; border: 1px solid #7dd3fc; }
 .tint-people { background: #fdf2f8; border: 1px solid #fbcfe8; }
-.tint-places { background: #ecfdf5; border: 1px solid #bbf7d0; }
+.tint-places { background: #ccfbf1; border: 1px solid #2dd4bf; }
 .tint-assets { background: #fffbeb; border: 1px solid #fde68a; }
 .tint-instruct { background: #f8fafc; border: 1px solid #e2e8f0; }
 .tint-create { background: #eff6ff; border: 1px solid #bfdbfe; }
-.tint-find { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.tint-find { background: #f7fee7; border: 1px solid #bef264; }
 
 .pane-region,
 .pane-details {
@@ -1909,9 +1966,9 @@ details summary { cursor: pointer; }
 }
 
 .overview-block.tint-dates { background: #faf5ff; border-color: #e9d5ff; }
-.overview-block.tint-text { background: #f0f9ff; border-color: #bae6fd; }
+.overview-block.tint-text { background: #e0f2fe; border-color: #7dd3fc; }
 .overview-block.tint-people { background: #fdf2f8; border-color: #fbcfe8; }
-.overview-block.tint-places { background: #ecfdf5; border-color: #bbf7d0; }
+.overview-block.tint-places { background: #ccfbf1; border-color: #2dd4bf; }
 .overview-block.tint-assets { background: #fffbeb; border-color: #fde68a; }
 
 .calendar-grid-pane { padding: 0.35rem; }
