@@ -869,18 +869,28 @@
       : '<p class="meta">No description yet — go to <strong>Meeting Resources</strong> to add one.</p>';
 
     const agenda = m.agenda || [];
-    const attachCount = (m.attachments || []).length;
-    const attachBit = attachCount ? ` · Attachments (${attachCount})` : '';
-    const agendaSummary = `Agenda: ${agenda.length}${attachBit}`;
-    const agendaBody = agenda.length
-      ? `<ul class="list-plain status-expand-list">${agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
-      : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to add items.</p>';
-
     const decisions = m.decisions || [];
-    const decisionsSummary = `Decisions required: ${decisions.length}`;
-    const decisionsBody = decisions.length
-      ? `<ul class="list-plain status-expand-list">${decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
-      : '<p class="meta">No decisions listed yet — go to <strong>Meeting Resources</strong> to add them.</p>';
+    const attachments = m.attachments || [];
+    const combinedSummary = `Agenda items (${agenda.length}) · Decisions (${decisions.length}) · Attachments (${attachments.length})`;
+
+    const agendaBlock = agenda.length
+      ? `<p class="meta"><strong>Agenda</strong></p><ul class="list-plain status-expand-list">${agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta"><strong>Agenda</strong> — none yet. Go to <strong>Meeting Resources</strong> to add items.</p>';
+
+    const decisionsBlock = decisions.length
+      ? `<p class="meta"><strong>Decisions required</strong></p><ul class="list-plain status-expand-list">${decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta"><strong>Decisions required</strong> — none yet. Go to <strong>Meeting Resources</strong> to add them.</p>';
+
+    const attachItems = attachments.map((att) => {
+      if (att.type === 'url' && att.url) {
+        const href = normalizeExternalUrl(att.url);
+        return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label || att.url)}</a></li>`;
+      }
+      return `<li>${escapeHtml(att.label || 'Untitled')} — text attachment; open <strong>Meeting Resources</strong> → <strong>Attachments</strong> for the full content.</li>`;
+    }).join('');
+    const attachmentsBlock = attachments.length
+      ? `<p class="meta"><strong>Attachments</strong></p><ul class="list-plain status-expand-list">${attachItems}</ul>`
+      : '<p class="meta"><strong>Attachments</strong> — none yet. Go to <strong>Meeting Resources</strong> to add them.</p>';
 
     return `
       <details class="status-desc">
@@ -888,12 +898,12 @@
         ${descBody}
       </details>
       <details class="status-desc">
-        <summary class="meta status-desc-summary">${escapeHtml(agendaSummary)}</summary>
-        ${agendaBody}
-      </details>
-      <details class="status-desc">
-        <summary class="meta status-desc-summary">${escapeHtml(decisionsSummary)}</summary>
-        ${decisionsBody}
+        <summary class="meta status-desc-summary">${escapeHtml(combinedSummary)}</summary>
+        <div class="status-desc-body status-combined-body">
+          ${agendaBlock}
+          ${decisionsBlock}
+          ${attachmentsBlock}
+        </div>
       </details>`;
   }
 

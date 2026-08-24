@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.36  
+**Build:** 1.8.37  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -99,7 +99,7 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 
 ### Status strip
 
-Always shows three expandable summaries with a **▸ / ▼** triangle. Counts use **0** when empty (not “needs setting”). When attachments exist, Agenda summary also shows **· Attachments (N)**.
+**Description** stays its own expandable line. **Agenda items, Decisions, and Attachments** share **one** expandable heading with counts; expand to see all three sections.
 
 | Kind | Text |
 |------|------|
@@ -114,10 +114,12 @@ Always shows three expandable summaries with a **▸ / ▼** triangle. Counts us
 | Description (set) | Description: {preview up to 72 chars, then …} |
 | Description (empty) | Description: none |
 | Description empty body | No description yet — go to **Meeting Resources** to add one. |
-| Agenda | Agenda: {N} · optionally **· Attachments ({A})** when A &gt; 0 |
-| Agenda empty body | No agenda yet — go to **Meeting Resources** to add items. |
-| Decisions | Decisions required: {N} |
-| Decisions empty body | No decisions listed yet — go to **Meeting Resources** to add them. |
+| Combined summary | Agenda items ({N}) · Decisions ({D}) · Attachments ({A}) |
+| Combined body — Agenda | **Agenda** + bullets, or **Agenda** — none yet. Go to **Meeting Resources** to add items. |
+| Combined body — Decisions | **Decisions required** + bullets, or **Decisions required** — none yet. Go to **Meeting Resources** to add them. |
+| Combined body — Attachments (URL) | Label as link (opens in a new window) |
+| Combined body — Attachments (text) | {label} — text attachment; open **Meeting Resources** → **Attachments** for the full content. |
+| Combined body — Attachments empty | **Attachments** — none yet. Go to **Meeting Resources** to add them. |
 
 **Past** and **Summarised** are status labels (after the scheduled start; Summarised when attachments exist). There is **no** Past dashboard tab.
 
