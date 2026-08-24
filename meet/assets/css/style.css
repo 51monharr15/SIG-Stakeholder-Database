@@ -708,24 +708,26 @@ button.linkish {
   max-width: 100%;
 }
 
+/* Wrapper only — page scroll is the viewport; day headings stick to it. */
 .calendar-scroll {
-  overflow: auto;
-  max-height: min(70vh, 36rem);
-  -webkit-overflow-scrolling: touch;
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
 }
 
-/* Day headings stick inside the calendar scroll area (not the page). */
-.calendar-scroll .cal-header-nav {
+/* Column day headings stay in the viewport under the sticky dashboard. */
+.calendar-scroll .cal-header-nav,
+.cal-header.cal-header-nav {
   position: sticky;
-  top: 0;
-  z-index: 6;
+  top: var(--sticky-h, 0px);
+  z-index: 40;
   background: #faf5ff;
   padding: 0.15rem 0 0.35rem;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
 }
 
-.calendar-grid-pane .calendar-scroll .cal-header-nav {
+.calendar-grid-pane .cal-header-nav {
   background: #faf5ff;
 }
 
@@ -997,8 +999,8 @@ button.linkish {
   }
 }
 
-/* Block/flex — not a grid of header+body — so sticky day headings can stick
-   while the slot body scrolls inside .calendar-scroll. */
+/* Block/flex — not a grid of header+body — so sticky day headings are not
+   trapped in a short grid row and can stick to the viewport. */
 .calendar {
   display: flex;
   flex-direction: column;
@@ -2014,7 +2016,7 @@ details summary { cursor: pointer; }
   min-width: 0;
 }
 
-/* Let the inner .calendar-scroll own vertical scrolling so day headings can stick. */
+/* Do not trap sticky day headings inside overflow:hidden panes. */
 .pane-region.calendar-grid-pane,
 .pane-details.confirm-section-time {
   overflow: visible;
