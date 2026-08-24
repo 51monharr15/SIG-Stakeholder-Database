@@ -1,7 +1,7 @@
 # Installation, Operations and Maintenance Guide
 
 How to run and use the meeting scheduler — for organisers, attendees, and anyone installing or maintaining a copy.
-Simon's Version
+Edited 24/08/26
 ## Contents
 
 1. [Operations — using the scheduler](#operations)
