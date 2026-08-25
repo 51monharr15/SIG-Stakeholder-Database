@@ -66,8 +66,16 @@ body {
 .help-toggle { margin: 0.35rem 0 0.5rem; font-size: 0.88rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; background: #f8fafc; }
 .help-toggle > summary { cursor: pointer; font-weight: 600; list-style: none; }
 .help-toggle > summary::-webkit-details-marker { display: none; }
-.help-toggle > summary::before { content: '▸ '; color: var(--muted); }
-.help-toggle[open] > summary::before { content: '▾ '; }
+.help-toggle > summary::before {
+  content: '▶ ';
+  display: inline-block;
+  width: 1.15em;
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
+  color: var(--muted);
+}
+.help-toggle[open] > summary::before { content: '▼ '; }
 .help-toggle .help-q { display: inline-block; min-width: 1.1rem; color: #1d4ed8; font-weight: 700; }
 .help-toggle .help-body { margin: 0.45rem 0 0.15rem; }
 .field-label-plain { font-weight: 600; font-size: 0.95rem; margin: 0.25rem 0; }
@@ -359,6 +367,11 @@ button.btn-disabled {
 }
 .overview-block > summary::before {
   content: "▶ ";
+  display: inline-block;
+  width: 1.15em;
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
 }
 .overview-block[open] > summary::before {
   content: "▼ ";
@@ -371,6 +384,11 @@ button.btn-disabled {
 }
 .attendee-prompt > summary::before {
   content: "▶ ";
+  display: inline-block;
+  width: 1.15em;
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
 }
 .attendee-prompt[open] > summary::before {
   content: "▼ ";
@@ -873,7 +891,11 @@ button.linkish {
 .setup-tab-link:hover { color: #1d4ed8; }
 
 .form-save-header {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.4rem;
   width: 100%;
   margin-bottom: 0.35rem;
 }
@@ -898,7 +920,12 @@ button.linkish {
 .status-desc-summary::-webkit-details-marker { display: none; }
 
 .status-desc-summary::before {
-  content: '▸ ';
+  content: '▶ ';
+  display: inline-block;
+  width: 1.15em;
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
   color: var(--muted);
 }
 
@@ -1166,6 +1193,15 @@ button.linkish {
 
 .slot:hover { border-color: var(--accent); }
 .slot.selected { background: var(--accent-soft); border-color: var(--accent); }
+.slot.candidate {
+  background: #fff7ed;
+  border: 2px dashed #ea580c;
+  box-shadow: none;
+}
+.slot.selected.saved-mine {
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+}
 .slot.suggested:not(.selected) { background: #f0fdf4; border-color: #86efac; }
 
 .slot .count {
@@ -1723,9 +1759,9 @@ details summary { cursor: pointer; }
 }
 
 .att-slots-locs-head {
-  width: 3.1rem;
-  min-width: 3.1rem;
-  max-width: 3.1rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
+  max-width: 6.5rem;
   text-align: center;
   vertical-align: bottom;
   line-height: 1.1;
@@ -1733,9 +1769,9 @@ details summary { cursor: pointer; }
 }
 
 .att-slots-locs {
-  width: 3.1rem;
-  min-width: 3.1rem;
-  max-width: 3.1rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
+  max-width: 6.5rem;
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
@@ -1747,9 +1783,21 @@ details summary { cursor: pointer; }
 
 .att-slots-locs-head span {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.15;
+}
+
+.col-role,
+.col-organiser {
+  width: 4.75rem;
+  min-width: 4.75rem;
+  max-width: 5.25rem;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  padding-left: 0.3rem !important;
+  padding-right: 0.3rem !important;
 }
 
 .col-delete {
@@ -1920,7 +1968,29 @@ details summary { cursor: pointer; }
 }
 
 .availability-save-band .calendar-save-row {
-  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.calendar-save-row > button,
+.form-save-header > button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+.day-head-markable {
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+  width: 100%;
+}
+.day-head-marked {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: #e0f2fe;
 }
 
 /* Confirm meeting choices section panels */
@@ -2099,7 +2169,15 @@ details summary { cursor: pointer; }
 }
 
 .pane-details > summary::-webkit-details-marker { display: none; }
-.pane-details > summary::before { content: '▸ '; color: var(--muted); }
+.pane-details > summary::before {
+  content: '▶ ';
+  display: inline-block;
+  width: 1.15em;
+  font-size: 0.95em;
+  line-height: 1;
+  text-align: center;
+  color: var(--muted);
+}
 .pane-details[open] > summary::before { content: '▼ '; }
 
 .pane-details-body { margin-top: 0.25rem; }

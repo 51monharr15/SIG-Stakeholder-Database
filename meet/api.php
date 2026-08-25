@@ -39,6 +39,9 @@ try {
             case 'list_meetings':
                 handleListMeetings($store, $input);
                 break;
+            case 'delete_meeting':
+                handleDeleteMeeting($store, $input);
+                break;
             case 'join':
                 handleJoin($store, $slug, $input);
                 break;
@@ -135,6 +138,42 @@ function handleListMeetings(MeetStore $store, array $input): void
 
     $meetings = $store->listMeetingsForOrganizer($displayName, $pin);
     Response::json(['ok' => true, 'meetings' => $meetings]);
+}
+
+function handleDeleteMeeting(MeetStore $store, array $input): void
+{
+    $displayName = trim((string) ($input['display_name'] ?? ''));
+    $pin = trim((string) ($input['pin'] ?? ''));
+    $slug = trim((string) ($input['slug'] ?? ''));
+    if ($displayName === '' || $pin === '' || $slug === '') {
+        Response::error('Name, passcode, and meeting are required');
+    }
+    $pin = sanitizePasscode($pin);
+    $matches = $store->listMeetingsForPerson($displayName, $pin);
+    $allowed = false;
+    foreach ($matches as $row) {
+        if (($row['slug'] ?? '') === $store->resolveSlug($slug) || ($row['slug'] ?? '') === $slug) {
+            $allowed = true;
+            break;
+        }
+    }
+    // Also allow match after resolve
+    if (!$allowed) {
+        $resolved = $store->resolveSlug($slug);
+        foreach ($matches as $row) {
+            if ($store->resolveSlug((string) ($row['slug'] ?? '')) === $resolved) {
+                $allowed = true;
+                break;
+            }
+        }
+    }
+    if (!$allowed) {
+        Response::error('Meeting not found for that identity and passcode', 404);
+    }
+    if (!$store->deleteMeetingBySlug($slug)) {
+        Response::error('Could not delete meeting', 500);
+    }
+    Response::json(['ok' => true]);
 }
 
 function handleJoin(MeetStore $store, string $slug, array $input): void

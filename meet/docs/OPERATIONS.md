@@ -42,8 +42,8 @@ Edited 24/08/26
 - **Getting started** — Persistent setup checklist for organisers.
 - **Overview** — Summary: status, description, agenda, attendees, best start times, location popularity.
 - **Attendees** — Register, claim identity, edit details and passcode, organiser roles.
-- **My availability** — Your free times on the calendar grid.
-- **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Organiser status required to edit.
+- **My availability** — Your free times on the calendar grid. Mark day column headers to **Copy days** / **Paste**, or use **Copy week → next**. Only saved slots are copied; paste creates unsaved candidates until you Save. **Clear selection** restores saved slots only.
+- **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Empty hours and days can be hidden. Organiser status required to edit.
 - **Locations** — Propose and vote; see who OK’d each place.
 - **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets).
 - **Calendar Options** — Meeting length, slot size, bookable dates and hours (organiser edits; others may view read-only).
@@ -81,7 +81,7 @@ Coloured panes group related topics consistently across the app:
 | Amber | Attachments | Meeting Resources attachment table |
 | Light blue / green | Landing page | Create meeting / Find my meetings panes |
 
-Expandable panes show **▸** when collapsed and **▼** when open. Pane open/closed state is remembered per meeting.
+Expandable panes show **▶** when collapsed and **▼** when open (same visual size). Pane open/closed state is remembered per meeting.
 
 > **Tip:** Design note for maintainers: availability is stored in UTC; the calendar grid hours use the meeting timezone so everyone marks the same slots. Each person also sees times in their browser timezone.
 
@@ -90,7 +90,7 @@ Expandable panes show **▸** when collapsed and **▼** when open. Pane open/cl
 - Meeting data lives under `meet/data/meets/` as plain-text `.meet` files. Back up that directory.
 - Do not put `|` characters in passcodes or pipe-separated fields — they break the file format.
 - After deploying updates, hard-refresh browsers (Ctrl+F5) so `app.js` and `style.css` reload.
-- Housekeeping idea (future): delete old meetings from *Find my meetings* after the confirmed date (or last availability date) has passed, re-checking name + passcode.
+- From *Find my meetings*, you can **Delete** a listed meeting (Are you sure? confirm). Requires the same registered identity and passcode used to list it.
 
 ## Installation {#installation}
 

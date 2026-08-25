@@ -70,7 +70,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
             </label>
             <button type="submit">Create meeting</button>
           </form>
-          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL. <strong>Save it and SEND to other proposed Attendees.</strong></p>
+          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL (new meetings: 7-letter pronounceable code). <strong>Save it and SEND to other proposed Attendees.</strong></p>
         </section>
         <section class="pane-region tint-find">
           <h2 class="section-title">Find my meetings</h2>

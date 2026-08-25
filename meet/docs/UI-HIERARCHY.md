@@ -1,13 +1,13 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.44  
+**Build:** 1.8.45  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
 Tints from `meet/assets/css/style.css`.  
 Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `operations.php`), and API/toast error strings from `meet/api.php`.
 
-**Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations). **Panels** are level-2 headings. **Panes** are level-3 headings.
+**Convention:** Reproduce **full** on-screen text here (no ellipsis abbreviations). **Panels** are level-2 headings prefixed **Panel:**. **Panes** are level-3 headings prefixed **Pane:**.
 
 ### Legend
 
@@ -18,6 +18,7 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 | `[expand]` | Collapsible; open/closed remembered per meeting |
 | `[secondary]` | Closed on first visit |
 | *tint* | Semantic background colour |
+| Disclosure | Collapsed **▶** and open **▼** use the same visual size |
 
 **Tints (RGB next revision):** lavender = dates/times · clearer blue `#e0f2fe` = text · pink = people · teal places `#ccfbf1` = places · amber = attachments · light blue = create · lime find `#f7fee7` = find
 
@@ -67,6 +68,8 @@ Meeting **base timezone** is set from the **first attendee** (their client timez
 | Button | List my meetings |
 | Results (empty) | No meetings found for that name and passcode. Identity misspelt or Passcode not matching. |
 | Results (count) | 1 meeting found / {N} meetings found |
+| Results actions | Each row: meeting date · title link · **Delete** |
+| Delete confirm | Are you sure you want to delete “{title}”? This cannot be undone. |
 | Validation | Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not \|). |
 | Passcode rule | Length 2–20 everywhere; never silently discarded — invalid length surfaces the validation error. |
 
@@ -147,7 +150,7 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 | Confirm meeting choices | Group calendar and locations — click a start to save it; click again to clear. Confirm location preferences. |
 | New meeting | Start a completely fresh meeting *(opens in a new tab)* |
 
-### Help panel *(opens on “How to use this”)*
+### Panel: Help *(opens on “How to use this”)*
 
 | Kind | Text |
 |------|------|
@@ -176,9 +179,9 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 
 ---
 
-## Getting started
+## Panel: Getting started
 
-### Instructions for organisers and attendees `[expand]`
+### Pane: Instructions for organisers and attendees `[expand]`
 
 | Kind | Text |
 |------|------|
@@ -187,7 +190,7 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 | Intro | Steps below are aimed at the meeting organiser. Attendees skip organiser-only steps. Essential steps for **all** attendees: sign in on **Attendees**, mark **My availability**, vote on **Locations**. |
 | Intro (second) | For fuller guidance, open **How to use this** at the top of the page, or the [operations manual](operations.php) at the foot of the page. |
 
-### Checklist steps
+### Pane: Checklist steps
 
 Completed steps show a leading ✓. Audience markers sit at the **start** of each step (not mid-sentence): first steps spell out **Everyone (E)** and **Organiser (O)**; later steps use **(E)**, **(O)**, or **(O/E)**.
 
@@ -209,15 +212,15 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 
 ---
 
-## Overview
+## Panel: Overview
 
 | Kind | Text |
 |------|------|
-| Header | Overview — tap ▸ headings to expand |
+| Header | Overview — tap ▶ headings to expand |
 | Hint | Coloured sections group topics — lavender dates/times, blue text, pink people, green places. |
 | Expand title | Tap or click the triangle to expand/collapse |
 
-### Time · Recurrence *tint-dates* (lavender)
+### Pane: Time · Recurrence *tint-dates* (lavender)
 
 | Kind | Text |
 |------|------|
@@ -226,7 +229,7 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Length | **Meeting length:** {dur} · **Calendar slot:** {slot} |
 | Recurrence | **Recurrence:** {label} (default One-off) |
 
-### Agenda and decisions *tint-text* (clearer blue `#e0f2fe`)
+### Pane: Agenda and decisions *tint-text* (clearer blue `#e0f2fe`)
 
 | Kind | Text |
 |------|------|
@@ -237,16 +240,17 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Decisions empty | No decisions listed yet — go to **Meeting Resources** to set them. |
 | Notes | When notes HTML is set, it renders below agenda/decisions in this pane |
 
-### Attendees *tint-people*
+### Pane: Attendees *tint-people*
 
 | Kind | Text |
 |------|------|
 | Summary | Attendees registered ({N}) · Availability entered ({count}) |
 | Empty | No attendees registered yet. |
 | Table columns | Name · Time slots / locations · Role (Organiser \| Attendee) |
+| Column widths | Role narrow; Time slots / locations wider so stacked headings read clearly |
 | Time slots / locations title | Availability slots marked and locations marked OK with me |
 
-### Top start times *tint-dates* (lavender)
+### Pane: Top start times *tint-dates* (lavender)
 
 | Kind | Text |
 |------|------|
@@ -257,7 +261,7 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Hint | Confirm one with **Confirm meeting choices**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
 | Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Confirm meeting choices**. |
 
-### Top locations *tint-places* (teal `#ccfbf1`)
+### Pane: Top locations *tint-places* (teal `#ccfbf1`)
 
 Teal places tint — locations no longer sit in the lavender Time pane.
 
@@ -268,7 +272,7 @@ Teal places tint — locations no longer sit in the lavender Time pane.
 | Ranked line | {location} — {N} preference / preferences |
 | Empty | No locations proposed yet. |
 
-### Attachments *tint-assets*
+### Pane: Attachments *tint-assets*
 
 **Always present** on Overview (preparation docs included — not limited to Past / Summarised). Opens by default when there is at least one attachment.
 
@@ -302,6 +306,7 @@ Teal places tint — locations no longer sit in the lavender Time pane.
 | Table headers | Signed-in as · Name · Initials · Contact · Time slots / locations · Passcode · Organiser · Delete *(organiser)* |
 | Signed-in as title | Toggle Signed-in as for this row |
 | Organiser title | Toggle organiser rights |
+| Column widths | Organiser narrow; Time slots / locations wider |
 | Empty row | None yet |
 | Passcode cell | Set / Not set |
 | Sign-in titles | Sign in as this attendee / Sign out / Merge duplicate into your row |
@@ -368,9 +373,9 @@ Shown when already signed in (or after attendees exist and the add-another path 
 
 ---
 
-## Locations
+## Panel: Locations
 
-### Lead
+### Pane: Lead
 
 | Who | Text |
 |-----|------|
@@ -378,7 +383,7 @@ Shown when already signed in (or after attendees exist and the add-another path 
 | Signed in (2) | Toggle **OK with me** to record your preference. Tap/click overflow cells to expand; use **Copy** after expanding a link. |
 | Not signed in | Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me. |
 
-### Locations table *tint-places* (teal `#ccfbf1`)
+### Pane: Locations table *tint-places* (teal `#ccfbf1`)
 
 Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Well-formed http(s) URLs render as links; long/overflow cells use expand hit targets (`min-height` expand buttons). **OK with** = initials of voters; **OK with me** = your toggle (? / Yes).
 
@@ -397,9 +402,9 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ---
 
-## My availability
+## Panel: My availability
 
-### Mark when you are free `[expand]`
+### Pane: Mark when you are free `[expand]`
 
 | Kind | Text |
 |------|------|
@@ -408,11 +413,12 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | Body 2 | **Meeting length** is {dur}.{slotHint} Finer slots let you show partial availability if you cannot make the whole meeting. |
 | slotHint (multi) | Select {N} consecutive {gran} slot(s) to cover the full {dur} meeting. |
 | slotHint (single) | Each slot is {gran} — one slot covers the full meeting. |
-| Initials | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. |
+| Initials | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. Unsaved candidates have a dashed border. |
+| Copy hint | Mark day column headers, then **Copy days** / **Paste**, or use **Copy week → next**. Only already-saved slots are copied; paste creates unsaved candidates until you Save. |
 | Nav hint | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
 | Hours | Meeting hours {start}–{end} (meeting base). Times at left show **your** local timezone ({tz}){; tap the second time to cycle other attendees’ timezones when recorded attendee timezones exist}. |
 
-### Calendar grid *tint-dates*
+### Pane: Calendar grid *tint-dates*
 
 **Day column headings stick to the viewport** under the sticky dashboard (`top: var(--sticky-h)`). They must not scroll off-screen. `.calendar` is a column flex (not a grid of header+body) so sticky is not trapped in a short grid row. Applies to **My availability** and **Group calendar**.
 
@@ -425,26 +431,32 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | Time label title | Local time · tap second time to cycle attendee timezones *(when alternates exist)* |
 | Alt timezone button title | {tz} — recorded attendee timezone — click for next |
 
-### Save band (dual Save)
+### Pane: Save band (dual Save)
 
-Shown when signed in. **Save** and **Copy previous week** appear **above** the grid (form-save header) and again **below** the grid.
+Shown when signed in. Buttons appear **above** the grid (form-save header) and again **below** the grid. All save-band buttons share the same height.
 
 - **Save** (title: Save your currently selected availability slots to the meeting)
-- **Copy previous week** (title: Copy saved slots from the previous week as candidates — then edit and Save)
-- {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
+- **Clear selection** (title: Clear unsaved candidates — restore to your last saved availability)
+- **Copy days** (title: Copy saved slots from marked day columns)
+- **Paste** (title: Paste copied day pattern(s) onto marked day columns as unsaved candidates)
+- **Copy week → next** (title: Copy this week’s saved slots onto the next week as unsaved candidates)
+- Meta: Clipboard: {N} day pattern(s) ready to paste — mark target day column(s), then Paste. *(when clipboard set)*
+- Meta: {N} slot(s) selected · {optional candidate/mark notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
+
+**Copy / paste model:** Copy reads **already-saved** slots only. Paste adds **unsaved candidates** (dashed border) until Save. Day → day or day → many: mark source day(s) → Copy days → mark target(s) → Paste (1 pattern → all targets; N patterns → N targets in order). Paste onto a day that already has saved slots: add candidates where not saved; leave already-saved hours unchanged. Off bookable / weekend: skip and warn that some times could not be replicated. **Clear selection** resets to saved-only. Day column headers are markable (highlight when marked).
 
 **Bookable range:** calendar opens at Calendar Options start date; ⇤ / ⇥ jump to Options start / end (if no Options end, ⇥ jumps to last marked availability). Day/week navigation stays within the Options bookable range when an end date is set. Days outside the range are not shown.
 
 ---
 
-## Meeting Resources
+## Panel: Meeting Resources
 
-### Lead
+### Pane: Lead
 - Description, agenda, decisions, notes, and attachments — preparation and follow-up assets in one place.
 
 Collapsible panes. Where edit is allowed, **Save** sits on the pane **summary** (title left, Save top-right via `pane-summary-with-save`) and again at the bottom of the pane body (**dual Save**). Attachments use **tab-out save only** (no Save on the summary).
 
-### Description `mr-description` *tint-text* (clearer blue `#e0f2fe`)
+### Pane: Description `mr-description` *tint-text* (clearer blue `#e0f2fe`)
 - Summary: **Description for attendees** *(simple HTML — status bar & Overview)* · **Save** *(when signed in)*
 - Placeholder: Add a short description for attendees — shown in the status bar and Overview.
 - Bottom: **Save** / Sign in on Attendees to edit.
@@ -453,18 +465,18 @@ Format toolbar: **?** Help for meeting description · Bold · Italic · Paragrap
 
 Help body: Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Allowed: paragraphs, line breaks, bold, italic, links, and lists.
 
-### Agenda & decisions `mr-agenda` `[secondary]` *tint-text*
-- Summary: **Agenda & decisions** · **Save** *(when signed in)*
-- Agenda *(each line is a bullet on Overview and status strip)*
-- Decisions required *(each line is a bullet on Overview and status strip)*
+### Pane: Agenda & decisions `mr-agenda` `[secondary]` *tint-text*
+- Summary: **Agenda & decisions** *(each line is a bullet on Overview and status strip)* · **Save** *(when signed in)*
+- Agenda
+- Decisions required
 - Bottom: **Save**
 
-### Notes `mr-notes` `[secondary]` *tint-text*
-- Summary: **Notes** · **Save** *(when signed in)*
-- Notes *(simple HTML)* (+ format toolbar without help toggle)
+### Pane: Notes `mr-notes` `[secondary]` *tint-text*
+- Summary: **Notes** *(simple HTML — Overview)* · **Save** *(when signed in)*
+- Notes (+ format toolbar without help toggle)
 - Bottom: **Save**
 
-### Attachments `mr-attachments` *tint-assets*
+### Pane: Attachments `mr-attachments` *tint-assets*
 - Summary: **Attachments ({N})** *(no Save on summary)*
 - Lead: Preparation or follow-up links/text. Edit a cell and tab out to save. Leading spaces on URLs are stripped.
 - Columns: Label · Content
@@ -473,9 +485,9 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 
 ---
 
-## Calendar Options
+## Panel: Calendar Options
 
-### Lead
+### Pane: Lead
 - **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
 - Each editable pane summary and pane body carry **Save** (no separate panel top/footer Save — avoids duplicate buttons stacked beside pane Saves).
 - **All Save buttons on this tab do the same thing:** they submit the whole Calendar Options form (`update-settings`) — title, length, slot size, weekends, bookable dates, and daily hours together.
@@ -484,7 +496,7 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 
 Saving Calendar Options is what marks Getting started step **Set Calendar Options** with ✓. After save, My availability jumps to the bookable start date.
 
-### Meeting length & calendar `opts-length`
+### Pane: Meeting length & calendar `opts-length`
 
 | Kind | Text |
 |------|------|
@@ -498,7 +510,7 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 | Hint | **Calendar slot size** is one granularity at which attendees can confirm availability to indicate partial attendance. Changing meeting length or slot size does **not** remap saved availability — attendees should review **My availability** and save again. |
 | Extra when invalid | Slot size must divide meeting length evenly. |
 
-### Bookable dates & daily hours `opts-booking`
+### Pane: Bookable dates & daily hours `opts-booking`
 
 | Kind | Text |
 |------|------|
@@ -509,13 +521,13 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 | End date | Latest date this meeting is open for scheduling. Leave blank for open-ended. Label: End date *(optional)* |
 | End time | Latest end time each day in your local timezone. Label: End time ({tz}) |
 
-### Recurrence (future feature) `opts-recurrence` `[secondary]`
+### Pane: Recurrence (future feature) `opts-recurrence` `[secondary]`
 - **Recurrence (future feature)**
 - One-off scheduling only for now. Recurrence design is parked.
 
 ---
 
-## Confirm meeting choices
+## Panel: Confirm meeting choices
 
 Click behaviour (consistent everywhere — UI, Help, Getting started, Operations):
 
@@ -525,34 +537,36 @@ Click behaviour (consistent everywhere — UI, Help, Getting started, Operations
 
 There is no separate session-only “propose” step and no separate Confirm button for time.
 
-### Lead
-- **Group calendar & location preferences** — everyone’s availability on one sparse grid (empty hours hidden). Click a start time to **save it immediately**; click the same start again to clear. Meeting length {dur}; slots {gran} each. Preferred locations below.
+### Pane: Lead
+- **Group calendar & location preferences** — everyone’s availability on one sparse grid (empty hours and days hidden). Click a start time to **set it immediately as the meeting start**; click the same start again to clear. Meeting length {dur}; slots {gran} each. Preferred locations below.
 
-### Propose / confirm a meeting date and time `group-time` *tint-dates*
+### Pane: Confirm a meeting date and time `group-time` *tint-dates*
 
-**Day column headings stick to the viewport** under the sticky dashboard (same as My availability). Colour key sits **inside this pane**. A thicker horizontal line marks a gap where empty hours were omitted.
+**Day column headings stick to the viewport** under the sticky dashboard (same as My availability). Colour key sits **inside this pane**. A thicker horizontal line marks a gap where empty hours were omitted; a thicker vertical line marks a gap where empty days were omitted.
 
 | Kind | Text |
 |------|------|
-| Summary | **Propose / confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
+| Summary | **Confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
 | Status (none) | **Meeting start:** none scheduled yet — click a slot below to save one *(organiser only when not org)* |
 | Status (scheduled) | **Meeting scheduled:** {start – end pair with tz + UTC}. Click the same slot again to clear |
 | Hint | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}) |
 | Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
+| Days toggle | Hide empty days / Show all days (title: Show or hide days with no availability marked) |
 | Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted. |
+| Hidden days | Empty days are hidden. Use "Show all days" to show every day in range. A thicker vertical line marks a gap where days were omitted. |
 | Initials note | **Initials** in cells show who marked that slot on My availability. |
 | Time labels | Same local (+ optional cycling alt timezone) behaviour as My availability |
 | Legend | Light green = all attendees available for full meeting if this start is chosen · Amber = all attendees, only partial meeting if this start is chosen · Purple = some attendees unavailable if this start is chosen · Dark green border = scheduled start |
 
-### Propose / confirm a meeting location `group-locations`
+### Pane: Confirm a meeting location `group-locations`
 
-No whole-pane teal wash — row colours match the calendar key (all / some / none OK).
+No whole-pane teal wash — row colours match the calendar key (all / some / none OK). **OK with me** column is hidden here (voters still show under **OK with**; mark preferences on the Locations tab).
 
 | Kind | Text |
 |------|------|
-| Summary | **Propose / confirm a meeting location** |
+| Summary | **Confirm a meeting location** |
 | Lead | Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** on the Locations tab. Row colours match the calendar key (all / some / none OK with this location). URLs open in a new window and can be copied. |
-| Table | Same locations table as Locations + **Confirmed** column (horizontal scroll); vote-tint rows; URL cells are links **and** Copy |
+| Table | Same locations table as Locations + **Confirmed** column (horizontal scroll); vote-tint rows; URL cells are links **and** Copy; **OK with me** column omitted |
 
 **Removed:** Meeting link pane (`group-link`) — Copy meeting link remains in the sticky header.
 
@@ -580,8 +594,8 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `opts-length` | Calendar Options — Meeting length & calendar |
 | `opts-booking` | Calendar Options — Bookable dates & daily hours |
 | `opts-recurrence` | Calendar Options — Recurrence (future) |
-| `group-time` | Confirm meeting choices — Propose / confirm a meeting date and time |
-| `group-locations` | Confirm meeting choices — Propose / confirm a meeting location |
+| `group-time` | Confirm meeting choices — Confirm a meeting date and time |
+| `group-locations` | Confirm meeting choices — Confirm a meeting location |
 
 **Removed:** `opts-timezone` (Calendar hours & timezone picker — no longer in the UI). **Removed:** `group-link` (Meeting link pane on Confirm tab — use header Copy meeting link).
 

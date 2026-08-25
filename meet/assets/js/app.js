@@ -158,6 +158,7 @@
               return `<tr>
                 <td class="meetings-found-date">${escapeHtml(when)}</td>
                 <td class="meetings-found-title"><a href="${escapeHtml(href)}" data-meeting-slug="${escapeHtml(m.slug)}"${m.attendee_id ? ` data-attendee-id="${escapeHtml(m.attendee_id)}"` : ''}>${escapeHtml(m.title)}</a></td>
+                <td class="meetings-found-actions"><button type="button" class="btn-cancel compact-btn" data-action="delete-found-meeting" data-slug="${escapeHtml(m.slug)}" data-title="${escapeHtml(m.title)}">Delete</button></td>
               </tr>`;
             }).join('')}</tbody>
           </table>`;
@@ -174,6 +175,37 @@
                   attendee_id: attendeeId,
                 }));
               } catch (_) { /* ignore */ }
+            }
+          });
+        });
+        box.querySelectorAll('[data-action="delete-found-meeting"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const slug = btn.getAttribute('data-slug') || '';
+            const title = btn.getAttribute('data-title') || 'this meeting';
+            if (!slug) return;
+            if (!window.confirm(`Are you sure you want to delete “${title}”? This cannot be undone.`)) return;
+            try {
+              const identity = JSON.parse(sessionStorage.getItem(FIND_IDENTITY_KEY) || '{}');
+              await apiPost({
+                action: 'delete_meeting',
+                slug,
+                display_name: identity.display_name || data.get('display_name'),
+                pin: identity.pin || passcode,
+              });
+              btn.closest('tr')?.remove();
+              const rows = box.querySelectorAll('tbody tr').length;
+              const label = box.querySelector('p.meta');
+              if (label) {
+                label.textContent = rows === 0
+                  ? 'No meetings found for that name and passcode. Identity misspelt or Passcode not matching.'
+                  : (rows === 1 ? '1 meeting found' : `${rows} meetings found`);
+              }
+              if (!rows) {
+                const table = box.querySelector('table');
+                if (table) table.remove();
+              }
+            } catch (err) {
+              alert(err.message || 'Could not delete meeting');
             }
           });
         });
@@ -196,6 +228,8 @@
       attendeeId: localStorage.getItem(attendeeKey(slug)) || '',
       selectedSlots: new Set(),
       selectedLocations: new Set(),
+      headerMarkedDates: new Set(),
+      availClipboard: null,
       viewStart: startOfDay(new Date()),
       activeTab: 'overview',
       sortOrder: 'date',
@@ -213,6 +247,7 @@
       pendingConfirmedLocationIds: null,
       editingLocationId: null,
       showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
+      showAllGroupDays: localStorage.getItem(groupDaysKey(slug)) === 'all',
       openNotesEditor: false,
       overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
       attendeePanelOpen: undefined,
@@ -598,6 +633,7 @@
   function tabKey(slug) { return `meet_tab_${slug}`; }
   function overviewHelpKey(slug) { return `meet_overview_help_${slug}`; }
   function groupHoursKey(slug) { return `meet_group_hours_${slug}`; }
+  function groupDaysKey(slug) { return `meet_group_days_${slug}`; }
   function setupOptionsSavedKey(slug) { return `meet_setup_options_saved_${slug}`; }
   function setupLinkCopiedKey(slug) { return `meet_setup_link_copied_${slug}`; }
   function paneStorageKey(slug, paneId) { return `meet_pane_${slug}_${paneId}`; }
@@ -1084,7 +1120,7 @@
 
     return `
       <section class="panel stack overview-panel">
-        <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▸ headings to expand</span></h2>
+        <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▶ headings to expand</span></h2>
         <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places.</p>
         <details class="overview-block tint-dates"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence</summary>
@@ -1191,11 +1227,11 @@
   function renderOverviewAttendeeTable(m) {
     if (!m.attendees.length) return '<p class="meta">No attendees registered yet.</p>';
     return `<table class="data-table overview-attendee-table">
-      <thead><tr><th>Name</th>${renderAttendeeSlotsLocsHead()}<th>Role</th></tr></thead>
+      <thead><tr><th>Name</th>${renderAttendeeSlotsLocsHead()}<th class="col-role">Role</th></tr></thead>
       <tbody>${m.attendees.map((a) => `<tr>
         <td>${escapeHtml(a.display_name)}</td>
         ${renderAttendeeSlotsLocsCell(m, a.id)}
-        <td>${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
+        <td class="col-role">${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
@@ -1233,6 +1269,9 @@
       ? (!days.length || startOfDay(days[days.length - 1]) < end)
       : true;
     const slotHint = calendarNavHint(m);
+    const clipInfo = state.availClipboard
+      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day pattern(s) ready to paste — mark target day column(s), then Paste.</p>`
+      : '';
 
     return `
       <section class="panel stack calendar-panel">
@@ -1241,7 +1280,8 @@
           <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
           <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> in the band below the grid. Tap a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
-          <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell.</p>
+          <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell. Unsaved candidates have a dashed border.</p>
+          <p class="meta">Mark day column headers, then <strong>Copy days</strong> / <strong>Paste</strong>, or use <strong>Copy week → next</strong>. Only already-saved slots are copied; paste creates unsaved candidates until you Save.</p>
           <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
           <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle other attendees’ timezones' : ''}.</p>
         </details>
@@ -1249,9 +1289,10 @@
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         <div class="pane-region tint-dates calendar-grid-pane">
         ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
+        ${clipInfo}
         <div class="calendar-scroll">
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
-          ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz })}
+          ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz, state, availabilityCopy: !!attendee })}
           <div class="cal-body">
             ${hours.map((hm) => `
               <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
@@ -1265,7 +1306,7 @@
       </section>`;
   }
 
-  function renderCalendarHeader(days, { canGoBack, canGoForward, canGoBackScreen, canGoForwardScreen, todayStr, m, recurringSet, mtz }) {
+  function renderCalendarHeader(days, { canGoBack, canGoForward, canGoBackScreen, canGoForwardScreen, todayStr, m, recurringSet, mtz, state = null, availabilityCopy = false }) {
     const screenBack = canGoBackScreen !== false && canGoBack;
     const screenFwd = canGoForwardScreen !== false && canGoForward;
     return `
@@ -1291,7 +1332,12 @@
           const gap = dayHasGapBefore(days, i);
           const isToday = dateStr === todayStr;
           const recur = recurringSet && recurringSet.has(dateStr);
-          return `<div class="day-head${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}" title="${escapeHtml(formatDayHeadDateStr(dateStr, mtz))}${isToday ? ' — today' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recur ? '<br><small>recurring</small>' : ''}</div>`;
+          const marked = availabilityCopy && state?.headerMarkedDates?.has(dateStr);
+          const label = `${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recur ? '<br><small>recurring</small>' : ''}`;
+          if (availabilityCopy) {
+            return `<button type="button" class="day-head day-head-markable${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}${marked ? ' day-head-marked' : ''}" data-action="toggle-day-mark" data-date="${escapeHtml(dateStr)}" title="Mark this day for Copy days / Paste">${label}</button>`;
+          }
+          return `<div class="day-head${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}" title="${escapeHtml(formatDayHeadDateStr(dateStr, mtz))}${isToday ? ' — today' : ''}">${label}</div>`;
         }).join('')}
       </div>`;
   }
@@ -1300,15 +1346,22 @@
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
     const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save</button>`;
-    const copyBtn = `<button type="button" class="btn-cancel compact-btn" data-action="copy-previous-week" title="Copy saved slots from the previous week as candidates — then edit and Save">Copy previous week</button>`;
+    const clearBtn = `<button type="button" data-action="clear-selection" title="Clear unsaved candidates — restore to your last saved availability">Clear selection</button>`;
+    const copyDaysBtn = `<button type="button" data-action="copy-avail-days" title="Copy saved slots from marked day columns">Copy days</button>`;
+    const pasteBtn = `<button type="button" data-action="paste-avail-days" title="Paste copied day pattern(s) onto marked day columns as unsaved candidates">Paste</button>`;
+    const copyWeekBtn = `<button type="button" data-action="copy-avail-week-next" title="Copy this week’s saved slots onto the next week as unsaved candidates">Copy week → next</button>`;
+    const buttons = `${saveBtn}${clearBtn}${copyDaysBtn}${pasteBtn}${copyWeekBtn}`;
+    const candidateCount = countCandidateSlots(state, m);
     const count = state.selectedSlots.size;
     const slotMeta = m ? calendarNavHint(m).trim() : '';
+    const candNote = candidateCount ? ` · ${candidateCount} unsaved candidate(s)` : '';
+    const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
     let html = '';
-    if (showTopDuplicate) html += formSaveHeader(`${saveBtn}${copyBtn}`);
+    if (showTopDuplicate) html += formSaveHeader(buttons);
     if (showBottomButton) {
-      html += `<div class="row save-row calendar-save-row">${saveBtn}${copyBtn}<span class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
+      html += `<div class="row save-row calendar-save-row">${buttons}<span class="meta">${count} slot(s) selected${candNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
     } else if (showTopDuplicate) {
-      html += `<p class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
+      html += `<p class="meta">${count} slot(s) selected${candNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
     }
     return html;
   }
@@ -1323,7 +1376,18 @@
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
     const cellTip = slotCellTip(m, tip);
-    return `<button type="button" class="slot${slotSelectedByUser(state, m, slotIso, attendee?.id) ? ' selected' : ''}${ids.length ? ' suggested' : ''}${gapBefore ? ' day-gap-before' : ''}"
+    const selected = slotSelectedByUser(state, m, slotIso, attendee?.id);
+    const savedMine = !!attendee && slotSavedForMe(m, slotIso, attendee.id);
+    const candidate = selected && !savedMine;
+    const cls = [
+      'slot',
+      selected ? 'selected' : '',
+      candidate ? 'candidate' : '',
+      savedMine && selected ? 'saved-mine' : '',
+      ids.length ? 'suggested' : '',
+      gapBefore ? 'day-gap-before' : '',
+    ].filter(Boolean).join(' ');
+    return `<button type="button" class="${cls}"
       data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(cellTip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
@@ -1335,7 +1399,7 @@
   function renderGroupAvailabilityTab(m, state, attendee) {
     const mtz = meetingTz(m);
     const dayCount = visibleDayCount();
-    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
+    const allDays = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = effectiveConfirmSlot(state, m);
     const isOrg = !!attendee?.is_organizer;
@@ -1346,27 +1410,38 @@
     const canGoBack = view > min;
     const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
     const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
+    const days = state.showAllGroupDays
+      ? allDays
+      : allDays.filter((day) => groupDayHasSignal(m, day, allHours, mtz, selected, fullMap, partialMap));
     const hours = state.showAllGroupHours
       ? allHours
       : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
     const canGoForward = end
-      ? (!days.length || startOfDay(days[days.length - 1]) < end)
+      ? (!allDays.length || startOfDay(allDays[allDays.length - 1]) < end)
       : true;
+    const emptyDaysNote = !state.showAllGroupDays
+      ? '<p class="meta">Empty days are hidden. Use "Show all days" to show every day in range. A thicker vertical line marks a gap where days were omitted.</p>'
+      : '';
+    const emptyHoursNote = !state.showAllGroupHours
+      ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted.</p>'
+      : '';
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
-        <p class="meta pane-lead"><strong>Group calendar &amp; location preferences</strong> — everyone’s availability on one sparse grid (empty hours hidden). Click a start time to <strong>save it immediately</strong>; click the same start again to clear. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each. Preferred locations below.</p>
+        <p class="meta pane-lead"><strong>Group calendar &amp; location preferences</strong> — everyone’s availability on one sparse grid (empty hours and days hidden). Click a start time to <strong>set it immediately as the meeting start</strong>; click the same start again to clear. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each. Preferred locations below.</p>
         <details ${paneDetailsAttrs(state, 'group-time', { extraClass: 'confirm-section confirm-section-time tint-dates' })}>
-          <summary title="Click a start on the Group calendar to save or clear it">Propose / confirm a meeting date and time</summary>
+          <summary title="Click a start on the Group calendar to save or clear it">Confirm a meeting date and time</summary>
           <div class="confirm-section-inner stack">
             ${renderScheduledStartStatus(isOrg, m)}
             <p class="meta">Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.</p>
             <div class="row">
               <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
+              <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
             </div>
-            ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted.</p>' : ''}
+            ${emptyHoursNote}
+            ${emptyDaysNote}
             <div class="calendar-scroll">
-            <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
+            <div class="calendar group-calendar" style="--cal-cols:${days.length || 1}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
                 ${hours.map((hm, hi) => `
@@ -1387,10 +1462,10 @@
           </div>
         </details>
         <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations' })}>
-          <summary>Propose / confirm a meeting location</summary>
+          <summary>Confirm a meeting location</summary>
           <div class="confirm-section-inner">
             <p class="meta pane-lead">Organiser: toggle <strong>Confirmed</strong> (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark <strong>OK with me</strong> on the Locations tab. Row colours match the calendar key (all / some / none OK with this location). URLs open in a new window and can be copied.</p>
-            ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true, voteTint: true })}
+            ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true, voteTint: true, hideOkWithMe: true })}
           </div>
         </details>
       </section>`;
@@ -1793,7 +1868,7 @@
     return escapeHtml(value);
   }
 
-  function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
+  function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false, hideOkWithMe = false } = {}) {
     const id = loc?.id || '';
     const f = locationRowFields(loc);
     const canEdit = !!attendee && !readOnly;
@@ -1829,7 +1904,7 @@
       <td class="loc-cell-notes">${notesCell}</td>
       <td class="loc-cell-location">${locationCell}</td>
       <td class="loc-ok-with">${initials ? escapeHtml(initials) : '—'}</td>
-      <td class="loc-ok-me">${worksCell}</td>
+      ${hideOkWithMe ? '' : `<td class="loc-ok-me">${worksCell}</td>`}
       ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
   }
 
@@ -1843,13 +1918,16 @@
     return 'loc-vote-none';
   }
 
-  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false, voteTint = false } = {}) {
+  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false, voteTint = false, hideOkWithMe = false } = {}) {
     const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirmed</th>' : '';
+    const okMeHead = hideOkWithMe
+      ? ''
+      : '<th class="loc-ok-me-head" title="Toggle if this location works for you"><span>OK</span><span>with me</span></th>';
     const existingRows = m.locations.map((loc) => {
       const voteClass = voteTint ? locationVoteRowClass(m, loc) : '';
       return `
       <tr class="loc-row${voteClass ? ` ${voteClass}` : ''}" data-location-row data-location-id="${escapeHtml(loc.id)}">
-        ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly })}
+        ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly, hideOkWithMe })}
       </tr>`;
     }).join('');
     const newRow = attendee && !readOnly ? `
@@ -1862,7 +1940,7 @@
         <th>Notes</th>
         <th>Location</th>
         <th title="Initials of attendees who marked OK with me">OK with</th>
-        <th class="loc-ok-me-head" title="Toggle if this location works for you"><span>OK</span><span>with me</span></th>
+        ${okMeHead}
         ${confirmCol}
       </tr></thead>
       <tbody>${newRow}${existingRows}</tbody>
@@ -2136,20 +2214,20 @@
           </div>
         </details>
         <details ${paneDetailsAttrs(state, 'mr-agenda', { secondary: true, extraClass: 'tint-text' })}>
-          <summary class="pane-summary-with-save"><span>Agenda &amp; decisions</span>${canEditDesc ? saveBtn('form-update-agenda') : ''}</summary>
+          <summary class="pane-summary-with-save"><span>Agenda &amp; decisions <span class="label-hint">(each line is a bullet on Overview and status strip)</span></span>${canEditDesc ? saveBtn('form-update-agenda') : ''}</summary>
           <div class="pane-details-body">
           <form class="inline-form" data-form="update-agenda" id="form-update-agenda">
-            <label>Agenda <span class="label-hint">(each line is a bullet on Overview and status strip)</span><textarea name="agenda" rows="4">${escapeHtml(agendaVal)}</textarea></label>
-            <label>Decisions required <span class="label-hint">(each line is a bullet on Overview and status strip)</span><textarea name="decisions" rows="3">${escapeHtml(decisionsVal)}</textarea></label>
+            <label>Agenda<textarea name="agenda" rows="4">${escapeHtml(agendaVal)}</textarea></label>
+            <label>Decisions required<textarea name="decisions" rows="3">${escapeHtml(decisionsVal)}</textarea></label>
             ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-agenda')}</div>` : ''}
           </form>
           </div>
         </details>
         <details ${paneDetailsAttrs(state, 'mr-notes', { secondary: true, extraClass: 'tint-text' })}>
-          <summary class="pane-summary-with-save"><span>Notes</span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
+          <summary class="pane-summary-with-save"><span>Notes <span class="label-hint">(simple HTML — Overview)</span></span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
           <div class="pane-details-body">
           <form class="inline-form" data-form="update-notes" id="form-update-notes">
-            <label>Notes <span class="label-hint">(simple HTML)</span>
+            <label>Notes
               ${canEditDesc ? formatToolbar('notes', { withHelp: false }) : ''}
               <textarea name="notes" rows="5">${escapeHtml(notesVal)}</textarea>
             </label>
@@ -2322,7 +2400,7 @@
         <div class="attendee-table-panel">
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th class="col-me" title="Toggle Signed-in as for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
+            <thead><tr><th class="col-me" title="Toggle Signed-in as for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th class="col-organiser" title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
             <tbody>
               ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>
@@ -2484,7 +2562,7 @@
     }
 
     const organiserCell = showOrganiserCol
-      ? `<td><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
+      ? `<td class="col-organiser"><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
       : '';
 
     const deleteCell = showOrganiserCol
@@ -3331,16 +3409,42 @@
       return;
     }
 
-    if (action === 'copy-previous-week') {
-      if (!state.attendeeId) {
-        toast('Sign in to copy availability', true);
+    if (action === 'toggle-day-mark') {
+      const dateStr = btn.dataset.date;
+      if (!dateStr) return;
+      if (!state.headerMarkedDates) state.headerMarkedDates = new Set();
+      if (state.headerMarkedDates.has(dateStr)) state.headerMarkedDates.delete(dateStr);
+      else state.headerMarkedDates.add(dateStr);
+      render(root, state);
+      return;
+    }
+    if (action === 'clear-selection') {
+      if (!state.attendeeId) return;
+      restoreSavedSelectionOnly(state);
+      render(root, state);
+      toast('Selection cleared to saved slots only');
+      return;
+    }
+    if (action === 'copy-avail-days') {
+      const result = copyMarkedDaysToClipboard(state);
+      render(root, state);
+      if (!result.ok) {
+        toast(result.message, true);
         return;
       }
-      const added = copyPreviousWeekCandidates(state);
+      toast(result.message);
+      return;
+    }
+    if (action === 'paste-avail-days') {
+      const result = pasteClipboardOntoMarkedDays(state);
       render(root, state);
-      toast(added
-        ? `Copied ${added} slot(s) from previous week — edit then Save`
-        : 'No saved slots in the previous week to copy (or none fall in the bookable range)');
+      toast(result.message, !result.ok);
+      return;
+    }
+    if (action === 'copy-avail-week-next') {
+      const result = copyWeekToNextWeek(state);
+      render(root, state);
+      toast(result.message, !result.ok);
       return;
     }
 
@@ -3612,6 +3716,12 @@
       render(root, state);
       return;
     }
+    if (action === 'toggle-group-days') {
+      state.showAllGroupDays = !state.showAllGroupDays;
+      localStorage.setItem(groupDaysKey(state.slug), state.showAllGroupDays ? 'all' : 'compact');
+      render(root, state);
+      return;
+    }
 
     if (action === 'save-locations') {
       try {
@@ -3840,38 +3950,188 @@
     return target;
   }
 
-  function slotLocalDateStr(iso) {
-    try {
-      return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(iso));
-    } catch (_) {
-      return new Date(iso).toISOString().slice(0, 10);
+  function slotHmInTz(iso, timeZone) {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(new Date(iso)).map((x) => [x.type, x.value])
+    );
+    return {
+      dateStr: `${p.year}-${p.month}-${p.day}`,
+      hour: Number(p.hour),
+      minute: Number(p.minute),
+    };
+  }
+
+  function slotSavedForMe(m, slotIso, attendeeId) {
+    if (!attendeeId) return false;
+    return availabilityIdsAt(m, slotIso).includes(attendeeId);
+  }
+
+  function countCandidateSlots(state, m) {
+    if (!state.attendeeId) return 0;
+    let n = 0;
+    for (const iso of state.selectedSlots) {
+      if (!slotSavedForMe(m, iso, state.attendeeId)) n++;
+    }
+    return n;
+  }
+
+  function restoreSavedSelectionOnly(state) {
+    state.selectedSlots.clear();
+    if (!state.attendeeId) return;
+    for (const [iso, ids] of Object.entries(state.meet.availability || {})) {
+      if ((ids || []).includes(state.attendeeId)) state.selectedSlots.add(iso);
     }
   }
 
-  /** Copy this attendee’s saved slots from the previous week into the current week as candidates. */
-  function copyPreviousWeekCandidates(state) {
+  function savedTimesOnDate(m, attendeeId, dateStr) {
+    const mtz = meetingTz(m);
+    const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
+    const times = [];
+    for (const hm of hours) {
+      const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+      if (slotSavedForMe(m, iso, attendeeId)) {
+        times.push({ hour: hm.hour, minute: hm.minute });
+      }
+    }
+    return times;
+  }
+
+  function markedDatesInViewOrder(state, m) {
+    const days = getVisibleDays(calendarViewStart(state, m), visibleDayCount(), m.show_weekends, m);
+    const marked = state.headerMarkedDates || new Set();
+    return days.map((d) => toDateIso(d)).filter((ds) => marked.has(ds));
+  }
+
+  function copyMarkedDaysToClipboard(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to copy availability' };
+    const dates = markedDatesInViewOrder(state, state.meet);
+    if (!dates.length) {
+      return { ok: false, message: 'Mark one or more day columns first, then Copy days' };
+    }
+    const patterns = dates.map((dateStr) => ({
+      dateStr,
+      times: savedTimesOnDate(state.meet, state.attendeeId, dateStr),
+    }));
+    const withSlots = patterns.filter((p) => p.times.length);
+    if (!withSlots.length) {
+      return { ok: false, message: 'No saved slots on the marked day(s) — save availability first, then copy' };
+    }
+    state.availClipboard = { patterns: withSlots.map((p) => ({ times: p.times })) };
+    state.headerMarkedDates = new Set();
+    const n = withSlots.reduce((sum, p) => sum + p.times.length, 0);
+    return {
+      ok: true,
+      message: `Copied ${withSlots.length} day pattern(s) (${n} saved slot(s)) — mark target day(s), then Paste`,
+    };
+  }
+
+  function applyTimesToDate(state, dateStr, times) {
     const m = state.meet;
-    const me = state.attendeeId;
-    if (!me) return 0;
-    const destStart = calendarViewStart(state, m);
-    const destEnd = addDays(destStart, 6);
-    const srcStart = addDays(destStart, -7);
-    const srcEnd = addDays(destStart, -1);
+    const mtz = meetingTz(m);
     let added = 0;
-    for (const [iso, ids] of Object.entries(m.availability || {})) {
-      if (!Array.isArray(ids) || !ids.includes(me)) continue;
-      const srcDate = parseDateIsoLocal(slotLocalDateStr(iso));
-      if (srcDate < srcStart || srcDate > srcEnd) continue;
-      const destIso = new Date(new Date(iso).getTime() + 7 * 86400000).toISOString();
-      const destDate = parseDateIsoLocal(slotLocalDateStr(destIso));
-      if (destDate < destStart || destDate > destEnd) continue;
-      if (!isDateBookable(m, destDate)) continue;
-      if (!state.selectedSlots.has(destIso)) {
-        state.selectedSlots.add(destIso);
+    let skippedSaved = 0;
+    let skippedRange = 0;
+    if (!isDateBookable(m, parseDateIsoLocal(dateStr))) {
+      return { added: 0, skippedSaved: 0, skippedRange: times.length };
+    }
+    // Skip weekend columns when weekends hidden
+    const dow = parseDateIsoLocal(dateStr).getDay();
+    if (!m.show_weekends && (dow === 0 || dow === 6)) {
+      return { added: 0, skippedSaved: 0, skippedRange: times.length };
+    }
+    for (const t of times) {
+      const iso = slotIsoFromMeetingDate(dateStr, t, mtz);
+      if (slotSavedForMe(m, iso, state.attendeeId)) {
+        skippedSaved++;
+        continue;
+      }
+      if (!state.selectedSlots.has(iso)) {
+        state.selectedSlots.add(iso);
         added++;
       }
     }
-    return added;
+    return { added, skippedSaved, skippedRange };
+  }
+
+  function pasteClipboardOntoMarkedDays(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to paste availability' };
+    const clip = state.availClipboard;
+    if (!clip?.patterns?.length) {
+      return { ok: false, message: 'Nothing to paste — Copy days or Copy week → next first' };
+    }
+    const targets = markedDatesInViewOrder(state, state.meet);
+    if (!targets.length) {
+      return { ok: false, message: 'Mark one or more target day columns, then Paste' };
+    }
+    const patterns = clip.patterns;
+    let mapping = [];
+    if (patterns.length === 1) {
+      mapping = targets.map((dateStr) => ({ dateStr, times: patterns[0].times }));
+    } else if (patterns.length === targets.length) {
+      mapping = targets.map((dateStr, i) => ({ dateStr, times: patterns[i].times }));
+    } else {
+      return {
+        ok: false,
+        message: `Clipboard has ${patterns.length} day(s); mark ${patterns.length} target days (or copy a single day to paste onto many)`,
+      };
+    }
+    let added = 0;
+    let skippedSaved = 0;
+    let skippedRange = 0;
+    for (const row of mapping) {
+      const r = applyTimesToDate(state, row.dateStr, row.times);
+      added += r.added;
+      skippedSaved += r.skippedSaved;
+      skippedRange += r.skippedRange;
+    }
+    state.headerMarkedDates = new Set();
+    let message = added
+      ? `Pasted ${added} unsaved candidate slot(s) — edit then Save`
+      : 'No new candidates added';
+    if (skippedRange) message += `. Some times could not be replicated (${skippedRange} outside bookable range or weekend).`;
+    if (skippedSaved && !skippedRange) message += ` (${skippedSaved} already saved, left unchanged)`;
+    return { ok: added > 0 || skippedSaved > 0, message };
+  }
+
+  function copyWeekToNextWeek(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to copy availability' };
+    const m = state.meet;
+    const days = getVisibleDays(calendarViewStart(state, m), visibleDayCount(), m.show_weekends, m);
+    if (!days.length) return { ok: false, message: 'No days in view' };
+    let added = 0;
+    let skippedSaved = 0;
+    let skippedRange = 0;
+    let sourceSlots = 0;
+    for (const day of days) {
+      const dateStr = toDateIso(day);
+      const times = savedTimesOnDate(m, state.attendeeId, dateStr);
+      sourceSlots += times.length;
+      if (!times.length) continue;
+      const dest = addDays(day, 7);
+      const destStr = toDateIso(dest);
+      const r = applyTimesToDate(state, destStr, times);
+      added += r.added;
+      skippedSaved += r.skippedSaved;
+      skippedRange += r.skippedRange;
+    }
+    if (!sourceSlots) {
+      return { ok: false, message: 'No saved slots in this week to copy — save availability first' };
+    }
+    state.viewStart = clampViewStart(m, shiftViewByDisplayedDays(calendarViewStart(state, m), 7, m.show_weekends));
+    state.headerMarkedDates = new Set();
+    let message = added
+      ? `Copied week → next: ${added} unsaved candidate(s) — edit then Save`
+      : 'Week copy produced no new candidates';
+    if (skippedRange) message += `. Some times could not be replicated (${skippedRange} outside bookable range or weekend).`;
+    return { ok: added > 0 || skippedSaved > 0, message };
   }
 
   function buildHours(startStr, endStr, granularity) {

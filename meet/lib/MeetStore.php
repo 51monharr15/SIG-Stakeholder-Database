@@ -83,6 +83,36 @@ final class MeetStore
         return $meet;
     }
 
+    /** Delete meeting file and its slug alias. Returns true if a file was removed. */
+    public function deleteMeetingBySlug(string $rawSlug): bool
+    {
+        $slug = $this->resolveSlug($rawSlug);
+        $id = $this->lookupIdBySlug($slug);
+        if ($id === null) {
+            return false;
+        }
+        $meetPath = $this->meetPath($id);
+        $aliasPath = $this->aliasPath($slug);
+        $ok = false;
+        if (is_file($meetPath)) {
+            $ok = @unlink($meetPath) || $ok;
+        }
+        if (is_file($aliasPath)) {
+            @unlink($aliasPath);
+        }
+        // Drop any other aliases that still point at this id.
+        $aliasDir = $this->dataDir . '/aliases';
+        if (is_dir($aliasDir)) {
+            foreach (glob($aliasDir . '/*.alias') ?: [] as $path) {
+                $content = trim((string) file_get_contents($path));
+                if ($content === $id) {
+                    @unlink($path);
+                }
+            }
+        }
+        return $ok;
+    }
+
     public function update(string $id, callable $mutator): array
     {
         $path = $this->meetPath($id);
