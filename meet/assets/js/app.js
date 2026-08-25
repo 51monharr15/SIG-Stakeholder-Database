@@ -1071,7 +1071,7 @@
     const topLocations = locationRanked.slice(0, 3);
     const kind = meetingStatusKind(m, state);
     const agendaOpen = kind !== 'past' && kind !== 'summarised';
-    const recordsOpen = kind === 'past' || kind === 'summarised';
+    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
     const availabilityCount = m.attendees.filter((a) => countSlotsFor(m, a.id) > 0).length;
     const timeSummary = m.confirmed_slot
       ? formatTimePair(m.confirmed_slot, m)
