@@ -477,12 +477,12 @@ Help body: Enter plain text or simple HTML. Tags not in the allowed list are str
 
 ### Lead
 - **Don't forget to save after making changes.** Meeting length, Calendar slot size, Bookable dates and hours. *(when view-only: View only — organiser can edit.)*
-- Header **Save**; each editable pane summary and pane body also carry **Save**; form footer **Save**
-- **All Save buttons on this tab do the same thing:** they submit the whole Calendar Options form (`update-settings`) — title, length, slot size, weekends, bookable dates, and daily hours together. Panel-level Saves are not limited to one pane.
+- Each editable pane summary and pane body carry **Save** (no separate panel top/footer Save — avoids duplicate buttons stacked beside pane Saves).
+- **All Save buttons on this tab do the same thing:** they submit the whole Calendar Options form (`update-settings`) — title, length, slot size, weekends, bookable dates, and daily hours together.
 - Nav when no attendees yet: Back to Getting started · Next step: Attendees →
 - Meeting base timezone is a **hidden** field (first attendee); there is **no** timezone-picker pane.
 
-Saving Calendar Options is what marks Getting started step **Set Calendar Options** with ✓.
+Saving Calendar Options is what marks Getting started step **Set Calendar Options** with ✓. After save, My availability jumps to the bookable start date.
 
 ### Meeting length & calendar `opts-length`
 
