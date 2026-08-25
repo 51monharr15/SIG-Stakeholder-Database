@@ -223,6 +223,26 @@ button.btn-disabled {
   font-weight: 600;
 }
 
+.dash-btn-new {
+  margin-left: 0.35rem;
+  border-style: dashed;
+}
+
+.passcode-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.passcode-field input {
+  min-width: 8rem;
+}
+
+.passcode-toggle {
+  flex-shrink: 0;
+}
+
 /* Help panel */
 .help-panel {
   border: 1px solid var(--line);
@@ -341,6 +361,14 @@ button.btn-disabled {
   border-bottom-left-radius: 0;
   margin-left: 0.15rem;
   padding-left: 0.35rem;
+}
+
+.time-label.hour-gap-before,
+.slot.hour-gap-before,
+.group-slot.hour-gap-before {
+  border-top: 3px solid #111827;
+  margin-top: 0.2rem;
+  padding-top: 0.2rem;
 }
 
 .legend-chip {
@@ -626,7 +654,7 @@ button.linkish {
 }
 
 .confirm-section .calendar-toolbar-sticky {
-  /* Sticky date nav inside Set confirmed — same behaviour as My availability */
+  /* Sticky date nav inside Confirm meeting choices — same behaviour as My availability */
   z-index: 6;
 }
 
@@ -1871,7 +1899,7 @@ details summary { cursor: pointer; }
   margin: 0;
 }
 
-/* Set confirmed section panels */
+/* Confirm meeting choices section panels */
 .confirm-section-time,
 .confirm-section-locations {
   border: 1px solid var(--line);
@@ -1886,8 +1914,24 @@ details summary { cursor: pointer; }
 }
 
 .confirm-section-locations {
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  background: #fff;
+  border-color: var(--line);
+}
+
+.confirm-section-locations .confirm-locations-plain {
+  background: transparent;
+}
+
+.locations-table-vote .loc-row.loc-vote-full {
+  background: #bbf7d0;
+}
+
+.locations-table-vote .loc-row.loc-vote-partial {
+  background: #ede9fe;
+}
+
+.locations-table-vote .loc-row.loc-vote-none {
+  background: #f8fafc;
 }
 
 .confirm-section-inner {

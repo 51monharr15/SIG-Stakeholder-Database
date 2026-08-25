@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.40  
+**Build:** 1.8.41  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -13,13 +13,13 @@ Also user-visible but outside this hierarchy: `meet/docs/OPERATIONS.md` (via `op
 
 | Symbol | Meaning |
 |--------|---------|
-| **Panel** | One green dashboard tab's working area |
+| **Panel** | One dashboard tab's working area (green is only the nav **buttons**, not the panel fill) |
 | **Pane** | Bordered tinted region (or expandable block) |
 | `[expand]` | Collapsible; open/closed remembered per meeting |
 | `[secondary]` | Closed on first visit |
 | *tint* | Semantic background colour |
 
-**Tints:** lavender = dates/times · clearer blue `#e0f2fe` = text · pink = people · teal places `#ccfbf1` = places · amber = attachments · light blue = create · lime find `#f7fee7` = find
+**Tints (RGB next revision):** lavender = dates/times · clearer blue `#e0f2fe` = text · pink = people · teal places `#ccfbf1` = places · amber = attachments · light blue = create · lime find `#f7fee7` = find
 
 **Pane IDs** (persisted): see § Pane ID reference at end.
 
@@ -31,7 +31,7 @@ Browser timezone is normally `Intl.DateTimeFormat().resolvedOptions().timeZone`.
 
 When that parameter is present and valid, the site footer shows `{tz} (test)` (e.g. `Europe/Paris (test)`). Invalid values are ignored and the browser’s real timezone is used. The browser **cannot** read OS environment variables for a timezone override — only this query string (or the device/browser locale settings) applies.
 
-Meeting **base timezone** is set from the **first attendee** (their client timezone on join). Bookable daily hours in Calendar Options are edited in the **viewer’s local timezone** and stored consistently (UTC / meeting wall) so everyone sees matching local times. There is **no** Calendar Options timezone-picker pane (`opts-timezone` removed).
+Meeting **base timezone** is set from the **first attendee** (their client timezone on join). Bookable daily hours in Calendar Options are edited in the **viewer’s local timezone** and stored consistently (UTC / meeting wall) so everyone sees matching local times. There is **no** Calendar Options timezone-picker pane (`opts-timezone` removed). Base TZ left as-is (anchors stored day hours; slots are UTC; viewers see local).
 
 ---
 
@@ -62,8 +62,8 @@ Meeting **base timezone** is set from the **first attendee** (their client timez
 | Label | Registered identity |
 | Placeholder | e.g. Alice@gmail.com or Bob |
 | Label | Passcode |
-| Passcode title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. |
-| Passcode field | Password input (no show/hide eye button); maxlength 20 |
+| Passcode title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. Leading spaces stripped. |
+| Passcode field | Password input with **Show** / **Hide** toggle; maxlength 20 |
 | Button | List my meetings |
 | Results (empty) | No meetings found for that name and passcode. Identity misspelt or Passcode not matching. |
 | Results (count) | 1 meeting found / {N} meetings found |
@@ -95,19 +95,22 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 
 ### Signed-in banner
 - Currently signed in as **{name}** (Organiser \| Attendee)
+- **No attendees yet** (when the meeting has no attendee rows)
+- **No signed-in attendee** (when attendees exist but this browser is not signed in)
 - Title: Manage attendee identities on the Attendees tab
 
 ### Status strip
 
 **Description** stays its own expandable line. **Agenda items, Decisions, and Attachments** share **one** expandable heading with counts; expand to see all three sections.
 
+Scheduled times always show **start and end** (end = start + meeting length) in the viewer’s timezone, plus UTC.
+
 | Kind | Text |
 |------|------|
 | Label | Status: |
 | Values | Entering organiser details · Entering attendee details · Scheduled · Rescheduled · Past · Summarised |
-| Status tip | Status progresses as the meeting is set up: entering details → Scheduled (organiser accepted a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the accepted time and location. |
-| Time (scheduled) | Time: {pair} |
-| Time (proposed) | Time (proposed): {pair} |
+| Status tip | Status progresses as the meeting is set up: entering details → Scheduled (organiser sets a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the scheduled time and location. |
+| Time (scheduled) | Time: **{weekday date, start – end}** ({tz}) ({utc}) |
 | Time (none) | No date and time selected |
 | Recurrence | Recurrence: {label} — default **One-off** |
 | Locations | Locations: {list} / Locations (proposed): {list} / No locations confirmed |
@@ -117,9 +120,9 @@ Header action buttons are fully clickable (`pointer-events: auto`, elevated z-in
 | Combined summary | Agenda items ({N}) · Decisions ({D}) · Attachments ({A}) |
 | Combined body — Agenda | **Agenda** + bullets, or **Agenda** — none yet. Go to **Meeting Resources** to add items. |
 | Combined body — Decisions | **Decisions required** + bullets, or **Decisions required** — none yet. Go to **Meeting Resources** to add them. |
-| Combined body — Attachments (URL) | Label as link (opens in a new window) |
-| Combined body — Attachments (text) | {label} — text attachment; open **Meeting Resources** → **Attachments** for the full content. |
-| Combined body — Attachments empty | **Attachments** — none yet. Go to **Meeting Resources** to add them. |
+| Combined body — Attachments (URL) | Label as link **(opens in a new window)** |
+| Combined body — Attachments (text) | {label} — text attachment; open **Meeting Resources** → **Attachments** for the full content. **TODO** check behaviour |
+| Combined body — Attachments empty | **Attachments** — none yet. Go to **Meeting Resources** to add them. **TODO** check behaviour |
 
 **Past** and **Summarised** are status labels (after the scheduled start; Summarised when attachments exist). There is **no** Past dashboard tab.
 
@@ -141,7 +144,8 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 | My availability | Mark free slots. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday. |
 | Meeting Resources | Description, agenda, notes, attachments. |
 | Calendar Options | Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly). |
-| Set confirmed meeting details | Group’s calendar; organiser picks start date & time and location(s) URL / physical address. |
+| Confirm meeting choices | Group calendar and locations — click a start to save it; click again to clear. Confirm location preferences. |
+| New meeting | Start a completely fresh meeting |
 
 ### Help panel *(opens on “How to use this”)*
 
@@ -158,16 +162,17 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 | Organiser step 4 | **My availability** — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press *Save*. |
 | Organiser step 5 | **Locations** — propose online and/or physical places; attendees vote which work for them. |
 | Organiser step 6 | **Share the link** — *Copy meeting link* and send it to attendees. |
-| Organiser step 7 | **Set confirmed meeting details** — *Group calendar*: everyone’s marks on one grid. Organiser picks start and location(s), then accepts. Partial overlap is OK. |
+| Organiser step 7 | **Confirm meeting choices** — *Group calendar*: everyone’s marks on one grid. Organiser clicks a start to save it (click again to clear), and confirms location(s). Partial overlap is OK. |
 | Attendee heading | Joining a meeting (attendee) |
 | Attendee step 1 | Open the meeting link you were sent. You will see the meeting title and current status. |
 | Attendee step 2 | Go to **Attendees**. If you are already listed, tick *Me* on your row and enter your passcode if prompted. If you are not listed, fill in the *Add new attendee* form with your name. |
 | Attendee step 3 | Open **My availability** and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press *Save*. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again. |
 | Attendee step 4 | Open **Locations** to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location. |
-| Attendee step 5 | Open **Set confirmed meeting details** to see the *Group calendar* — how times overlap and what is proposed or scheduled. |
+| Attendee step 5 | Open **Confirm meeting choices** to see the *Group calendar* — how times overlap and what is scheduled. |
 | Attendee step 6 | Check the top status line for the current scheduled time and location. |
 | Attendee step 7 | Repeat any of these steps as the meeting evolves — there is no fixed order. |
 | Footer | The **meeting link** is the only way back to this meeting unless you set a passcode. The *Find my meetings* option on the home page lets you look up a list of meetings **if** you know a registered name **and matching passcode.** |
+| **TODO** | Expand Help panel copy further when Simon marks CHECK |
 
 ---
 
@@ -196,7 +201,7 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | 4 (O/E) | **(Optional)** **Go to Attendees** — Add others as proposed attendees. Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees. |
 | 5 (E) | **Go to My availability** and select time slots that work for you. Select enough booking slots for partial or full availability. |
 | 6 (E) | **Go to Locations** — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations. |
-| 7 (O) | **Set Confirmed Meeting Details** — **Organiser status required to edit.** All can view. Confirm a meeting date, time and location(s). (Can be amended.) **Go to Set confirmed meeting details** |
+| 7 (O) | **Confirm meeting choices** — **Organiser status required to edit.** All can view. Click a start to save the meeting date and time (click again to clear). Confirm location(s). (Can be amended.) **Go to Confirm meeting choices** |
 | 8 (E) | **Share the link** — Copy meeting link and send it to all attendees so they can open this meeting and enter their availability. Button: **Copy meeting link** |
 | Done (complete) | **Setup complete.** You can keep using this checklist any time, or move on to Overview and the other tabs. |
 | Done (incomplete) | This checklist stays visible at all times. |
@@ -217,7 +222,7 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Kind | Text |
 |------|------|
 | Summary | Time · Recurrence |
-| Time | **Scheduled time:** / **Proposed time:** {pair} / {pair} (proposed) / None selected yet |
+| Time | **Scheduled time:** {start – end pair with tz + UTC} / None selected yet |
 | Length | **Meeting length:** {dur} · **Calendar slot:** {slot} |
 | Recurrence | **Recurrence:** {label} (default One-off) |
 
@@ -249,8 +254,8 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Line (full) | {time} — {n} of {total} free for full meeting ({dur}) |
 | Line (mixed) | {time} — {n} of {total} for full {dur}; {p} partial |
 | Line (partial) | {time} — {n} of {total} marked (partial overlap) |
-| Hint | Confirm one with **Set confirmed meeting details**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
-| Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Set confirmed meeting details**. |
+| Hint | Confirm one with **Confirm meeting choices**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
+| Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Confirm meeting choices**. |
 
 ### Top locations *tint-places* (teal `#ccfbf1`)
 
@@ -378,7 +383,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 | Kind | Text |
 |------|------|
-| Headers | Notes · Location · OK with · OK / with me · Confirmed *(Set confirmed tab only)* |
+| Headers | Notes · Location · OK with · OK / with me · Confirmed *(Confirm meeting choices tab only)* |
 | OK with title | Initials of attendees who marked OK with me |
 | OK with me title | Toggle if this location works for you |
 | Confirmed title | Organiser confirms for the meeting |
@@ -417,6 +422,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | Day extras | today · recurring |
 | Time labels | Local / test timezone on top (larger); optional alternate timezone below (smaller, underlined) — tap to cycle recorded attendee timezones |
 | Time label title | Local time · tap second time to cycle attendee timezones *(when alternates exist)* |
+| Alt timezone button title | {tz} — recorded attendee timezone — click for next |
 
 ### Save band (dual Save)
 
@@ -505,37 +511,46 @@ Saving Calendar Options is what marks Getting started step **Set Calendar Option
 
 ---
 
-## Set confirmed meeting details
+## Confirm meeting choices
+
+Click behaviour (consistent everywhere — UI, Help, Getting started, Operations):
+
+1. **First click** on a Group calendar slot **saves** that start immediately as the scheduled meeting start (end = start + meeting length).
+2. **Second click on the same slot** **clears** the scheduled start.
+3. **Click on a different slot** **reschedules** to the new start.
+
+There is no separate session-only “propose” step and no separate Confirm button for time.
 
 ### Lead
-- **Group calendar** — everyone’s availability on one grid. Meeting length {dur}; slots {gran} each.{slotHint}
+- **Group calendar & location preferences** — everyone’s availability on one sparse grid (empty hours hidden). Click a start time to **save it immediately**; click the same start again to clear. Meeting length {dur}; slots {gran} each. Preferred locations below.
 
-### Meeting link `group-link` *tint-text*
-- **Meeting link** (title: Share this link so others can open the meeting)
-- **Copy meeting link** (title: Copy meeting link to clipboard)
+### Propose / confirm a meeting date and time `group-time` *tint-dates*
 
-### Proposed meeting date & time `group-time` *tint-dates*
-
-**Day column headings stick to the viewport** under the sticky dashboard (same as My availability). Colour key sits **inside this pane** (applies to the calendar).
+**Day column headings stick to the viewport** under the sticky dashboard (same as My availability). Colour key sits **inside this pane**. A thicker horizontal line marks a gap where empty hours were omitted.
 
 | Kind | Text |
 |------|------|
-| Summary | **Proposed meeting date & time** (title: Pick a meeting start from the Group calendar) |
-| Confirm (proposed) | Confirm date & time: {time} |
-| Confirm (none) | Confirm date & time: None proposed |
-| Confirmed (scheduled) | Confirmed: {time} (disabled) |
-| Titles | Confirm this start as the scheduled date and time / Confirm this new start as the scheduled date and time (reschedules the meeting) / Select a start slot below first / This date and time is already scheduled / Organiser status required |
-| Hint | Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC. |
-| Selected | **Currently selected meeting start:** {pair} / none selected yet — tap a slot below to set it |
+| Summary | **Propose / confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
+| Status (none) | **Meeting start:** none scheduled yet — click a slot below to save one *(organiser only when not org)* |
+| Status (scheduled) | **Meeting scheduled:** {start – end pair with tz + UTC}. Click the same slot again to clear |
+| Hint | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}) |
 | Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
-| Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. |
+| Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted. |
 | Initials note | **Initials** in cells show who marked that slot on My availability. |
 | Time labels | Same local (+ optional cycling alt timezone) behaviour as My availability |
-| Legend | Light green = all attendees, full meeting · Amber = all attendees, partial meeting · Purple = some attendees available · Dark green border = selected start |
-### Proposed locations `group-locations` *tint-places* (teal `#ccfbf1`)
-- **Proposed locations**
-- Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** using the Locations tab.
-- Same locations table as Locations + **Confirmed** column (horizontal scroll)
+| Legend | Light green = all attendees available for full meeting if this start is chosen · Amber = all attendees, only partial meeting if this start is chosen · Purple = some attendees unavailable if this start is chosen · Dark green border = scheduled start |
+
+### Propose / confirm a meeting location `group-locations`
+
+No whole-pane teal wash — row colours match the calendar key (all / some / none OK).
+
+| Kind | Text |
+|------|------|
+| Summary | **Propose / confirm a meeting location** |
+| Lead | Organiser: toggle **Confirmed** (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark **OK with me** on the Locations tab. Row colours match the calendar key (all / some / none OK with this location). URLs open in a new window and can be copied. |
+| Table | Same locations table as Locations + **Confirmed** column (horizontal scroll); vote-tint rows; URL cells are links **and** Copy |
+
+**Removed:** Meeting link pane (`group-link`) — Copy meeting link remains in the sticky header.
 
 ---
 
@@ -561,11 +576,10 @@ URL: `operations.php` — renders `docs/OPERATIONS.md` (not app UI panes). Linke
 | `opts-length` | Calendar Options — Meeting length & calendar |
 | `opts-booking` | Calendar Options — Bookable dates & daily hours |
 | `opts-recurrence` | Calendar Options — Recurrence (future) |
-| `group-link` | Set confirmed — Meeting link |
-| `group-time` | Set confirmed — Proposed meeting date & time |
-| `group-locations` | Set confirmed — Proposed locations |
+| `group-time` | Confirm meeting choices — Propose / confirm a meeting date and time |
+| `group-locations` | Confirm meeting choices — Propose / confirm a meeting location |
 
-**Removed:** `opts-timezone` (Calendar hours & timezone picker — no longer in the UI).
+**Removed:** `opts-timezone` (Calendar hours & timezone picker — no longer in the UI). **Removed:** `group-link` (Meeting link pane on Confirm tab — use header Copy meeting link).
 
 Overview and Getting started do not use persisted pane IDs. First-add attendee pane (no attendees yet) is a non-collapsible `pane-region` and has no pane ID. My availability calendar grid is a `pane-region` without a persisted pane ID.
 

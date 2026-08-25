@@ -53,9 +53,19 @@
       .replace(/[^\x20-\x7e]/g, '')
       .replace(/ {2,}/g, ' ');
   }
-  function normalizePasscode(raw) {
-    const p = sanitizePasscode(raw);
-    return (p.length >= 2 && p.length <= 20) ? p : '';
+  function passcodeInputHtml({
+    name = 'pin',
+    value = '',
+    required = false,
+    placeholder = '',
+    title = PASSCODE_TIP,
+    autocomplete = 'new-password',
+    extraClass = 'input-pin',
+  } = {}) {
+    return `<span class="passcode-field">
+      <input class="${escapeHtml(extraClass)}" name="${escapeHtml(name)}" type="password" value="${escapeHtml(value)}"${required ? ' required' : ''} maxlength="20" size="12" autocomplete="${escapeHtml(autocomplete)}" title="${escapeHtml(title)}" placeholder="${escapeHtml(placeholder)}">
+      <button type="button" class="passcode-toggle compact-btn" data-action="toggle-passcode" title="Show passcode" aria-label="Show passcode">Show</button>
+    </span>`;
   }
   const PASSCODE_TIP = '2 to 20 characters: 0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
   const PASSCODE_LEN_ERR = 'Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).';
@@ -70,6 +80,17 @@
   } else if (page === 'scheduler') {
     initScheduler(document.body.dataset.slug);
   }
+
+  document.getElementById('find-pin-toggle')?.addEventListener('click', () => {
+    const input = document.getElementById('find-pin-input');
+    const btn = document.getElementById('find-pin-toggle');
+    if (!input || !btn) return;
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.textContent = showing ? 'Show' : 'Hide';
+    btn.title = showing ? 'Show passcode' : 'Hide passcode';
+    btn.setAttribute('aria-label', btn.title);
+  });
 
   // ─── Home page ───────────────────────────────────────────────────────────────
 
@@ -335,7 +356,8 @@
     const alt = new Date(iso).toLocaleTimeString(undefined, {
       hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: altTz,
     });
-    return `<span class="tz-local">${escapeHtml(local)}</span><button type="button" class="tz-alt-btn" data-action="cycle-alt-tz" title="Next timezone: ${escapeHtml(altTz)}">${escapeHtml(alt)}</button>`;
+    const tip = `${altTz} — recorded attendee timezone — click for next`;
+    return `<span class="tz-local">${escapeHtml(local)}</span><button type="button" class="tz-alt-btn" data-action="cycle-alt-tz" title="${escapeHtml(tip)}">${escapeHtml(alt)}</button>`;
   }
 
   /** Parse slot size or custom duration: plain minutes, 90m, 1.5h, 2,5h (comma decimal). */
@@ -683,7 +705,7 @@
     { id: 'calendar',   label: 'My availability',   tip: 'Mark free slots. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday.' },
     { id: 'agenda',     label: 'Meeting Resources', tip: 'Description, agenda, notes, attachments.' },
     { id: 'options',    label: 'Calendar Options',    tip: 'Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly).' },
-    { id: 'group',      label: 'Set confirmed meeting details', tip: 'Group’s calendar; organiser picks start date & time and location(s) URL / physical address.' },
+    { id: 'group',      label: 'Confirm meeting choices', tip: 'Group calendar and locations — click a start to save it; click again to clear. Confirm location preferences.' },
   ];
 
   function allValidTabs(m, attendee) {
@@ -725,7 +747,7 @@
                 <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
-            ${attendee ? renderSignedInBanner(attendee) : ''}
+            ${renderSignedInBanner(m, attendee)}
             ${compactHeader ? renderMeetingStatusCompact(m, state) : ''}
             ${!compactHeader ? renderMeetingStatus(m, state) : ''}
             <nav class="dashboard-nav" aria-label="Meeting sections">
@@ -780,17 +802,24 @@
 
   // ─── Dashboard nav ───────────────────────────────────────────────────────────
 
-  function renderSignedInBanner(attendee) {
+  function renderSignedInBanner(m, attendee) {
+    if (!m.attendees?.length) {
+      return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">No attendees yet</p>`;
+    }
+    if (!attendee) {
+      return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">No signed-in attendee</p>`;
+    }
     const role = attendee.is_organizer ? 'Organiser' : 'Attendee';
     return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">Currently signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> (${role})</p>`;
   }
 
   function renderDashboardNav(m, state, attendee) {
-    return TAB_DEFS
-      .map((t) => {
-        const active = state.activeTab === t.id;
-        return `<button type="button" class="dash-btn${active ? ' active' : ''}" data-action="tab" data-tab="${t.id}" title="${escapeHtml(t.tip)}">${escapeHtml(t.label)}</button>`;
-      }).join('');
+    const tabs = TAB_DEFS.map((t) => {
+      const active = state.activeTab === t.id;
+      return `<button type="button" class="dash-btn${active ? ' active' : ''}" data-action="tab" data-tab="${t.id}" title="${escapeHtml(t.tip)}">${escapeHtml(t.label)}</button>`;
+    }).join('');
+    const newMeet = `<button type="button" class="dash-btn dash-btn-new" data-action="new-meeting" title="Start a completely fresh meeting">New meeting</button>`;
+    return tabs + newMeet;
   }
 
   // ─── Meeting status strip ────────────────────────────────────────────────────
@@ -806,7 +835,7 @@
     summarised: 'Summarised',
   };
 
-  const STATUS_TIP = 'Status progresses as the meeting is set up: entering details → Scheduled (organiser accepted a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the accepted time and location.';
+  const STATUS_TIP = 'Status progresses as the meeting is set up: entering details → Scheduled (organiser sets a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the scheduled time and location.';
 
   function meetingStatusKind(m, state) {
     if (!m.attendees.length) return 'organiser';
@@ -833,13 +862,10 @@
     const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
     const recurrenceLabel = escapeHtml(m.recurrence_label || 'One-off');
     let timeHtml;
-    if (scheduled) {
-      timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot)}</span>`;
+    if (m.confirmed_slot) {
+      timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot, m)}</span>`;
     } else {
-      const pendingSlot = effectiveConfirmSlot(state, m);
-      timeHtml = pendingSlot
-        ? `<span class="meta">Time (proposed): ${formatTimePair(pendingSlot)}</span>`
-        : '<span class="meta">No date and time selected</span>';
+      timeHtml = '<span class="meta">No date and time selected</span>';
     }
     const recurrenceHtml = `<span class="meta">Recurrence: ${recurrenceLabel}</span>`;
     const locIds = confirmedLocationIdsForDisplay(m, state);
@@ -884,7 +910,7 @@
     const attachItems = attachments.map((att) => {
       if (att.type === 'url' && att.url) {
         const href = normalizeExternalUrl(att.url);
-        return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label || att.url)}</a></li>`;
+        return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label || att.url)}</a> <span class="label-hint">(opens in a new window)</span></li>`;
       }
       return `<li>${escapeHtml(att.label || 'Untitled')} — text attachment; open <strong>Meeting Resources</strong> → <strong>Attachments</strong> for the full content.</li>`;
     }).join('');
@@ -929,7 +955,7 @@
                 <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save</em>.</li>
                 <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
                 <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
-                <li><strong>Set confirmed meeting details</strong> — <em>Group calendar</em>: everyone’s marks on one grid. Organiser picks start and location(s), then accepts. Partial overlap is OK.</li>
+                <li><strong>Confirm meeting choices</strong> — <em>Group calendar</em>: everyone’s marks on one grid. Organiser clicks a start to save it (click again to clear), and confirms location(s). Partial overlap is OK.</li>
               </ol>
             </div>
             <div class="help-col">
@@ -939,7 +965,7 @@
                 <li>Go to <strong>Attendees</strong>. If you are already listed, tick <em>Me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
                 <li>Open <strong>My availability</strong> and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press <em>Save</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
                 <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
-                <li>Open <strong>Set confirmed meeting details</strong> to see the <em>Group calendar</em> — how times overlap and what is proposed or scheduled.</li>
+                <li>Open <strong>Confirm meeting choices</strong> to see the <em>Group calendar</em> — how times overlap and what is scheduled.</li>
                 <li>Check the top status line for the current scheduled time and location.</li>
                 <li>Repeat any of these steps as the meeting evolves — there is no fixed order.</li>
               </ol>
@@ -1010,9 +1036,9 @@
           </li>
           <li>
             <strong>${setup.stepConfirm ? '✓ ' : ''}</strong>
-            (O): <strong>Set Confirmed Meeting Details</strong> —
-            <strong>Organiser status required to edit.</strong> All can view. Confirm a meeting date, time and location(s). (Can be amended.)
-            ${go('group', 'Go to Set confirmed meeting details')}
+            (O): <strong>Confirm meeting choices</strong> —
+            <strong>Organiser status required to edit.</strong> All can view. Click a start to save the meeting date and time (click again to clear). Confirm location(s). (Can be amended.)
+            ${go('group', 'Go to Confirm meeting choices')}
           </li>
           <li>
             <strong>${setup.stepShare ? '✓ ' : ''}</strong>
@@ -1041,11 +1067,9 @@
     const agendaOpen = kind !== 'past' && kind !== 'summarised';
     const recordsOpen = kind === 'past' || kind === 'summarised';
     const availabilityCount = m.attendees.filter((a) => countSlotsFor(m, a.id) > 0).length;
-    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
-    const pendingSlot = effectiveConfirmSlot(state, m);
-    const timeSummary = scheduled && m.confirmed_slot
-      ? formatTimePair(m.confirmed_slot)
-      : (pendingSlot ? `${formatTimePair(pendingSlot)} (proposed)` : 'None selected yet');
+    const timeSummary = m.confirmed_slot
+      ? formatTimePair(m.confirmed_slot, m)
+      : 'None selected yet';
 
     return `
       <section class="panel stack overview-panel">
@@ -1053,7 +1077,7 @@
         <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places.</p>
         <details class="overview-block tint-dates"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence</summary>
-          <p class="meta"><strong>${scheduled ? 'Scheduled' : 'Proposed'} time:</strong> ${timeSummary}</p>
+          <p class="meta"><strong>Scheduled time:</strong> ${timeSummary}</p>
           <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
           <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
         </details>
@@ -1068,8 +1092,8 @@
         <details class="overview-block tint-dates"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
           ${sorted.length
             ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatOverviewTimeSuggestion(m, s)}</li>`).join('')}</ul>
-               <p class="meta">Confirm one with <strong>Set confirmed meeting details</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap.</p>`
-            : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Set confirmed meeting details</strong>.</p>'}
+               <p class="meta">Confirm one with <strong>Confirm meeting choices</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap.</p>`
+            : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Confirm meeting choices</strong>.</p>'}
         </details>
         <details class="overview-block tint-places"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
           ${renderConfirmedLocationsSummary(m, state, scheduled)}
@@ -1130,15 +1154,16 @@
   function formatOverviewTimeSuggestion(m, s) {
     const total = m.attendees.length;
     const durLabel = formatDurationLabel(m.duration_minutes);
+    const when = formatTimePair(s.slot, m);
     if (s.kind === 'full' || s.fullCount === total) {
-      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} free for full meeting (${durLabel})`;
+      return `${when} — ${s.fullCount} of ${total} free for full meeting (${durLabel})`;
     }
     if (s.fullCount > 0) {
       const partialNote = s.partialCount ? `; ${s.partialCount} partial` : '';
-      return `${formatTimePair(s.slot)} — ${s.fullCount} of ${total} for full ${durLabel}${partialNote}`;
+      return `${when} — ${s.fullCount} of ${total} for full ${durLabel}${partialNote}`;
     }
     const marked = s.fullCount + s.partialCount;
-    return `${formatTimePair(s.slot)} — ${marked} of ${total} marked (partial overlap)`;
+    return `${when} — ${marked} of ${total} marked (partial overlap)`;
   }
 
   function renderConfirmedLocationsSummary(m, state, scheduled) {
@@ -1310,84 +1335,70 @@
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
-        <p class="meta pane-lead"><strong>Group calendar</strong> — everyone’s availability on one grid. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each.${calendarNavHint(m)}</p>
-        <details ${paneDetailsAttrs(state, 'group-link', { extraClass: 'tint-text confirm-section confirm-section-link' })}>
-          <summary title="Share this link so others can open the meeting">Meeting link</summary>
-          <div class="confirm-section-inner share-row row">
-            <input class="share-input" type="text" readonly value="${escapeHtml(shareUrl(state.slug))}" id="share-url-input">
-            <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link to clipboard">Copy meeting link</button>
-          </div>
-        </details>
+        <p class="meta pane-lead"><strong>Group calendar &amp; location preferences</strong> — everyone’s availability on one sparse grid (empty hours hidden). Click a start time to <strong>save it immediately</strong>; click the same start again to clear. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each. Preferred locations below.</p>
         <details ${paneDetailsAttrs(state, 'group-time', { extraClass: 'confirm-section confirm-section-time tint-dates' })}>
-          <summary title="Pick a meeting start from the Group calendar">Proposed meeting date &amp; time</summary>
+          <summary title="Click a start on the Group calendar to save or clear it">Propose / confirm a meeting date and time</summary>
           <div class="confirm-section-inner stack">
-            ${renderAcceptTimeButton(isOrg, state, m)}
-            <p class="meta">Click a slot to set the proposed start. Click again to clear. Times shown in your timezone and UTC.</p>
+            ${renderScheduledStartStatus(isOrg, m)}
+            <p class="meta">Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.</p>
             <div class="row">
-              <p class="meta"><strong>Currently selected meeting start:</strong> ${selected ? formatTimePair(selected) : 'none selected yet — tap a slot below to set it'}</p>
               <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
             </div>
-            ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight.</p>' : ''}
+            ${!state.showAllGroupHours ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted.</p>' : ''}
             <div class="calendar-scroll">
             <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
-                ${hours.map((hm) => `
-                  <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
-                  ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i))).join('')}
+                ${hours.map((hm, hi) => `
+                  <div class="time-label${hourHasGapBefore(hours, hi, m.slot_granularity_minutes) ? ' hour-gap-before' : ''}" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
+                  ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i), hourHasGapBefore(hours, hi, m.slot_granularity_minutes))).join('')}
                 `).join('')}
               </div>
             </div>
             </div>
             <p class="meta slot-legend-note"><strong>Initials</strong> in cells show who marked that slot on My availability.</p>
             <div class="row group-legend">
-              <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees, full meeting</span>
-              <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, partial meeting</span>
-              <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees available</span>
-              <span class="legend-chip selected" title="Your current proposed start before Confirm">Dark green border = selected start</span>
+              <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees available for full meeting if this start is chosen</span>
+              <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, only partial meeting if this start is chosen</span>
+              <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees unavailable if this start is chosen</span>
+              <span class="legend-chip selected" title="Current scheduled meeting start">Dark green border = scheduled start</span>
             </div>
-            ${renderAcceptTimeButton(isOrg, state, m)}
+            ${renderScheduledStartStatus(isOrg, m)}
           </div>
         </details>
-        <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations tint-places' })}>
-          <summary>Proposed locations</summary>
+        <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations' })}>
+          <summary>Propose / confirm a meeting location</summary>
           <div class="confirm-section-inner">
-            <p class="meta pane-lead">Organiser: toggle <strong>Confirmed</strong> (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark <strong>OK with me</strong> using the Locations tab.</p>
-            ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true })}
+            <p class="meta pane-lead">Organiser: toggle <strong>Confirmed</strong> (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark <strong>OK with me</strong> on the Locations tab. Row colours match the calendar key (all / some / none OK with this location). URLs open in a new window and can be copied.</p>
+            ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true, voteTint: true })}
           </div>
         </details>
       </section>`;
   }
 
+  function hourHasGapBefore(hours, index, granularityMinutes) {
+    if (index <= 0) return false;
+    const prev = hours[index - 1];
+    const cur = hours[index];
+    const step = Number(granularityMinutes) || 30;
+    const prevMins = prev.hour * 60 + prev.minute;
+    const curMins = cur.hour * 60 + cur.minute;
+    return (curMins - prevMins) > step;
+  }
+
+  function renderScheduledStartStatus(isOrg, m) {
+    const slot = m.confirmed_slot || '';
+    if (!slot) {
+      return `<p class="meta"><strong>Meeting start:</strong> none scheduled yet — click a slot below to save one${isOrg ? '' : ' (organiser only)'}.</p>`;
+    }
+    return `<p class="meta"><strong>Meeting scheduled:</strong> ${formatTimePair(slot, m)}. Click the same slot again to clear${isOrg ? '' : ' (organiser only)'}.</p>`;
+  }
+
   function renderAcceptTimeButton(isOrg, state, m) {
-    const slot = effectiveConfirmSlot(state, m);
-    const alreadyAccepted = slot && isSlotAlreadyAccepted(m, slot) && !hasPendingConfirmChange(state, m);
-    let label;
-    let disabled = false;
-    let title;
-    if (alreadyAccepted) {
-      label = `Confirmed: ${formatSlotLocal(m.confirmed_slot)}`;
-      disabled = true;
-      title = 'This date and time is already scheduled';
-    } else if (slot) {
-      label = `Confirm date & time: ${formatSlotLocal(slot)}`;
-      title = m.confirmed_slot
-        ? 'Confirm this new start as the scheduled date and time (reschedules the meeting)'
-        : 'Confirm this start as the scheduled date and time';
-    } else {
-      label = 'Confirm date & time: None proposed';
-      disabled = true;
-      title = 'Select a start slot below first';
-    }
-    if (!isOrg) {
-      return `<button type="button" class="confirm-action-btn" data-action="confirm-time" disabled title="Organiser status required">${escapeHtml(label)}</button>`;
-    }
-    return `<button type="button" class="confirm-action-btn" data-action="confirm-time"${disabled ? ' disabled' : ''} title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
+    return renderScheduledStartStatus(isOrg, m);
   }
 
   function effectiveConfirmSlot(state, m) {
-    if (state.pendingConfirmSlot === '') return '';
-    if (state.pendingConfirmSlot) return state.pendingConfirmSlot;
     return m.confirmed_slot || '';
   }
 
@@ -1461,9 +1472,7 @@
   }
 
   function hasPendingConfirmChange(state, m) {
-    if (state.pendingConfirmSlot === '') return true;
-    if (!state.pendingConfirmSlot) return false;
-    return !slotsEqual(state.pendingConfirmSlot, m.confirmed_slot || '');
+    return false;
   }
 
   function isSlotAlreadyAccepted(m, slot) {
@@ -1546,7 +1555,7 @@
     return m.attendees.filter((a) => !ids.has(a.id));
   }
 
-  function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap, gapBefore = false) {
+  function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap, gapBefore = false, hourGapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     let cls = 'empty';
     let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
@@ -1595,8 +1604,8 @@
     } else {
       tip += ' · no availability marked';
     }
-    const selectedClass = selected === slotIso ? ' selected-start' : '';
-    const gapClass = gapBefore ? ' day-gap-before' : '';
+    const selectedClass = selected && slotsEqual(selected, slotIso) ? ' selected-start' : '';
+    const gapClass = `${gapBefore ? ' day-gap-before' : ''}${hourGapBefore ? ' hour-gap-before' : ''}`;
     return `<button type="button" class="slot group-slot ${cls}${selectedClass}${gapClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
   }
 
@@ -1730,7 +1739,11 @@
 
     if (readOnly && isUrl) {
       if (!expanded && value.length <= 48) {
-        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>`;
+        return `<span class="loc-url-wrap">
+          <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>
+          <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+          <span class="label-hint">(opens in a new window)</span>
+        </span>`;
       }
       if (expanded) {
         return `<span class="loc-url-wrap">
@@ -1738,6 +1751,7 @@
           <span class="loc-url-actions row">
             <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
             <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+            <span class="label-hint">(opens in a new window)</span>
           </span>
         </span>`;
       }
@@ -1799,17 +1813,31 @@
       ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
   }
 
-  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false } = {}) {
+  function locationVoteRowClass(m, loc) {
+    if (!loc) return '';
+    const n = m.attendees.length;
+    if (n <= 0) return 'loc-vote-none';
+    const ok = attendeesForLocation(m, loc.id).length;
+    if (ok === n) return 'loc-vote-full';
+    if (ok > 0) return 'loc-vote-partial';
+    return 'loc-vote-none';
+  }
+
+  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false, voteTint = false } = {}) {
     const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirmed</th>' : '';
-    const existingRows = m.locations.map((loc) => `
-      <tr class="loc-row" data-location-row data-location-id="${escapeHtml(loc.id)}">
+    const existingRows = m.locations.map((loc) => {
+      const voteClass = voteTint ? locationVoteRowClass(m, loc) : '';
+      return `
+      <tr class="loc-row${voteClass ? ` ${voteClass}` : ''}" data-location-row data-location-id="${escapeHtml(loc.id)}">
         ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly })}
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
     const newRow = attendee && !readOnly ? `
       <tr class="loc-row loc-row-new" data-location-row data-location-id="">
         ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
       </tr>` : '';
-    return `<div class="pane-region tint-places"><div class="locations-table-scroll"><table class="data-table locations-table">
+    const wrapClass = voteTint ? 'pane-region confirm-locations-plain' : 'pane-region tint-places';
+    return `<div class="${wrapClass}"><div class="locations-table-scroll"><table class="data-table locations-table${voteTint ? ' locations-table-vote' : ''}">
       <thead><tr>
         <th>Notes</th>
         <th>Location</th>
@@ -2344,7 +2372,7 @@
                 <input class="input-initials" name="initials" maxlength="6" size="6" title="Defaults from display name if blank">
               </label>
               <label class="field-pin">Passcode (optional)
-                <input class="input-pin" name="pin" type="text" autocomplete="new-password" maxlength="20" size="12" title="${escapeHtml(PASSCODE_TIP)}" placeholder="For Find my meetings">
+                ${passcodeInputHtml({ name: 'pin', placeholder: 'For Find my meetings', autocomplete: 'new-password' })}
               </label>
               <label class="field-contact">Contact (optional)
                 <input class="input-contact" name="contact" maxlength="120" placeholder="email, URL, phone" autocomplete="email" title="Comma-separated email, URL, phone, or free text">
@@ -2413,7 +2441,7 @@
           <div class="pin-change-block">
             <div class="pin-inline-row">
               <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode (optional)' : 'Passcode (optional)'}
-                <input name="new_pin" type="text" maxlength="20" size="12" autocomplete="new-password" title="${escapeHtml(PASSCODE_TIP)}" placeholder="${hasPinAlready ? 'leave blank to keep' : '2 to 20 characters'}">
+                ${passcodeInputHtml({ name: 'new_pin', placeholder: hasPinAlready ? 'leave blank to keep' : '2 to 20 characters', autocomplete: 'new-password' })}
               </label>
               ${hasPinAlready ? `<label class="checkbox-label pin-clear-inline"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove passcode</label>` : ''}
             </div>
@@ -2466,7 +2494,7 @@
         <input type="hidden" name="attendee_id" value="${escapeHtml(target.id)}">
         <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your passcode to sign in' : 'optionally set a passcode, then press Continue'}</p>
         <label>${needsPin ? 'Passcode' : 'Passcode (optional)'}
-          <input name="pin" type="text" autocomplete="one-time-code" ${needsPin ? 'required' : ''} maxlength="20" title="${escapeHtml(PASSCODE_TIP)}">
+          ${passcodeInputHtml({ name: 'pin', required: needsPin, autocomplete: 'one-time-code', placeholder: needsPin ? '' : 'optional' })}
         </label>
         <div class="row">
           <button type="submit">Continue</button>
@@ -2702,8 +2730,28 @@
     return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a> <span class="label-hint">(opens in a new window)</span>${actions}</div>`;
   }
 
-  function formatTimePair(iso) {
-    return `<strong>${escapeHtml(formatSlotLocal(iso))}</strong> (${escapeHtml(formatSlotUtc(iso))})`;
+  function formatTimePair(iso, m = null) {
+    const range = formatSlotLocalRange(iso, m);
+    return `<strong>${escapeHtml(range)}</strong> <span class="label-hint">(${escapeHtml(tz)})</span> (${escapeHtml(formatSlotUtc(iso))})`;
+  }
+
+  function meetingEndIso(startIso, m) {
+    const mins = Number(m?.duration_minutes) || 60;
+    return new Date(new Date(startIso).getTime() + mins * 60000).toISOString();
+  }
+
+  function formatSlotLocalRange(startIso, m) {
+    if (!startIso) return '';
+    const start = new Date(startIso);
+    const end = new Date(meetingEndIso(startIso, m));
+    const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz };
+    const timeOpts = { hour: 'numeric', minute: '2-digit', timeZone: tz };
+    const d1 = start.toLocaleDateString(undefined, dateOpts);
+    const d2 = end.toLocaleDateString(undefined, dateOpts);
+    const t1 = start.toLocaleTimeString(undefined, timeOpts);
+    const t2 = end.toLocaleTimeString(undefined, timeOpts);
+    if (d1 === d2) return `${d1}, ${t1} – ${t2}`;
+    return `${d1}, ${t1} – ${d2}, ${t2}`;
   }
 
   function slotSelectedByUser(state, m, slotIso, attendeeId) {
@@ -3313,25 +3361,49 @@
     if (action === 'use-slot') {
       const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
       if (!me?.is_organizer) {
-        toast('Only organisers can select a proposed meeting start time', true);
+        toast('Only organisers can set the meeting start time', true);
         return;
       }
       const slot = btn.dataset.slot;
-      const current = effectiveConfirmSlot(state, state.meet);
-      if (current && slotsEqual(current, slot)) {
-        state.pendingConfirmSlot = '';
+      const current = state.meet.confirmed_slot || '';
+      try {
+        if (current && slotsEqual(current, slot)) {
+          const data = await apiPost({
+            action: 'confirm',
+            slug: state.slug,
+            acting_attendee_id: state.attendeeId,
+            confirmed_slot: '',
+          });
+          state.meet = data.meet;
+          state.pendingConfirmSlot = null;
+          render(root, state);
+          toast('Meeting start cleared');
+          return;
+        }
+        const missing = attendeesUnavailableForSlot(state.meet, slot);
+        if (missing.length) {
+          const initials = missing.map((a) => a.initials || deriveInitials(a.display_name)).join(', ');
+          if (!window.confirm(`Are you sure? Unavailable: ${initials}`)) return;
+        }
+        const priorConfirmed = current;
+        const isReschedule = priorConfirmed !== '' && !slotsEqual(priorConfirmed, slot);
+        const data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_slot: slot,
+        });
+        state.meet = data.meet;
+        state.pendingConfirmSlot = null;
+        if (isReschedule) {
+          state.wasRescheduled = true;
+          localStorage.setItem(rescheduledKey(state.slug), 'yes');
+        }
         render(root, state);
-        toast('Selection cleared');
-        return;
+        toast(isReschedule ? 'Meeting start rescheduled' : 'Meeting start scheduled');
+      } catch (err) {
+        toast(err.message, true);
       }
-      const missing = attendeesUnavailableForSlot(state.meet, slot);
-      if (missing.length) {
-        const initials = missing.map((a) => a.initials || deriveInitials(a.display_name)).join(', ');
-        if (!window.confirm(`Are you sure? Unavailable: ${initials}`)) return;
-      }
-      state.pendingConfirmSlot = slot;
-      render(root, state);
-      toast('Proposed meeting start updated');
       return;
     }
     if (action === 'pick-confirm-location') {
@@ -3363,40 +3435,25 @@
       return;
     }
     if (action === 'confirm-time') {
-      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
-      if (!me?.is_organizer) {
-        toast('Only organisers can accept the proposed start as the scheduled start time', true);
-        return;
-      }
-      const slot = effectiveConfirmSlot(state, state.meet);
-      if (!slot) {
-        toast('Choose a start slot first on the calendar above', true);
-        return;
-      }
-      if (isSlotAlreadyAccepted(state.meet, slot) && !hasPendingConfirmChange(state, state.meet)) {
-        toast('This start is already scheduled');
-        return;
-      }
-      const priorConfirmed = state.meet.confirmed_slot || '';
-      const isReschedule = priorConfirmed !== '' && !slotsEqual(priorConfirmed, slot);
-      try {
-        const data = await apiPost({
-          action: 'confirm',
-          slug: state.slug,
-          acting_attendee_id: state.attendeeId,
-          confirmed_slot: slot,
-        });
-        state.meet = data.meet;
-        state.pendingConfirmSlot = null;
-        if (isReschedule) {
-          state.wasRescheduled = true;
-          localStorage.setItem(rescheduledKey(state.slug), 'yes');
-        }
-        render(root, state);
-        toast('Meeting start time scheduled');
-      } catch (err) {
-        toast(err.message, true);
-      }
+      toast('Click a calendar slot to set or clear the meeting start', true);
+      return;
+    }
+    if (action === 'new-meeting') {
+      const path = window.location.pathname;
+      const idx = path.indexOf('/meet');
+      const home = idx >= 0 ? `${path.slice(0, idx + 5)}/` : '/meet/';
+      window.location.href = `${window.location.origin}${home}`;
+      return;
+    }
+    if (action === 'toggle-passcode') {
+      const wrap = btn.closest('.passcode-field');
+      const input = wrap?.querySelector('input');
+      if (!input) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.textContent = showing ? 'Show' : 'Hide';
+      btn.title = showing ? 'Show passcode' : 'Hide passcode';
+      btn.setAttribute('aria-label', btn.title);
       return;
     }
     if (action === 'switch-user') {
@@ -3801,7 +3858,7 @@
     if (type === 'friday_13th') {
       return '<p class="meta">Highlights dates that are the 13th and a Friday. Rare — usually leave as One-off.</p>';
     }
-    return '<p class="meta">Pick a time everyone can make, then set confirmed details on Set confirmed meeting details.</p>';
+    return '<p class="meta">Pick a time everyone can make, then schedule it on Confirm meeting choices.</p>';
   }
 
   function weekdayCheckboxes(rec, showWeekends) {
@@ -3868,7 +3925,11 @@
     if (!days.length) return '';
     return days.length === 1 ? formatDayHead(days[0]) : `${formatDayHead(days[0])} – ${formatDayHead(days[days.length - 1])}`;
   }
-  function formatSlotLocal(iso) { return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  function formatSlotLocal(iso) {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: tz,
+    });
+  }
   function formatSlotUtc(iso) { return new Date(iso).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'); }
   function attendeeName(m, id) { return m.attendees.find((a) => a.id === id)?.display_name || id; }
   function attendeeLabel(a) { return a.initials ? `${a.display_name} (${a.initials})` : a.display_name; }

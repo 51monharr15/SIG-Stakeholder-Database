@@ -79,7 +79,10 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
             <div class="find-meetings-fields">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
               <label>Passcode
-                <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters.">
+                <span class="passcode-field">
+                  <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. Leading spaces stripped.">
+                  <button type="button" class="passcode-toggle compact-btn" id="find-pin-toggle" title="Show passcode" aria-label="Show passcode">Show</button>
+                </span>
               </label>
             </div>
             <button type="submit">List my meetings</button>

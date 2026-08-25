@@ -859,7 +859,7 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
             }
         }
         if (in_array($locationId, $confirmedIds, true)) {
-            throw new \RuntimeException('Cannot delete a confirmed location. Clear it from Set confirmed meeting details first, then remove this one.', 400);
+            throw new \RuntimeException('Cannot delete a confirmed location. Clear it from Confirm meeting choices first, then remove this one.', 400);
         }
         $m['locations'] = array_values(array_filter(
             $m['locations'],
@@ -1041,8 +1041,13 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
         requireActingOrganizer($meet, trim((string) ($input['acting_attendee_id'] ?? '')));
     }
     $meet = $store->update($meet['id'], function (array $m) use ($input) {
-        if (!empty($input['confirmed_slot'])) {
-            $m['confirmed_slot'] = trim((string) $input['confirmed_slot']);
+        if (array_key_exists('confirmed_slot', $input)) {
+            $slot = $input['confirmed_slot'];
+            if ($slot === null || $slot === '') {
+                $m['confirmed_slot'] = null;
+            } else {
+                $m['confirmed_slot'] = trim((string) $slot);
+            }
         }
         if (array_key_exists('confirmed_location_ids', $input)) {
             $ids = $input['confirmed_location_ids'];

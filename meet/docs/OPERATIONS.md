@@ -12,7 +12,7 @@ Edited 24/08/26
 
 ### Buttons (colour meaning)
 
-- **Blue** — an action that saves or changes meeting data (Save, Accept proposed start, Add attendee, Copy meeting link).
+- **Blue** — an action that saves or changes meeting data (Save, schedule a start on Confirm meeting choices, Add attendee, Copy meeting link).
 - **Green** — navigation (dashboard tabs, “Go to…”).
 - **Light grey / neutral** — Cancel or Close (still clickable).
 - **Muted grey** — disabled but visible. Hover or long-press for “Disabled because …”.
@@ -27,14 +27,14 @@ Edited 24/08/26
 6. **My availability** — mark free slots; save any time. Clicking a selected slot deselects it — save again after changes.
 7. **Locations** — propose online or physical places and mark which work for you. Initials show who has OK’d each location.
 8. **Copy meeting link** and send it so others can record availability, locations, agenda, and attachments.
-9. On **Set confirmed meeting details**, click a start slot (proposed), choose a location, then press **Accept proposed start as scheduled start time**. Status becomes *Scheduled* (or *Rescheduled* if you change it later).
+9. On **Confirm meeting choices**, click a start slot to **save it immediately** as the scheduled meeting start (and end from meeting length). Click the **same** slot again to clear; click a **different** slot to reschedule. Confirm location(s) with the Confirmed toggle. Status becomes *Scheduled* (or *Rescheduled* if you change the start later).
 
 ### Joining a meeting (attendee)
 
 1. Open the meeting link. Status is shown at the top of every page.
 2. On **Attendees**, press *This is me* or add yourself. Use your passcode if prompted.
 3. Mark availability on **My availability**; vote or propose on **Locations**.
-4. Open **Set confirmed meeting details** to see overlaps (organisers set the scheduled time; the accept button is disabled for others).
+4. Open **Confirm meeting choices** to see overlaps (organisers set the scheduled time by clicking a slot; attendees can view only).
 5. Use **Meeting Resources** for description, agenda, decisions, notes, and **attachments** (pre- and post-meeting assets — links or text in one table).
 
 ### Dashboard tabs
@@ -43,10 +43,10 @@ Edited 24/08/26
 - **Overview** — Summary: status, description, agenda, attendees, best start times, location popularity.
 - **Attendees** — Register, claim identity, edit details and passcode, organiser roles.
 - **My availability** — Your free times on the calendar grid.
-- **Set confirmed meeting details** — Overlap view and organiser scheduling. Selecting a confirmed meeting time requires organiser status.
+- **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Organiser status required to edit.
 - **Locations** — Propose and vote; see who OK’d each place.
 - **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets).
-- **Calendar Options** — Meeting length, slot size, bookable dates and hours, timezone (organiser edits; others may view read-only).
+- **Calendar Options** — Meeting length, slot size, bookable dates and hours (organiser edits; others may view read-only).
 
 ### Passcodes {#passcodes}
 
@@ -55,15 +55,16 @@ A passcode protects your attendee row and lets you find meetings from the landin
 - 2 to 20 characters: letters, digits, spaces, and safe specials (not `|`). Stored as all lowercase.
 - *Find my meetings* needs registered name **and** passcode.
 - Change or remove it under **Edit my details** on Attendees.
+- Passcode fields include a **Show** / **Hide** control.
 
 > **Warning:** Passcodes are not strong security. Anyone with the meeting link can see the attendee list. They cannot claim a passcode-protected row without the passcode.
 
 ### Status values
 
 - **Entering organiser details** — no attendees yet.
-- **Entering attendee details** — attendees present; time/location not yet accepted.
-- **Scheduled** — organiser accepted a start time and both an Online and a Physical confirmed location (a Hybrid proposal can supply both).
-- **Rescheduled** — organiser changed a previously scheduled time or location.
+- **Entering attendee details** — attendees present; no scheduled start yet.
+- **Scheduled** — organiser saved a start time on Confirm meeting choices (and may have confirmed location(s)).
+- **Rescheduled** — organiser changed a previously scheduled start.
 - **Past** — current time is after the scheduled start.
 - **Summarised** — past, and attachments exist.
 
@@ -129,7 +130,7 @@ Rules applied across the scheduler interface. After UI changes, walk each screen
 
 ### Semantic tints
 
-- **Dates & times** — Calendar Options, My availability grid pane, Set confirmed time, Overview time blocks.
+- **Dates & times** — Calendar Options, My availability grid pane, Confirm meeting choices time pane, Overview time blocks.
 - **Free text** — Description, agenda/decisions, notes.
 - **People** — Attendees registered table (includes Edit identity / Switch), separate panes for Add another attendee and Merge duplicates.
 - **Places** — Locations table (URL or place name; online = physical category).
