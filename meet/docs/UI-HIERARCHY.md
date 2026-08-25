@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.41  
+**Build:** 1.8.42  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -300,7 +300,7 @@ Teal places tint — locations no longer sit in the lavender Time pane.
 |------|------|
 | Summary | **Registered attendees ({N})** / **Registered attendees (none yet)** |
 | Table headers | Signed-in as · Name · Initials · Contact · Time slots / locations · Passcode · Organiser · Delete *(organiser)* |
-| Signed-in as title | Toggle sign-in for this row |
+| Signed-in as title | Toggle Signed-in as for this row |
 | Organiser title | Toggle organiser rights |
 | Empty row | None yet |
 | Passcode cell | Set / Not set |
