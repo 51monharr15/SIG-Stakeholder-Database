@@ -53,6 +53,12 @@
       .replace(/[^\x20-\x7e]/g, '')
       .replace(/ {2,}/g, ' ');
   }
+  /** Sanitize and require length 2–20 for newly set passcodes (empty if invalid). */
+  function normalizePasscode(raw) {
+    const pin = sanitizePasscode(raw);
+    if (pin.length < 2 || pin.length > 20) return '';
+    return pin;
+  }
   function passcodeInputHtml({
     name = 'pin',
     value = '',
@@ -2291,7 +2297,9 @@
       ? (attendee.is_organizer
         ? 'Toggle Organiser rights for others. <strong>Delete</strong> removes a row. Expand <strong>Merge duplicate attendees</strong> if needed.'
         : 'Duplicate rows can be merged — expand <strong>Merge duplicate attendees</strong> if needed.')
-      : 'Toggle sign-in if you are listed (enter passcode if set), or add yourself below.';
+      : (m.attendees.length
+        ? 'Toggle <strong>Signed-in as</strong> if you are listed (enter passcode if set), or add yourself below.'
+        : 'Fill in the form below to add yourself. The first attendee becomes the meeting organiser.');
     const claiming = m.attendees.find((a) => a.id === state.claimingId);
     const showOrganiserCol = signedIn && attendee.is_organizer;
     const colCount = 6 + (showOrganiserCol ? 2 : 0);
@@ -2306,7 +2314,7 @@
         <div class="attendee-table-panel">
         <div class="table-wrap table-wrap-compact attendee-table-wrap">
           <table class="data-table attendee-table">
-            <thead><tr><th class="col-me" title="Toggle sign-in for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
+            <thead><tr><th class="col-me" title="Toggle Signed-in as for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
             <tbody>
               ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
             </tbody>

@@ -285,7 +285,8 @@ Teal places tint — locations no longer sit in the lavender Time pane.
 
 | Who | Text |
 |-----|------|
-| Not signed in | Toggle sign-in if you are listed (enter passcode if set), or add yourself below. |
+| Not signed in (no attendees yet) | Fill in the form below to add yourself. The first attendee becomes the meeting organiser. |
+| Not signed in (attendees listed) | Toggle **Signed-in as** if you are listed (enter passcode if set), or add yourself below. |
 | Signed-in attendee | Duplicate rows can be merged — expand **Merge duplicate attendees** if needed. |
 | Signed-in organiser | Toggle Organiser rights for others. **Delete** removes a row. Expand **Merge duplicate attendees** if needed. |
 
