@@ -1278,10 +1278,10 @@
         <div class="availability-mark-band">
         <details class="calendar-instructions"${autoDetailsOpen(true) ? ' open' : ''}>
           <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
-          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> in the band below the grid. Tap a selected slot again to deselect — save again after changes.</p>
+          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> to write your selection to the meeting. Tap a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
-          <p class="meta slot-legend-note"><strong>Initials</strong> show who else chose that slot. A <strong>+</strong> means more people than fit in the cell. Unsaved candidates have a dashed border.</p>
-          <p class="meta">Mark day column headers, then <strong>Copy days</strong> / <strong>Paste</strong>, or use <strong>Copy week → next</strong>. Only already-saved slots are copied; paste creates unsaved candidates until you Save.</p>
+          <p class="meta slot-legend-note"><strong>Slot colours:</strong> solid blue tint = your selection (already saved, or matching what is saved). <strong>Orange dashed</strong> = new pick not saved yet. <strong>Grey dashed</strong> = you turned off a saved slot — still on the meeting until you Save. Light green = someone marked it (initials). A <strong>+</strong> means more people than fit in the cell.</p>
+          <p class="meta"><strong>Copy / paste:</strong> click a <strong>day date heading</strong> to mark that column (blue outline). <strong>Copy days</strong> copies your <em>already-saved</em> times from marked days. Mark target day heading(s), then <strong>Paste</strong> (creates orange dashed candidates — then Save). <strong>Copy week → next</strong> copies this week’s saved times onto the next week and jumps the view forward. <strong>Clear selection</strong> drops unsaved changes and restores your last saved slots.</p>
           <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
           <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle other attendees’ timezones' : ''}.</p>
         </details>
@@ -1345,23 +1345,29 @@
   function renderSaveRow(state, m, { showTopDuplicate = true, showBottomButton = true } = {}) {
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
-    const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save</button>`;
-    const clearBtn = `<button type="button" data-action="clear-selection" title="Clear unsaved candidates — restore to your last saved availability">Clear selection</button>`;
-    const copyDaysBtn = `<button type="button" data-action="copy-avail-days" title="Copy saved slots from marked day columns">Copy days</button>`;
-    const pasteBtn = `<button type="button" data-action="paste-avail-days" title="Paste copied day pattern(s) onto marked day columns as unsaved candidates">Paste</button>`;
-    const copyWeekBtn = `<button type="button" data-action="copy-avail-week-next" title="Copy this week’s saved slots onto the next week as unsaved candidates">Copy week → next</button>`;
+    const saveBtn = `<button type="button" data-action="save-availability" title="Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off)">Save</button>`;
+    const clearBtn = `<button type="button" class="btn-cancel" data-action="clear-selection" title="Discard unsaved picks and pending removals — restore your last saved availability">Clear selection</button>`;
+    const copyDaysBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-days" title="Copy already-saved times from day headings you have marked">Copy days</button>`;
+    const pasteBtn = `<button type="button" class="btn-cancel" data-action="paste-avail-days" title="Paste onto marked day headings as orange dashed candidates (then Save)">Paste</button>`;
+    const copyWeekBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-week-next" title="Copy this week’s saved times onto next week as candidates, then jump the view forward">Copy week → next</button>`;
     const buttons = `${saveBtn}${clearBtn}${copyDaysBtn}${pasteBtn}${copyWeekBtn}`;
     const candidateCount = countCandidateSlots(state, m);
+    const pendingClearCount = countPendingClearSlots(state, m);
     const count = state.selectedSlots.size;
     const slotMeta = m ? calendarNavHint(m).trim() : '';
-    const candNote = candidateCount ? ` · ${candidateCount} unsaved candidate(s)` : '';
+    const candNote = candidateCount ? ` · ${candidateCount} unsaved pick(s)` : '';
+    const clearNote = pendingClearCount ? ` · ${pendingClearCount} to remove on Save` : '';
     const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
+    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps blue/orange picks and drops grey dashed. <strong>Clear selection</strong> undoes unsaved edits. Mark date headings → <strong>Copy days</strong> / <strong>Paste</strong>, or <strong>Copy week → next</strong>.</p>`;
     let html = '';
-    if (showTopDuplicate) html += formSaveHeader(buttons);
+    if (showTopDuplicate) {
+      html += formSaveHeader(buttons);
+      html += explain;
+    }
     if (showBottomButton) {
-      html += `<div class="row save-row calendar-save-row">${buttons}<span class="meta">${count} slot(s) selected${candNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
+      html += `<div class="row save-row calendar-save-row">${buttons}<span class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
     } else if (showTopDuplicate) {
-      html += `<p class="meta">${count} slot(s) selected${candNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
+      html += `<p class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
     }
     return html;
   }
@@ -1369,22 +1375,26 @@
   function renderSlotCell(m, state, dateStr, hm, attendee, mtz, gapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     const ids = availabilityIdsAt(m, slotIso);
-    const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
-    const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
-    const names = ids.map((id) => attendeeName(m, id)).join(', ');
-    const tip = names
-      ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
-      : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    const cellTip = slotCellTip(m, tip);
     const selected = slotSelectedByUser(state, m, slotIso, attendee?.id);
     const savedMine = !!attendee && slotSavedForMe(m, slotIso, attendee.id);
     const candidate = selected && !savedMine;
+    const pendingClear = savedMine && !selected;
+    // Pending clear: still show others’ initials; yours are struck through via CSS on .pending-clear
+    const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
+    const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
+    const names = ids.map((id) => attendeeName(m, id)).join(', ');
+    let tip = names
+      ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
+      : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
+    if (candidate) tip += ' · unsaved pick — press Save to keep';
+    if (pendingClear) tip += ' · will be removed from your availability when you Save';
+    const cellTip = slotCellTip(m, tip);
     const cls = [
       'slot',
       selected ? 'selected' : '',
       candidate ? 'candidate' : '',
-      savedMine && selected ? 'saved-mine' : '',
-      ids.length ? 'suggested' : '',
+      pendingClear ? 'pending-clear' : '',
+      !pendingClear && ids.length ? 'suggested' : '',
       gapBefore ? 'day-gap-before' : '',
     ].filter(Boolean).join(' ');
     return `<button type="button" class="${cls}"
@@ -3979,6 +3989,16 @@
     let n = 0;
     for (const iso of state.selectedSlots) {
       if (!slotSavedForMe(m, iso, state.attendeeId)) n++;
+    }
+    return n;
+  }
+
+  function countPendingClearSlots(state, m) {
+    if (!state.attendeeId) return 0;
+    let n = 0;
+    for (const [iso, ids] of Object.entries(m.availability || {})) {
+      if (!(ids || []).includes(state.attendeeId)) continue;
+      if (!state.selectedSlots.has(iso)) n++;
     }
     return n;
   }
