@@ -55,7 +55,7 @@ A passcode protects your attendee row and lets you find meetings from the landin
 - 2 to 20 characters: letters, digits, spaces, and safe specials (not `|`). Stored as all lowercase.
 - *Find my meetings* needs registered name **and** passcode.
 - Change or remove it under **Edit my details** on Attendees.
-- Passcode fields include a **Show** / **Hide** control.
+- Passcode fields include a **Show** / **Hide** eye control inside the field.
 
 > **Warning:** Passcodes are not strong security. Anyone with the meeting link can see the attendee list. They cannot claim a passcode-protected row without the passcode.
 

@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.43  
+**Build:** 1.8.44  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -51,7 +51,7 @@ Meeting **base timezone** is set from the **first attendee** (their client timez
 | Label | Meeting title |
 | Placeholder | Board review |
 | Button | Create meeting |
-| Hint | The **Create meeting** button generates a private link with a random URL. **Save it and SEND to other proposed Attendees.** |
+| Hint | The **Create meeting** button generates a private link with a random URL (new meetings: 7-letter pronounceable code). **Save it and SEND to other proposed Attendees.** |
 
 ### Find my meetings *tint-find* (lime `#f7fee7`)
 
@@ -63,7 +63,7 @@ Meeting **base timezone** is set from the **first attendee** (their client timez
 | Placeholder | e.g. Alice@gmail.com or Bob |
 | Label | Passcode |
 | Passcode title | Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. Leading spaces stripped. |
-| Passcode field | Password input with **Show** / **Hide** toggle; maxlength 20 |
+| Passcode field | Password input with eye icon **inside** the field (Show / Hide); maxlength 20 |
 | Button | List my meetings |
 | Results (empty) | No meetings found for that name and passcode. Identity misspelt or Passcode not matching. |
 | Results (count) | 1 meeting found / {N} meetings found |
@@ -145,7 +145,7 @@ On **touch** devices (`pointer: coarse` or `maxTouchPoints > 0`), horizontal swi
 | Meeting Resources | Description, agenda, notes, attachments. |
 | Calendar Options | Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly). |
 | Confirm meeting choices | Group calendar and locations — click a start to save it; click again to clear. Confirm location preferences. |
-| New meeting | Start a completely fresh meeting |
+| New meeting | Start a completely fresh meeting *(opens in a new tab)* |
 
 ### Help panel *(opens on “How to use this”)*
 
@@ -427,10 +427,13 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Save band (dual Save)
 
-Shown when signed in. **Save** appears **above** the grid (form-save header) and again **below** the grid.
+Shown when signed in. **Save** and **Copy previous week** appear **above** the grid (form-save header) and again **below** the grid.
 
 - **Save** (title: Save your currently selected availability slots to the meeting)
+- **Copy previous week** (title: Copy saved slots from the previous week as candidates — then edit and Save)
 - {N} slot(s) selected · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
+
+**Bookable range:** calendar opens at Calendar Options start date; ⇤ / ⇥ jump to Options start / end (if no Options end, ⇥ jumps to last marked availability). Day/week navigation stays within the Options bookable range when an end date is set. Days outside the range are not shown.
 
 ---
 

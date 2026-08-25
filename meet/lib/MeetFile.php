@@ -51,7 +51,7 @@ final class MeetFile
             'confirmed_location_physical' => null,
             'confirmed_location_online' => null,
             'confirmed_location_ids' => [],
-            'app_version' => '1.8.43',
+            'app_version' => '1.8.44',
         ];
     }
 
@@ -607,7 +607,16 @@ final class MeetFile
 
     public static function generateRandomSlug(): string
     {
-        return substr(bin2hex(random_bytes(6)), 0, 12);
+        // Pronounceable 7-letter pattern: C V C C V C C (lowercase a–z only).
+        $cons = 'bcdfghjklmnpqrstvwxz';
+        $vow = 'aeiou';
+        $pattern = ['c', 'v', 'c', 'c', 'v', 'c', 'c'];
+        $out = '';
+        foreach ($pattern as $kind) {
+            $alphabet = $kind === 'v' ? $vow : $cons;
+            $out .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        return $out;
     }
 
     public static function slugify(string $input): string

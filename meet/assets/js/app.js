@@ -59,6 +59,12 @@
     if (pin.length < 2 || pin.length > 20) return '';
     return pin;
   }
+  const OPEN_ENDED_RANGE_END = '2099-12-31';
+
+  function passcodeEyeIcon() {
+    return '<svg class="passcode-eye-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+  }
+
   function passcodeInputHtml({
     name = 'pin',
     value = '',
@@ -70,7 +76,7 @@
   } = {}) {
     return `<span class="passcode-field">
       <input class="${escapeHtml(extraClass)}" name="${escapeHtml(name)}" type="password" value="${escapeHtml(value)}"${required ? ' required' : ''} maxlength="20" size="12" autocomplete="${escapeHtml(autocomplete)}" title="${escapeHtml(title)}" placeholder="${escapeHtml(placeholder)}">
-      <button type="button" class="passcode-toggle compact-btn" data-action="toggle-passcode" title="Show passcode" aria-label="Show passcode">Show</button>
+      <button type="button" class="passcode-toggle" data-action="toggle-passcode" title="Show passcode" aria-label="Show passcode">${passcodeEyeIcon()}</button>
     </span>`;
   }
   const PASSCODE_TIP = '2 to 20 characters: 0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
@@ -93,7 +99,6 @@
     if (!input || !btn) return;
     const showing = input.type === 'text';
     input.type = showing ? 'password' : 'text';
-    btn.textContent = showing ? 'Show' : 'Hide';
     btn.title = showing ? 'Show passcode' : 'Hide passcode';
     btn.setAttribute('aria-label', btn.title);
   });
@@ -1215,13 +1220,18 @@
 
   function renderCalendarTab(m, state, attendee) {
     const dayCount = visibleDayCount();
-    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
+    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
     const todayStr = meetingTodayStr(m);
-    const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
-    const canGoForward = true;
+    const view = calendarViewStart(state, m);
+    const min = calendarMinStart(m);
+    const end = bookableEndDate(m);
+    const canGoBack = view > min;
+    const canGoForward = end
+      ? (!days.length || startOfDay(days[days.length - 1]) < end)
+      : true;
     const slotHint = calendarNavHint(m);
 
     return `
@@ -1290,12 +1300,13 @@
     if (!state.attendeeId) return '';
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
     const saveBtn = `<button type="button" data-action="save-availability" title="Save your currently selected availability slots to the meeting">Save</button>`;
+    const copyBtn = `<button type="button" class="btn-cancel compact-btn" data-action="copy-previous-week" title="Copy saved slots from the previous week as candidates — then edit and Save">Copy previous week</button>`;
     const count = state.selectedSlots.size;
     const slotMeta = m ? calendarNavHint(m).trim() : '';
     let html = '';
-    if (showTopDuplicate) html += formSaveHeader(saveBtn);
+    if (showTopDuplicate) html += formSaveHeader(`${saveBtn}${copyBtn}`);
     if (showBottomButton) {
-      html += `<div class="row save-row calendar-save-row">${saveBtn}<span class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
+      html += `<div class="row save-row calendar-save-row">${saveBtn}${copyBtn}<span class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
     } else if (showTopDuplicate) {
       html += `<p class="meta">${count} slot(s) selected · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
     }
@@ -1324,20 +1335,23 @@
   function renderGroupAvailabilityTab(m, state, attendee) {
     const mtz = meetingTz(m);
     const dayCount = visibleDayCount();
-    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
+    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = effectiveConfirmSlot(state, m);
     const isOrg = !!attendee?.is_organizer;
     const todayStr = meetingTodayStr(m);
-    const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
+    const view = calendarViewStart(state, m);
+    const min = calendarMinStart(m);
+    const end = bookableEndDate(m);
+    const canGoBack = view > min;
     const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
     const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
     const hours = state.showAllGroupHours
       ? allHours
       : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
-    // Keep a fixed number of day columns so the grid does not shrink to 2 or 1 days.
-    const lastAvail = lastAvailabilityDay(m);
-    const canGoForward = !lastAvail || startOfDay(days[days.length - 1]) < startOfDay(lastAvail);
+    const canGoForward = end
+      ? (!days.length || startOfDay(days[days.length - 1]) < end)
+      : true;
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
@@ -2208,7 +2222,6 @@
   function renderOptionsTab(m, state, attendee) {
     const canEdit = canEditOptions(m, attendee);
     const mtz = meetingTz(m);
-    const saveBtn = canEdit ? '<button type="submit">Save</button>' : '';
     const headerSaveBtn = canEdit ? '<button type="submit" form="update-settings-form">Save</button>' : '';
     const rangeEndDisplay = optionsRangeEnd(m);
     const localStart = meetingWallToLocalTimeValue(m.day_start, m);
@@ -2217,7 +2230,6 @@
       <section class="panel stack">
         <div class="pane-title-row row">
           <p class="meta pane-lead"><strong>Don't forget to save after making changes.</strong> Meeting length, Calendar slot size, Bookable dates and hours.${canEdit ? '' : ' View only — organiser can edit.'}</p>
-          ${canEdit ? formSaveHeader(headerSaveBtn) : ''}
         </div>
         ${canEdit && !m.attendees.length ? `<div class="row">
           <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="getting-started">Back to Getting started</button>
@@ -2225,7 +2237,6 @@
         </div>` : ''}
         <form id="update-settings-form" class="inline-form organizer-form" data-form="update-settings">
           <input type="hidden" name="timezone" value="${escapeHtml(mtz)}">
-          ${canEdit ? '' : formSaveHeader('')}
           <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
           <details ${paneDetailsAttrs(state, 'opts-length', { extraClass: 'tint-dates' })}>
             <summary class="pane-summary-with-save"><span>Meeting length &amp; calendar</span>${canEdit ? headerSaveBtn : ''}</summary>
@@ -2266,12 +2277,9 @@
             </div>
           </details>
           </fieldset>
-          ${canEdit ? `<div class="row">${saveBtn}</div>` : ''}
         </form>
       </section>`;
   }
-
-  const OPEN_ENDED_RANGE_END = '2099-12-31';
 
   function optionsRangeStart(m) {
     return m.range_start_stored || m.range_start || meetingTodayStr(m);
@@ -3063,7 +3071,10 @@
       state.meet = data.meet;
       if (kind === 'add-attendee' && state.attendeeId === data.attendee_id) restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
-      if (kind === 'update-settings') localStorage.setItem(setupOptionsSavedKey(state.slug), 'yes');
+      if (kind === 'update-settings') {
+        localStorage.setItem(setupOptionsSavedKey(state.slug), 'yes');
+        state.viewStart = calendarMinStart(state.meet);
+      }
       if (kind === 'update-meta') state.openNotesEditor = false;
       if (kind === 'add-attendee' || kind === 'claim') {
         state.overviewHelpOpen = false;
@@ -3268,16 +3279,12 @@
     }
 
     if (action === 'prev-days') {
-      const min = calendarMinStart(state.meet);
-      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends);
-      if (state.viewStart < min) state.viewStart = min;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends));
       render(root, state);
       return;
     }
     if (action === 'prev-week') {
-      const min = calendarMinStart(state.meet);
-      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends);
-      if (state.viewStart < min) state.viewStart = min;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends));
       render(root, state);
       return;
     }
@@ -3292,70 +3299,48 @@
       return;
     }
     if (action === 'go-range-end') {
-      const lastAvail = lastAvailabilityDay(state.meet);
-      const dayCount = visibleDayCount();
-      let target = lastAvail ? startOfDay(lastAvail) : state.viewStart;
-      if (lastAvail) {
-        target = shiftViewByDisplayedDays(target, -(dayCount - 1), state.meet.show_weekends);
-        const min = calendarMinStart(state.meet);
-        if (target < min) target = min;
+      const target = jumpTargetEnd(state.meet);
+      if (!target) {
+        toast('No end date in Calendar Options, and no marked availability to jump to', true);
+        return;
       }
       state.viewStart = target;
       render(root, state);
       return;
     }
     if (action === 'prev-screen') {
-      const min = calendarMinStart(state.meet);
       const n = visibleDayCount();
-      state.viewStart = shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends);
-      if (state.viewStart < min) state.viewStart = min;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends));
       render(root, state);
       return;
     }
     if (action === 'next-screen') {
       const n = visibleDayCount();
-      let next = shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends);
-      if (state.activeTab === 'group') {
-        const lastAvail = lastAvailabilityDay(state.meet);
-        if (lastAvail) {
-          const dayCount = visibleDayCount();
-          const maxStart = shiftViewByDisplayedDays(startOfDay(lastAvail), -(dayCount - 1), state.meet.show_weekends);
-          if (startOfDay(next) > startOfDay(maxStart)) next = maxStart;
-        }
-      }
-      state.viewStart = next;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends));
       render(root, state);
       return;
     }
     if (action === 'next-days') {
-      if (state.activeTab === 'group') {
-        const lastAvail = lastAvailabilityDay(state.meet);
-        if (lastAvail) {
-          const dayCount = visibleDayCount();
-          const days = getVisibleDays(calendarViewStart(state, state.meet), dayCount, state.meet.show_weekends);
-          if (days.length && startOfDay(days[days.length - 1]) >= startOfDay(lastAvail)) {
-            toast('No availability marked after this date', true);
-            return;
-          }
-        }
-      }
-      let next = shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends);
-      if (state.activeTab === 'group') {
-        const lastAvail = lastAvailabilityDay(state.meet);
-        if (lastAvail && startOfDay(next) > startOfDay(lastAvail)) next = startOfDay(lastAvail);
-      }
-      state.viewStart = next;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends));
       render(root, state);
       return;
     }
     if (action === 'next-week') {
-      let next = shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends);
-      if (state.activeTab === 'group') {
-        const lastAvail = lastAvailabilityDay(state.meet);
-        if (lastAvail && startOfDay(next) > startOfDay(lastAvail)) next = startOfDay(lastAvail);
-      }
-      state.viewStart = next;
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends));
       render(root, state);
+      return;
+    }
+
+    if (action === 'copy-previous-week') {
+      if (!state.attendeeId) {
+        toast('Sign in to copy availability', true);
+        return;
+      }
+      const added = copyPreviousWeekCandidates(state);
+      render(root, state);
+      toast(added
+        ? `Copied ${added} slot(s) from previous week — edit then Save`
+        : 'No saved slots in the previous week to copy (or none fall in the bookable range)');
       return;
     }
 
@@ -3450,7 +3435,7 @@
       const path = window.location.pathname;
       const idx = path.indexOf('/meet');
       const home = idx >= 0 ? `${path.slice(0, idx + 5)}/` : '/meet/';
-      window.location.href = `${window.location.origin}${home}`;
+      window.open(`${window.location.origin}${home}`, '_blank', 'noopener');
       return;
     }
     if (action === 'toggle-passcode') {
@@ -3459,7 +3444,6 @@
       if (!input) return;
       const showing = input.type === 'text';
       input.type = showing ? 'password' : 'text';
-      btn.textContent = showing ? 'Show' : 'Hide';
       btn.title = showing ? 'Show passcode' : 'Hide passcode';
       btn.setAttribute('aria-label', btn.title);
       return;
@@ -3766,11 +3750,15 @@
 
   // ─── Calendar helpers ─────────────────────────────────────────────────────────
 
-  function getVisibleDays(start, count, showWeekends) {
+  function getVisibleDays(start, count, showWeekends, m = null) {
     const days = [];
     let cursor = startOfDay(new Date(start));
+    const minStart = m ? bookableStartDate(m) : null;
+    const maxEnd = m ? bookableEndDate(m) : null;
+    if (minStart && cursor < minStart) cursor = new Date(minStart);
     let guard = 0;
-    while (days.length < count && guard < 366) {
+    while (days.length < count && guard < 400) {
+      if (maxEnd && cursor > maxEnd) break;
       const dow = cursor.getDay();
       if (showWeekends || (dow !== 0 && dow !== 6)) days.push(new Date(cursor));
       cursor = addDays(cursor, 1);
@@ -3798,6 +3786,92 @@
     if (index <= 0) return false;
     const ms = days[index].getTime() - days[index - 1].getTime();
     return ms > 36 * 60 * 60 * 1000; // more than 1.5 days → weekend/hidden days skipped
+  }
+
+  function bookableStartDate(m) {
+    const iso = m.range_start_stored || m.calendar_start || m.range_start || meetingTodayStr(m);
+    return parseDateIsoLocal(iso);
+  }
+
+  function bookableEndDate(m) {
+    const stored = String(m.range_end_stored || m.calendar_end || '').trim();
+    if (!stored || stored === OPEN_ENDED_RANGE_END) return null;
+    return parseDateIsoLocal(stored);
+  }
+
+  function isDateBookable(m, dateObj) {
+    const d = startOfDay(dateObj);
+    if (d < bookableStartDate(m)) return false;
+    const end = bookableEndDate(m);
+    if (end && d > end) return false;
+    return true;
+  }
+
+  function calendarMaxViewStart(m) {
+    const end = bookableEndDate(m);
+    if (!end) return null;
+    const dayCount = visibleDayCount();
+    let target = shiftViewByDisplayedDays(end, -(dayCount - 1), m.show_weekends);
+    const min = bookableStartDate(m);
+    if (target < min) target = min;
+    if (target > end) target = end;
+    return target;
+  }
+
+  function clampViewStart(m, proposed) {
+    let v = startOfDay(proposed);
+    const min = bookableStartDate(m);
+    if (v < min) v = min;
+    const maxStart = calendarMaxViewStart(m);
+    if (maxStart && v > maxStart) v = maxStart;
+    return v;
+  }
+
+  /** Jump to last bookable date; if open-ended, last marked availability day. */
+  function jumpTargetEnd(m) {
+    const maxStart = calendarMaxViewStart(m);
+    if (maxStart) return maxStart;
+    const lastAvail = lastAvailabilityDay(m);
+    if (!lastAvail) return null;
+    const dayCount = visibleDayCount();
+    let target = shiftViewByDisplayedDays(startOfDay(lastAvail), -(dayCount - 1), m.show_weekends);
+    const min = bookableStartDate(m);
+    if (target < min) target = min;
+    return target;
+  }
+
+  function slotLocalDateStr(iso) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(iso));
+    } catch (_) {
+      return new Date(iso).toISOString().slice(0, 10);
+    }
+  }
+
+  /** Copy this attendee’s saved slots from the previous week into the current week as candidates. */
+  function copyPreviousWeekCandidates(state) {
+    const m = state.meet;
+    const me = state.attendeeId;
+    if (!me) return 0;
+    const destStart = calendarViewStart(state, m);
+    const destEnd = addDays(destStart, 6);
+    const srcStart = addDays(destStart, -7);
+    const srcEnd = addDays(destStart, -1);
+    let added = 0;
+    for (const [iso, ids] of Object.entries(m.availability || {})) {
+      if (!Array.isArray(ids) || !ids.includes(me)) continue;
+      const srcDate = parseDateIsoLocal(slotLocalDateStr(iso));
+      if (srcDate < srcStart || srcDate > srcEnd) continue;
+      const destIso = new Date(new Date(iso).getTime() + 7 * 86400000).toISOString();
+      const destDate = parseDateIsoLocal(slotLocalDateStr(destIso));
+      if (destDate < destStart || destDate > destEnd) continue;
+      if (!isDateBookable(m, destDate)) continue;
+      if (!state.selectedSlots.has(destIso)) {
+        state.selectedSlots.add(destIso);
+        added++;
+      }
+    }
+    return added;
   }
 
   function buildHours(startStr, endStr, granularity) {
@@ -3915,8 +3989,10 @@
     catch (_) { return new Intl.DateTimeFormat('en-CA').format(new Date()); }
   }
   function parseDateIsoLocal(iso) { const [y, mo, d] = iso.split('-').map(Number); return startOfDay(new Date(y, mo - 1, d)); }
-  function calendarMinStart(m) { return parseDateIsoLocal(m.calendar_start || meetingTodayStr(m)); }
-  function calendarViewStart(state, m) { const min = calendarMinStart(m); return state.viewStart < min ? min : state.viewStart; }
+  function calendarMinStart(m) { return bookableStartDate(m); }
+  function calendarViewStart(state, m) {
+    return clampViewStart(m, state.viewStart);
+  }
   function toDateIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function formatDayHead(d) { return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
   function lastAvailabilityDay(m) {

@@ -124,12 +124,16 @@ final class MeetStore
         $meet = MeetFile::normalize($meet);
         $suggestions = Availability::buildSuggestions($meet);
         $today = gmdate('Y-m-d');
-        $rangeStart = max($meet['range_start'], $today);
-        $rangeEnd = gmdate('Y-m-d', strtotime('+2 years'));
+        $storedStart = (string) ($meet['range_start'] ?? $today);
+        $storedEnd = (string) ($meet['range_end'] ?? '2099-12-31');
+        $openEnded = ($storedEnd === '' || $storedEnd === '2099-12-31');
+        // Recurrence expand uses today..+2y; calendar UI uses stored bookable range.
+        $recurStart = max($storedStart, $today);
+        $recurEnd = gmdate('Y-m-d', strtotime('+2 years'));
         $recurrenceDates = Recurrence::expand(
             $meet['recurrence'],
-            $rangeStart,
-            $rangeEnd
+            $recurStart,
+            $recurEnd
         );
 
         $rawTz = (string) ($meet['timezone'] ?? '');
@@ -143,11 +147,12 @@ final class MeetStore
             'updated' => $meet['updated'],
             'duration_minutes' => $meet['duration_minutes'],
             'slot_granularity_minutes' => $meet['slot_granularity_minutes'],
-            'range_start' => $rangeStart,
-            'range_start_stored' => $meet['range_start'],
-            'range_end' => $rangeEnd,
-            'range_end_stored' => $meet['range_end'],
-            'calendar_start' => $today,
+            'range_start' => $storedStart,
+            'range_start_stored' => $storedStart,
+            'range_end' => $openEnded ? $recurEnd : $storedEnd,
+            'range_end_stored' => $storedEnd,
+            'calendar_start' => $storedStart,
+            'calendar_end' => $openEnded ? null : $storedEnd,
             'recurrence' => $meet['recurrence'],
             'recurrence_label' => Recurrence::describe($meet['recurrence']),
             'recurrence_dates' => $recurrenceDates,

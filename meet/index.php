@@ -81,11 +81,11 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
               <label>Passcode
                 <span class="passcode-field">
                   <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. Leading spaces stripped.">
-                  <button type="button" class="passcode-toggle compact-btn" id="find-pin-toggle" title="Show passcode" aria-label="Show passcode">Show</button>
+                  <button type="button" class="passcode-toggle" id="find-pin-toggle" title="Show passcode" aria-label="Show passcode"><svg class="passcode-eye-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg></button>
                 </span>
               </label>
             </div>
-            <button type="submit">List my meetings</button>
+            <button type="submit" class="find-meetings-submit">List my meetings</button>
           </form>
           <div id="list-meetings-result" class="list-meetings-result" hidden></div>
         </section>
