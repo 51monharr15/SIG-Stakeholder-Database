@@ -409,12 +409,12 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | Kind | Text |
 |------|------|
 | Summary | Mark when you are free (title: How to mark your availability on the calendar) |
-| Body 1 | Each cell is one **calendar slot** ({slot}). Drag or tap to select. Use **Save** in the band below the grid. Tap a selected slot again to deselect — save again after changes. |
+| Body 1 | Each cell is one **calendar slot** ({slot}). Drag or tap to select. Use **Save** to write your selection to the meeting. Tap a selected slot again to deselect — save again after changes. |
 | Body 2 | **Meeting length** is {dur}.{slotHint} Finer slots let you show partial availability if you cannot make the whole meeting. |
 | slotHint (multi) | Select {N} consecutive {gran} slot(s) to cover the full {dur} meeting. |
 | slotHint (single) | Each slot is {gran} — one slot covers the full meeting. |
-| Initials | **Initials** show who else chose that slot. A **+** means more people than fit in the cell. Unsaved candidates have a dashed border. |
-| Copy hint | Mark day column headers, then **Copy days** / **Paste**, or use **Copy week → next**. Only already-saved slots are copied; paste creates unsaved candidates until you Save. |
+| Slot colours | Solid blue tint = your selection (already saved, or matching what is saved). **Orange dashed** = new pick not saved yet. **Grey dashed** = you turned off a saved slot — still on the meeting until you Save. Light green = someone marked it (initials). A **+** means more people than fit in the cell. |
+| Copy hint | **Copy / paste:** click a **day date heading** to mark that column (blue outline). **Copy days** copies your *already-saved* times from marked days. Mark target day heading(s), then **Paste** (creates orange dashed candidates — then Save). **Copy week → next** copies this week’s saved times onto the next week and jumps the view forward. **Clear selection** drops unsaved changes and restores your last saved slots. |
 | Nav hint | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
 | Hours | Meeting hours {start}–{end} (meeting base). Times at left show **your** local timezone ({tz}){; tap the second time to cycle other attendees’ timezones when recorded attendee timezones exist}. |
 
@@ -433,17 +433,18 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Pane: Save band (dual Save)
 
-Shown when signed in. Buttons appear **above** the grid (form-save header) and again **below** the grid. All save-band buttons share the same height.
+Shown when signed in. Buttons appear **above** the grid (form-save header) and again **below** the grid. All save-band buttons share the same height. Copy/clear actions use cancel-style (neutral) buttons; **Save** stays the primary action colour.
 
-- **Save** (title: Save your currently selected availability slots to the meeting)
-- **Clear selection** (title: Clear unsaved candidates — restore to your last saved availability)
-- **Copy days** (title: Copy saved slots from marked day columns)
-- **Paste** (title: Paste copied day pattern(s) onto marked day columns as unsaved candidates)
-- **Copy week → next** (title: Copy this week’s saved slots onto the next week as unsaved candidates)
+- **Save** (title: Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off))
+- **Clear selection** (title: Discard unsaved picks and pending removals — restore your last saved availability)
+- **Copy days** (title: Copy already-saved times from day headings you have marked)
+- **Paste** (title: Paste onto marked day headings as orange dashed candidates (then Save))
+- **Copy week → next** (title: Copy this week’s saved times onto next week as candidates, then jump the view forward)
+- Explain (above grid): **Save** keeps blue/orange picks and drops grey dashed. **Clear selection** undoes unsaved edits. Mark date headings → **Copy days** / **Paste**, or **Copy week → next**.
 - Meta: Clipboard: {N} day pattern(s) ready to paste — mark target day column(s), then Paste. *(when clipboard set)*
-- Meta: {N} slot(s) selected · {optional candidate/mark notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
+- Meta: {N} slot(s) selected · {optional unsaved pick / to remove on Save / day marked notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
 
-**Copy / paste model:** Copy reads **already-saved** slots only. Paste adds **unsaved candidates** (dashed border) until Save. Day → day or day → many: mark source day(s) → Copy days → mark target(s) → Paste (1 pattern → all targets; N patterns → N targets in order). Paste onto a day that already has saved slots: add candidates where not saved; leave already-saved hours unchanged. Off bookable / weekend: skip and warn that some times could not be replicated. **Clear selection** resets to saved-only. Day column headers are markable (highlight when marked).
+**Copy / paste model:** Copy reads **already-saved** slots only. Paste adds **unsaved candidates** (orange dashed) until Save. Day → day or day → many: mark source day(s) → Copy days → mark target(s) → Paste (1 pattern → all targets; N patterns → N targets in order). Paste onto a day that already has saved slots: add candidates where not saved; leave already-saved hours unchanged. Off bookable / weekend: skip and warn that some times could not be replicated. **Clear selection** resets to saved-only. Day column headers are markable buttons styled like the old date labels (not blue action buttons). Turning off a saved slot shows **grey dashed** (pending remove) until Save — it does not look like a normal green “someone free” cell.
 
 **Bookable range:** calendar opens at Calendar Options start date; ⇤ / ⇥ jump to Options start / end (if no Options end, ⇥ jumps to last marked availability). Day/week navigation stays within the Options bookable range when an end date is set. Days outside the range are not shown.
 
