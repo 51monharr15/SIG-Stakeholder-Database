@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.47  
+**Build:** 1.8.48  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -433,20 +433,20 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Pane: Save band (dual Save)
 
-Shown when signed in. Buttons appear **above** the grid (form-save header) and again **below** the grid. All save-band buttons share the same height. Copy/clear actions use cancel-style (neutral) buttons; **Save** stays the primary action colour.
+Shown when signed in. Buttons appear **above** the grid (form-save header) and again **below** the grid. All save-band buttons share the same height. Copy/clear/invert actions use cancel-style (neutral) buttons; **Save** stays the primary action colour.
 
 - **Save** (title: Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off))
 - **Clear selection** (title: Discard unsaved picks and pending removals — restore your last saved availability)
-- **Copy days** (title: Copy already-saved times from day headings you have marked)
-- **Paste** (title: Paste onto marked day headings as orange dashed candidates (then Save))
-- **Invert days** (title: Copy this week’s saved times onto next week as candidates, then jump the view forward)
-- Explain (above grid): **Save** keeps blue/orange picks and drops grey dashed. **Clear selection** undoes unsaved edits. Mark date headings → **Copy days** / **Paste**, or **Invert days**.
-- Meta: Clipboard: {N} day pattern(s) ready to paste — mark target day column(s), then Paste. *(when clipboard set)*
+- **Copy days** (title: Copy marked days as a sequence (as shown left→right). Empty days stay in the sequence. Uses your current selection on each day.)
+- **Paste** (title: Paste the sequence from the leftmost marked day onward (next displayed days). Adds to selection only. Clipboard kept for another Paste.)
+- **Invert days** (title: On marked days: flip blank ↔ orange dashed. Solid saved selections are left unchanged.)
+- Explain (above grid): **Save** keeps blue/orange picks and drops grey dashed. Mark date headings → **Copy days** (full sequence, including blanks) → mark first destination → **Paste** (runs forward on displayed days). **Invert days** flips blank ↔ orange dashed. With weekends off, Fri→Mon counts as two steps.
+- Meta: Clipboard: {N} day(s) in sequence ({day numbers}) — mark the first destination day, then Paste. *(when clipboard set)*
 - Meta: {N} slot(s) selected · {optional unsaved pick / to remove on Save / day marked notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
 
-**Copy / paste model:** Copy reads **already-saved** slots only. Paste adds **unsaved candidates** (orange dashed) until Save. Day → day or day → many: mark source day(s) → Copy days → mark target(s) → Paste (1 pattern → all targets; N patterns → N targets in order). Paste onto a day that already has saved slots: add candidates where not saved; leave already-saved hours unchanged. Off bookable / weekend: skip and warn that some times could not be replicated. **Clear selection** resets to saved-only. Day column headers are markable buttons styled like the old date labels (not blue action buttons). Turning off a saved slot shows **grey dashed** (pending remove) until Save — it does not look like a normal green “someone free” cell.
+**Copy / paste model:** Copy keeps **every** marked day in display order (including empty steps). Toast always reports that count and day numbers. Paste starts at the leftmost marked destination and fills the next displayed days (weekends only if shown). Stops quietly at the bookable end. Paste is a boolean **OR** into selection (never clears; solid saved stays). Clipboard is kept for repeat Paste. **Copy week → next** removed. Touch devices: ballistic horizontal swipe on the calendar grid moves by displayed days.
 
-**Bookable range:** calendar opens at Calendar Options start date; ⇤ / ⇥ jump to Options start / end (if no Options end, ⇥ jumps to last marked availability). Day/week navigation stays within the Options bookable range when an end date is set. Days outside the range are not shown.
+**Bookable range:** calendar opens at Calendar Options start date; ⇤ / ⇥ jump to Options start / end (if no Options end, ⇥ jumps to last marked availability). Day/week navigation stays within the Options bookable range when an end date is set. Days outside the range are not shown. Availability outside the range is **not** deleted when the range moves — it is only hidden.
 
 ---
 

@@ -380,13 +380,17 @@
     return list;
   }
 
-  function alternateTimezones(m) {
-    return recordedTimezones(m).filter((z) => z !== tz);
+  /** Timezones available on the cycling second line (includes your own for confirmation). */
+  function cycleTimezones(m) {
+    const list = recordedTimezones(m).slice();
+    if (tz && !list.includes(tz)) list.unshift(tz);
+    return list;
   }
 
   function currentAltTimezone(state, m) {
-    const alts = alternateTimezones(m);
-    if (!alts.length) return null;
+    const alts = cycleTimezones(m);
+    // Need at least one recorded/other zone besides nothing useful to cycle
+    if (alts.length < 2) return null;
     const i = ((state.altTzIndex % alts.length) + alts.length) % alts.length;
     return alts[i];
   }
@@ -406,7 +410,9 @@
     const alt = new Date(iso).toLocaleTimeString(undefined, {
       hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: altTz,
     });
-    const tip = `${altTz} — recorded attendee timezone — click for next`;
+    const tip = altTz === tz
+      ? `${altTz} — your timezone — click for next`
+      : `${altTz} — recorded attendee timezone — click for next`;
     return `<span class="tz-local">${escapeHtml(local)}</span><button type="button" class="tz-alt-btn" data-action="cycle-alt-tz" title="${escapeHtml(tip)}">${escapeHtml(alt)}</button>`;
   }
 
@@ -1280,7 +1286,7 @@
     return `
       <section class="panel stack calendar-panel">
         <div class="availability-mark-band">
-        <details class="calendar-instructions"${autoDetailsOpen(true) ? ' open' : ''}>
+          <details class="calendar-instructions" data-pane-id="cal-instructions"${paneOpenAttr(state, 'cal-instructions', { secondary: isNarrowScreen() })}>
           <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
           <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> to write your selection to the meeting. Tap a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
@@ -2932,17 +2938,23 @@
     if (!e.target.closest('.calendar-scroll, .calendar')) return;
     if (e.target.closest('.cal-nav, button.day-head-markable, input, textarea, select, a')) return;
     if (!['calendar', 'group'].includes(state.activeTab)) return;
+    if (state.calSwipeMomentumTimer) {
+      clearTimeout(state.calSwipeMomentumTimer);
+      state.calSwipeMomentumTimer = null;
+    }
     const t = e.touches[0];
+    const now = performance.now();
     state.calSwipe = {
       active: true,
       startX: t.clientX,
       startY: t.clientY,
       lastX: t.clientX,
-      lastT: performance.now(),
+      lastT: now,
       originX: t.clientX,
       vel: 0,
       axis: null,
       stepped: false,
+      samples: [{ t: now, x: t.clientX }],
     };
   }
 
@@ -2975,8 +2987,13 @@
     if (s.axis !== 'h') return;
     if (e.cancelable) e.preventDefault();
     const now = performance.now();
-    const dt = Math.max(8, now - s.lastT);
-    s.vel = (t.clientX - s.lastX) / dt;
+    s.samples.push({ t: now, x: t.clientX });
+    s.samples = s.samples.filter((p) => now - p.t < 120);
+    if (s.samples.length >= 2) {
+      const a = s.samples[0];
+      const b = s.samples[s.samples.length - 1];
+      s.vel = (b.x - a.x) / Math.max(1, b.t - a.t);
+    }
     s.lastX = t.clientX;
     s.lastT = now;
     const stepPx = 40;
@@ -2998,22 +3015,28 @@
       clearTimeout(state.calSwipeMomentumTimer);
       state.calSwipeMomentumTimer = null;
     }
-    // Momentum from release velocity (px/ms). Swipe left (vel < 0) → forward.
-    const speed = Math.abs(s.vel);
-    if (speed < 0.4) return;
-    const dir = s.vel < 0 ? 1 : -1;
-    let remaining = Math.min(18, Math.max(1, Math.round(speed * 14)));
+    // Recent-window velocity — finger often stops before lift so last sample alone is too slow.
+    let vel = s.vel;
+    if (s.samples?.length >= 2) {
+      const a = s.samples[0];
+      const b = s.samples[s.samples.length - 1];
+      vel = (b.x - a.x) / Math.max(1, b.t - a.t);
+    }
+    const speed = Math.abs(vel);
+    if (speed < 0.18) return;
+    const dir = vel < 0 ? 1 : -1;
+    let remaining = Math.min(14, Math.max(1, Math.round(speed * 16)));
     const tick = () => {
       state.calSwipeMomentumTimer = null;
       if (remaining <= 0 || !state.meet) return;
       if (!advanceCalendarByDisplayedDays(root, state, dir)) return;
       remaining -= 1;
       if (remaining > 0) {
-        const delay = 28 + (18 - remaining) * 6;
+        const delay = 32 + (14 - remaining) * 8;
         state.calSwipeMomentumTimer = setTimeout(tick, delay);
       }
     };
-    state.calSwipeMomentumTimer = setTimeout(tick, 20);
+    state.calSwipeMomentumTimer = setTimeout(tick, 24);
   }
 
   async function handleSubmit(e, root, state) {
