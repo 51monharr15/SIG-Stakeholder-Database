@@ -1,224 +1,210 @@
-# UI style guide — preferences distilled for reuse
+# UI style guide — principles, rules, and hierarchy
 
-**Provenance:** Distilled from product preferences developed with Simon while building Meet Scheduler (2026).  
-**Purpose:** A **general** style and interaction guide for other apps — principles first. Product-specific colour mappings (e.g. “lavender = dates in the scheduler”) belong in that product’s own hierarchy or theme file, not here.
+**Purpose:** A **generic** guide for interactive applications. Principles first; rules are how principles become a consistent experience so lessons learned in one place apply in parallel places.
 
-When a preference was marked a standing **rule**, treat it as default until explicitly changed. If an exception seems needed, ask first.
+**Provenance:** Distilled from product work with Simon (Meet Scheduler and related apps, 2026). Product-specific colours, panel names, and copy live in that product’s **UI hierarchy** doc — not here.
 
----
+**How to use this file**
 
-## 1. Structure before decoration
-
-### Panels and panes
-
-- **Panel** — one primary working area (often one dashboard tab or major section). One job per panel.
-- **Pane** — a bordered, tinted region (or expandable block) *inside* a panel. Groups related fields or a single concern.
-- Prefer a clear nesting: page → panel → pane → controls. Do not invent extra chrome layers with vague names.
-- Avoid jargon for persistent UI frames (e.g. do not call the app header “chrome” in user-facing copy — it confuses browser chrome / brand names). Prefer plain labels such as “page header (always visible)”.
-
-### One job per section
-
-- Each section should have **one purpose**, one headline, and usually one short supporting sentence.
-- Do not pack stats, schedules, promos, and secondary marketing into the first viewport of a landing or promotional surface.
-- On branded or landing surfaces: brand first; one composition, not a dashboard (unless the product *is* a dashboard).
-
-### Hierarchy documentation (when the product keeps one)
-
-- Maintain a hierarchy doc that maps **panels → panes** with **full on-screen text** (no ellipsis abbreviations in the reference). Reviews and amendments stay unambiguous.
-- In that doc, label headings so navigation is obvious (e.g. prefix **Panel:** / **Pane:**).
-- When the owner uploads amended hierarchy copy, treat inline wording as intended UI changes, then sync code and doc together.
-- Primary UI strings live in the real templates/sources of truth; the hierarchy doc mirrors them — it is not a second product.
+1. Apply **Principles** on every change.  
+2. Follow **Rules / heuristics** unless the owner grants an exception (ask first).  
+3. Keep a **plain-English UI hierarchy** for the app under development (required — see §4).  
+4. When the owner marks something a standing **rule**, it stays until they change it.
 
 ---
 
-## 2. Colour as a semantic system
+## 1. Principles (standing)
 
-**Principle:** Use colour **consistently as meaning**, not as decoration.
+These are the north star. If a rule conflicts with a principle, fix the rule — do not silently break the principle.
 
-- Assign tints (and accent roles) to **kinds of content or action**, and reuse those assignments everywhere that kind appears.
-- Examples of *kinds* (choose names that fit the product): time/scheduling, free text, people, places, files/attachments, create, find/search, success, warning, destructive.
-- Do **not** invent a new tint for each screen. If two panes share a kind, they share a tint.
-- Nav colour is for **navigation controls**, not for washing an entire panel.
-- Primary action colour (often blue) = commits or changes stored data. Neutral/cancel styling = secondary or reversible actions that should not look like “the” submit.
-- State on interactive cells (selected, draft, pending remove, shared/other-person) must be **visually distinct and explained**. Never let “turned off but not yet saved” look like “someone else marked this” or “empty”.
-- Prefer CSS variables (or theme tokens) for the palette so meaning stays stable when hex values change.
+### P1 — First use assumes no knowledge
 
-Product theme files may list concrete hex values; this guide only requires that the **mapping is documented and consistent**.
+A user knows nothing on first use. They need clear on-screen hints and ready access to guides (help, getting started, operations). Do not require tribal knowledge to complete a basic task.
+
+### P2 — Same job, same behaviour
+
+When a user meets a similar function, it should work the same way as before — **or** the UI must say **how and why** it differs. Silent inconsistency is a defect.
+
+### P3 — Controls near need; minimise scroll
+
+Put controls where they are needed. For long content, **duplicate** critical controls (e.g. Save above and below) so the user does not hunt or scroll blindly. Same action, same label.
+
+### P4 — No silent failure; honest errors
+
+Never behave inconsistently in silence. Report errors clearly, with enough diagnosis that a user (or supporter) can act: what failed, what to try, and where more detail lives (message, code, log) when relevant.
+
+### P5 — Colour carries meaning
+
+Use colour **semantically**. Extend conventions so what the user learned applies in new contexts where parallels exist. Decoration without meaning is noise.
+
+### P6 — Help recedes as mastery grows
+
+A user learns through consistency and then needs less help. Help must **stay available** but should **recede** and occupy less space for returning users (collapsed instructions, remembered open/closed, secondary panes default closed when dense).
+
+### P7 — Compact UI; clear borders; clear state
+
+Use the minimum space that still works. Border functions clearly so actions and regions separate. Display **state changes** clearly (saved vs draft vs pending remove vs other people’s marks — never ambiguous).
 
 ---
 
-## 3. Visual design preferences
+## 2. From principles → rules (heuristics)
 
-### Atmosphere and layout
+Rules exist so parallel contexts teach transferable lessons. Prefer a short, stable set of roles and patterns over one-off cleverness.
 
-- Avoid flat, single-colour page backgrounds as the only surface; use light structure (tinted panes, subtle borders) so regions read as places.
-- Default: **no cards**. Cards only when they are the container for a user interaction. If removing border, shadow, background, or radius does not hurt interaction or understanding, it should not be a card.
-- No hero overlays (floating badges, promo stickers, info chips on top of hero media) on promotional surfaces.
-- Full-bleed hero only where the product is promotional; do not default to inset media cards or collages unless the design system requires it.
-- Reduce clutter: avoid pill clusters, stat strips, icon rows, and competing text blocks in one viewport.
+### Learning and help — from P1, P6
 
-### Typography
+| Rule | Practice |
+|------|----------|
+| **R1** | First-run paths show what to do next (empty states name the next panel/action). |
+| **R2** | Durable guides exist (in-app help + operations/manual) and stay reachable from the product. |
+| **R3** | Long how-to text starts collapsed or secondary on narrow/return visits; remember open/closed when it helps. |
+| **R4** | Where content appears elsewhere, put a short **where displayed** hint on the pane title (not repeated on every field). |
 
-- Prefer expressive, purposeful fonts over default stacks (Inter, Roboto, Arial, system-only) on branded surfaces.
-- Labels should remain readable when they fit on one line; do not wrap labels unnecessarily.
-- Left-align compact forms and tables unless there is a clear reason not to.
-- Avoid redundant summary + lead that say the same thing twice.
+### Consistency — from P2
 
-### Motifs to avoid by default
+| Rule | Practice |
+|------|----------|
+| **R5** | Same control role → same look, placement family, and save model across panels. |
+| **R6** | If behaviour must differ, say so next to the control (e.g. “saves immediately” vs “then Save”). |
+| **R7** | Parallel layouts share one pattern (e.g. calendar toolbars: view controls left, explainer right; action bands left-aligned). |
 
-Do not default to common AI-generated looks unless the brand explicitly wants them:
+### Placement and density — from P3, P7
 
-- Purple-on-white or purple-to-indigo gradient themes as a generic “product” look
-- Warm cream background with high-contrast serif + terracotta accent as a default recipe
-- Broadsheet / dense newspaper layouts with hairline rules and zero radius as a default
-- Unmotivated dark mode, glow effects, rounded-full pills, multi-layer shadows, emoji decoration
+| Rule | Practice |
+|------|----------|
+| **R8** | **Left-align** compact forms, tables, pane titles, and calendar/action bands unless a documented pattern says otherwise (e.g. pane summary: title left, Save on the summary’s right). |
+| **R9** | **Dual placement:** critical Save (and matching critical actions) above **and** below long panes/grids — same label. |
+| **R10** | Prefer **pane-local** Saves over a stack of duplicate panel-level Saves beside every pane. |
+| **R11** | When a short control column sits beside taller explainer text, **bottom-align** the controls with the text (toward the content they affect), not top-align. |
+| **R12** | Match heights in a single button band. Primary vs secondary roles stay visually distinct. |
+| **R13** | Default: **no cards**. Cards only when they are the interaction container. Border regions (panes) to separate jobs — do not invent vague extra chrome layers. |
+| **R14** | One job per section: one purpose, one headline, usually one short supporting line. |
+
+### Honesty and errors — from P4
+
+| Rule | Practice |
+|------|----------|
+| **R15** | Never silently discard user input. Surface validation errors; keep `maxlength`, instructions, and messages in agreement. |
+| **R16** | Destructive or hard-to-undo actions need confirmation. |
+| **R17** | Errors name the problem and the next step; include codes/log pointers in the hierarchy when the product has them. |
+| **R18** | Sparse views may hide empty rows/columns; offer **Show all…** and mark gaps so omission is visible. |
+
+### Colour and state — from P5, P7
+
+| Rule | Practice |
+|------|----------|
+| **R19** | Assign tints/accents to **kinds** of content or action (time, people, places, text, files, create, find, success, warning, destructive). Reuse the mapping; do not invent a new tint per screen. |
+| **R20** | Nav colour is for **navigation controls**, not washing whole panels. |
+| **R21** | Primary (often blue) = commits stored data. Neutral/cancel = secondary or reversible. Disabled is clearly muted. |
+| **R22** | Distinguish at least: **committed**, **draft/candidate**, **pending removal**, **other people’s marks**. Pending removal must not look like empty or “others marked”. Explain in a legend when non-obvious. |
+| **R23** | Non-action controls (e.g. day headings used as toggles) must not inherit primary button paint. |
+
+### Forms and tables — from P2, P7
+
+| Rule | Practice |
+|------|----------|
+| **R24** | **Standing:** new-row first field placeholder is **Add new…** unless the owner specifies otherwise. Ask before exceptions. |
+| **R25** | Wide tables/grids: scroll inside the pane on small screens. |
+| **R26** | Overflow: expand-to-read / copy beats truncating important URLs/text with “…” alone. |
+
+### Save models — from P2, P4
+
+| Rule | Practice |
+|------|----------|
+| **R27** | **Construct-then-Save** for multi-field / multi-cell work; **immediate save** for single toggles that are the decision — label immediate saves. |
+| **R28** | Do not mix save models on one control without saying so. If two mechanisms feel redundant, discuss before changing. |
+
+### Wording — from P1, P2
+
+| Rule | Practice |
+|------|----------|
+| **R29** | Hierarchy docs quote **full** on-screen text (no ellipsis abbreviations in the reference). |
+| **R30** | Empty states say what to do next. Audience markers (Everyone / Organiser) at the **start** of steps. |
+| **R31** | Drop obsolete verbs when behaviour changes. Help/ops docs must match live behaviour. |
+
+### Motifs to avoid by default (visual)
+
+Do not default to common generic “AI product” looks unless the brand asks: purple-on-white / purple–indigo gradients as a default theme; cream + serif + terracotta as a default recipe; broadsheet hairline density as a default; unmotivated dark mode, glow, pill clusters, multi-layer shadows, emoji decoration.
 
 ### Motion
 
-- Use motion for presence and hierarchy (open/close, sticky context), not noise.
-- Disclosure markers (collapsed vs open) should be the **same visual size** (e.g. ▶ and ▼), not a tiny chevron vs a large triangle.
+Use motion for presence and hierarchy (open/close, sticky context), not noise. Disclosure markers (▶ / ▼) should be the **same visual size**.
 
 ---
 
-## 4. Controls and buttons
+## 3. Structure vocabulary (generic)
 
-### Button roles
+Use plain nesting names so docs and code match:
 
-Keep a small, consistent set of roles:
-
-| Role | Use for |
+| Term | Meaning |
 |------|---------|
-| **Primary / action** | Save, create, confirm — changes stored data |
-| **Nav** | Move between sections (distinct from primary) |
-| **Cancel / secondary** | Dismiss, clear selection, non-committing tools |
-| **Disabled** | Clearly muted; never look identical to primary |
+| **Page** | A full screen or route |
+| **Panel** | One primary working area (often one dashboard tab). One job per panel. |
+| **Pane** | A bordered/tinted or expandable block *inside* a panel |
+| **Page header (always visible)** | Persistent identity/actions — do **not** call this “chrome” in user-facing docs |
 
-- Interactive elements that are **not** primary actions (e.g. date column headers used as toggles) must **not** inherit primary button paint (coloured fill + inverted text). Style them as their content type (labels, heads) with an affordance (outline, cursor, hover).
-- Match heights in a button band when several actions sit in one row.
-- Tooltips (`title`) should state what happens, including save consequences (“…then Save”, “restores last saved…”).
-
-### Dual placement
-
-- For long panes or grids, put the same primary **Save** (and critical actions) both **above and below** the content when scrolling would otherwise hide them — same action, same label.
-- Prefer **pane-local** Saves over a stack of duplicate panel-level Saves beside every pane.
-- When several Save buttons on one panel all submit the **same** form, say so in help text so users are not hunting for different meanings.
+Prefer: page → panel → pane → controls. Product hierarchy docs label **Panel:** / **Pane:** headings clearly.
 
 ---
 
-## 5. Forms, tables, and placeholders
+## 4. Required artefact — plain-English UI hierarchy
 
-### Standing rule — new-row placeholders
+**Always** maintain a markdown hierarchy for the application under development. Purpose: make external adjustments (copy, tooltips, errors) easy without spelunking code.
 
-When a table’s **first row** is for adding a new entry, the **first field’s placeholder** is **Add new…** (unless the product owner specifies other wording). Apply on every such table; ask before any exception.
+### What it must contain
 
-### Tables
+Reproduce **full** on-screen (and user-visible) text — no `…` abbreviations in tables:
 
-- Prefer pane-local scroll for wide tables and grids (scroll inside the pane, not the whole window), especially on small screens.
-- Column widths should match content: narrow columns for short enums (role, yes/no); give room to headings that need two lines of meaning.
-- Overflow cells: expand-to-read / copy patterns beat truncating with “…” in the live UI when the value is a URL or long text.
-- Do not hide destructive actions without confirmation when the loss is hard to undo (“Are you sure…?”).
+- Panel / pane structure and titles  
+- Default values and placeholders  
+- Button labels and **tooltips** (`title` / accessible names)  
+- Hints, legends, empty states  
+- **Error messages**, codes, log formats/locations, expected responses, and remedies (when the product has them)  
+- Media in the UI (icons, legend chips, status colours) described in plain English  
 
-### Validation
+### Conventions
 
-- Instructions, `maxlength`, and validation messages must **agree**.
-- Never **silently discard** user input (e.g. a typed passcode or field that fails a rule). Surface the error.
-- Leading/trailing normalisation (trim, lowercase) is fine if documented next to the field.
+- **Panels** = Markdown H2 (`## Panel: …`)  
+- **Panes** = Markdown H3 (`### Pane: …`)  
+- Primary strings still live in real templates; the hierarchy **mirrors** them for review and amendment  
+- When the owner uploads an amended hierarchy, treat inline wording as intended UI changes; sync code and doc together  
 
-### WHERE DISPLAYED hints
-
-- Pane titles for content that appears elsewhere should carry a short **where displayed** hint (e.g. “simple HTML — status bar & Overview”), consolidated on the title rather than repeated on every field when all fields share the destination.
-
----
-
-## 6. Save models and state honesty
-
-### Explicit vs immediate save
-
-- **Construct-then-Save** fits multi-field options and calendars: user builds a selection, then commits.
-- **Immediate save** fits single toggles that are themselves the decision (e.g. confirm location, preference chip) — say “saves immediately” in the UI.
-- Do not mix models in the same control without saying so. If two mechanisms feel redundant (tab-out save vs Save button for the same kind of field), **discuss before changing**.
-
-### Draft / pending / saved
-
-Visual language must distinguish at least:
-
-1. **Committed** — what is stored
-2. **Draft / candidate** — selected or pasted, not yet saved
-3. **Pending removal** — was committed; user turned it off; still stored until Save
-
-Pending removal must **not** reuse the “other people marked this” or “empty” look. Prefer a dedicated style (e.g. muted + dashed) plus legend text.
-
-### Copy / paste of structured data
-
-When copying user-authored structure (days, rows, blocks):
-
-- **Copy** from **already saved** source of truth, not from unsaved drafts (unless the product explicitly defines otherwise).
-- **Paste** as **unsaved candidates** until Save.
-- Skip impossible targets (out of range, hidden) and **warn** that some items could not be replicated.
-- Prefer clear verbs: Copy / Paste / Clear selection — and a one-line explanation next to the button band.
+Product-specific colour hex values and tint names belong in that product hierarchy (or theme file), with kinds mapped consistently to **R19–R22**.
 
 ---
 
-## 7. Navigation and orientation
+## 5. Agent / collaborator checklist (before ship)
 
-- Sticky context that identifies columns or sections (e.g. day headings over a grid) must remain visible while the body scrolls; do not trap sticky headers inside overflow-hidden panes.
-- Sparse views may hide empty rows/columns; offer **Show all…** and mark gaps (thicker boundary) where items were omitted so the calendar/list does not silently look contiguous.
-- Deep-link or remember pane open/closed state per entity when it helps return visits; default secondary panes closed on first visit if the panel is dense.
+Re-read **§1 Principles** and **§2 Rules** before layout or copy edits. Then:
 
----
-
-## 8. Wording and help
-
-- Use the product’s real words on screen; hierarchy docs quote them in full.
-- Correct obvious typos in notes when applying to UI; keep the owner’s intended meaning.
-- Audience markers (Everyone / Organiser / similar) belong at the **start** of steps, not mid-sentence.
-- Drop obsolete verbs when behaviour changes (e.g. remove “Propose” from titles if proposing no longer exists).
-- Empty states should say **what to do next** and which panel to open — not only “None”.
-- Help panels and operations guides are part of the product surface; keep them consistent with UI behaviour (click-to-save, clear-on-second-click, etc.).
+- [ ] Parallel contexts still behave the same — or differences are labelled (**P2 / R5–R7**)  
+- [ ] Controls sit by need; dual Save where scroll would hide actions (**P3 / R9**)  
+- [ ] Left-align titles and action bands; bottom-align short controls beside tall explainers (**R8 / R11**)  
+- [ ] Errors are clear; no silent discard (**P4 / R15–R17**)  
+- [ ] Colour/state semantics hold; legend if needed (**P5 / R19–R22**)  
+- [ ] Help available but not dominating return visits (**P6 / R3**)  
+- [ ] Compact; borders clear; state changes obvious (**P7**)  
+- [ ] Hierarchy doc updated with full strings / tooltips / errors  
+- [ ] Desktop and narrow widths usable  
 
 ---
 
-## 9. Identity and trust (multi-user tools)
+## 6. Working preferences (collaboration)
 
-- Be explicit who the browser is acting as; toggles for “signed-in as” beat ambiguous Myself / Someone else radios when the rules are simple.
-- Unsigned-in add → become that person; already signed-in add-another → stay as original. Document the rule once and stick to it.
-- Passcodes / shared secrets: length and character rules shown wherever they are entered; find-by-identity flows need matching credentials — do not invent silent failures.
-
----
-
-## 10. Compact layout checklist (before ship)
-
-- [ ] Left-aligned forms/tables where appropriate  
-- [ ] No redundant summary/lead duplication  
-- [ ] Labels unwrapped when they fit  
-- [ ] Pane tints match content kind  
-- [ ] Primary vs secondary button roles correct  
-- [ ] Non-action controls not painted as primary buttons  
-- [ ] Saved / draft / pending-remove states distinct and legend documented  
-- [ ] Destructive actions confirmed  
-- [ ] New-row first placeholder is **Add new…** (or agreed exception)  
-- [ ] Hierarchy / copy doc updated with full strings if the product keeps one  
-- [ ] Works on desktop and narrow/mobile widths  
+- **Rule** = standing until the owner changes it; ask before exceptions.  
+- Announce process or deploy-path changes **before** acting.  
+- Do not deploy to live systems unless explicitly asked.  
+- Scratch / DevNotes uploads are instructions — do not commit as product docs unless asked.  
+- Prefer one long-lived working line for a product’s UI hierarchy work over surprise branch splits, unless agreed.  
+- Handoff in the owner’s deploy vocabulary (version file, pull, publish) when that is their routine.  
+- When the owner says **hold till agreed**, do not implement those items; confirm understanding first.
 
 ---
 
-## 11. Working preferences (how these rules are applied)
+## 7. What this guide is not
 
-These are collaboration defaults that keep the style guide enforceable:
-
-- When the owner says **rule**, it is standing until they change it; ask before exceptions.
-- Announce and explain process or filing/deploy path changes **before** acting.
-- Do not deploy to live systems unless explicitly asked.
-- Scratch notes / DevNotes uploads are instructions — do not commit them as product docs unless asked.
-- Prefer one long-lived working line for a product’s UI hierarchy work over surprise branch splits, unless agreed.
-- Handoff in the owner’s deploy vocabulary (version file, pull, publish) rather than git jargon as the primary message.
-
----
-
-## 12. What this guide is not
-
-- Not a brand book for a single product’s exact hex palette.
-- Not a component library API.
+- Not a brand book for one product’s exact hex palette.  
+- Not a component-library API.  
 - Not permission to add cards, gradients, or dark mode “for polish” without a product reason.
 
-When in doubt: **clear structure, honest state, semantic colour, few button roles, full copy in the reference doc.**
+**When in doubt:** first-use clarity, transferable consistency, controls by need, honest errors, semantic colour, help that recedes, compact bordered UI with unmistakable state — and a complete hierarchy doc.
