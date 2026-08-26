@@ -1,242 +1,81 @@
 <?php
 
+/**
+ * Displays docs/OPERATIONS.md in the browser.
+ * Edit the Markdown file only — this page is just the viewer.
+ */
+
 $versionFile = __DIR__ . '/VERSION';
 $appVersion = is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'dev';
 $cssVer = is_readable(__DIR__ . '/assets/css/style.css') ? filemtime(__DIR__ . '/assets/css/style.css') : time();
+$back = (string) ($_GET['back'] ?? './');
+if ($back === '' || preg_match('/^\s*javascript:/i', $back)) {
+    $back = './';
+}
+
 $mdPath = __DIR__ . '/docs/OPERATIONS.md';
-$markdown = is_readable($mdPath) ? file_get_contents($mdPath) : 'Operations guide not found.';
+$markdown = is_readable($mdPath) ? (string) file_get_contents($mdPath) : "# Guide missing\n\nCould not read `docs/OPERATIONS.md`.";
 
-function meet_inline_md(string $line): string
-{
-    $line = htmlspecialchars($line, ENT_QUOTES, 'UTF-8');
-    $line = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $line) ?? $line;
-    $line = preg_replace('/`([^`]+)`/', '<code>$1</code>', $line) ?? $line;
-    return $line;
-}
+require_once __DIR__ . '/lib/Parsedown.php';
+$parsedown = new Parsedown();
+$parsedown->setSafeMode(true);
+$html = $parsedown->text($markdown);
 
-/** @return list<string>|null */
-function meet_parse_table_row(string $line): ?array
-{
-    $line = trim($line);
-    if ($line === '' || !str_starts_with($line, '|')) {
-        return null;
-    }
-    $inner = trim($line, '|');
-    $cells = array_map('trim', explode('|', $inner));
-    return $cells === [] ? null : $cells;
-}
+// Heading anchors: {#id} in the Markdown title, or auto from text
+$html = preg_replace_callback(
+    '/<(h[1-3])>(.*?)\s*\{#([a-z0-9\-]+)\}<\/\1>/is',
+    static fn (array $m): string => '<' . $m[1] . ' id="' . htmlspecialchars($m[3], ENT_QUOTES, 'UTF-8') . '">' . $m[2] . '</' . $m[1] . '>',
+    $html
+) ?? $html;
 
-function meet_is_table_separator(array $cells): bool
-{
-    if ($cells === []) {
-        return false;
-    }
-    foreach ($cells as $cell) {
-        if (!preg_match('/^:?-{3,}:?$/', $cell)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-function meet_render_table(array $rows): string
-{
-    if ($rows === []) {
-        return '';
-    }
-    $header = array_shift($rows);
-    $html = '<table class="ops-table"><thead><tr>';
-    foreach ($header as $cell) {
-        $html .= '<th>' . meet_inline_md($cell) . '</th>';
-    }
-    $html .= '</tr></thead><tbody>';
-    foreach ($rows as $row) {
-        $html .= '<tr>';
-        foreach ($row as $cell) {
-            $html .= '<td>' . meet_inline_md($cell) . '</td>';
-        }
-        $html .= '</tr>';
-    }
-    $html .= '</tbody></table>';
-    return $html;
-}
-
-function meet_render_markdown(string $md): string
-{
-    $lines = preg_split('/\r\n|\r|\n/', $md);
-    $html = '';
-    $inPre = false;
-    $inUl = false;
-    $inOl = false;
-    $i = 0;
-    $count = count($lines);
-
-    $closeLists = static function () use (&$html, &$inUl, &$inOl): void {
-        if ($inUl) {
-            $html .= "</ul>\n";
-            $inUl = false;
-        }
-        if ($inOl) {
-            $html .= "</ol>\n";
-            $inOl = false;
-        }
-    };
-
-    while ($i < $count) {
-        $line = $lines[$i];
-
-        if (str_starts_with($line, '```')) {
-            $closeLists();
-            if ($inPre) {
-                $html .= "</code></pre>\n";
-                $inPre = false;
-            } else {
-                $html .= "<pre><code>";
-                $inPre = true;
-            }
-            $i++;
-            continue;
-        }
-
-        if ($inPre) {
-            $html .= htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . "\n";
-            $i++;
-            continue;
-        }
-
-        if (preg_match('/^### (.+)$/', $line, $m)) {
-            $closeLists();
-            $html .= '<h3>' . meet_inline_md($m[1]) . "</h3>\n";
-            $i++;
-            continue;
-        }
-        if (preg_match('/^## (.+)$/', $line, $m)) {
-            $closeLists();
-            $html .= '<h2>' . meet_inline_md($m[1]) . "</h2>\n";
-            $i++;
-            continue;
-        }
-        if (preg_match('/^# (.+)$/', $line, $m)) {
-            $closeLists();
-            $html .= '<h1>' . meet_inline_md($m[1]) . "</h1>\n";
-            $i++;
-            continue;
-        }
-
-        $tableRow = meet_parse_table_row($line);
-        if ($tableRow !== null) {
-            $closeLists();
-            $tableRows = [];
-            while ($i < $count) {
-                $row = meet_parse_table_row($lines[$i]);
-                if ($row === null) {
-                    break;
-                }
-                if (!meet_is_table_separator($row)) {
-                    $tableRows[] = $row;
-                }
-                $i++;
-            }
-            $html .= meet_render_table($tableRows);
-            continue;
-        }
-
-        if (preg_match('/^- (.+)$/', $line, $m)) {
-            if ($inOl) {
-                $html .= "</ol>\n";
-                $inOl = false;
-            }
-            if (!$inUl) {
-                $html .= "<ul>\n";
-                $inUl = true;
-            }
-            $html .= '<li>' . meet_inline_md($m[1]) . "</li>\n";
-            $i++;
-            continue;
-        }
-
-        if (preg_match('/^\d+\. (.+)$/', $line, $m)) {
-            if ($inUl) {
-                $html .= "</ul>\n";
-                $inUl = false;
-            }
-            if (!$inOl) {
-                $html .= "<ol>\n";
-                $inOl = true;
-            }
-            $html .= '<li>' . meet_inline_md($m[1]) . "</li>\n";
-            $i++;
-            continue;
-        }
-
-        if (trim($line) === '') {
-            $closeLists();
-            $html .= "\n";
-            $i++;
-            continue;
-        }
-
-        $closeLists();
-        $html .= '<p>' . meet_inline_md($line) . "</p>\n";
-        $i++;
-    }
-
-    $closeLists();
-    if ($inPre) {
-        $html .= "</code></pre>\n";
-    }
-    return $html;
-}
+// Tip / warning blockquotes
+$html = preg_replace(
+    '/<blockquote>\s*<p>\s*<strong>\s*Warning:\s*<\/strong>\s*/i',
+    '<blockquote class="warn"><p>',
+    $html
+) ?? $html;
+$html = preg_replace(
+    '/<blockquote>\s*<p>\s*<strong>\s*Tip:\s*<\/strong>\s*/i',
+    '<blockquote class="tip"><p>',
+    $html
+) ?? $html;
 
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Meet Scheduler — operations guide</title>
+  <title>Installation, Operations and Maintenance Guide</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/css/style.css?v=<?= (int) $cssVer ?>">
   <style>
-    .ops-doc { max-width: 52rem; line-height: 1.55; }
-    .ops-doc h1 { margin-top: 0; font-size: 1.45rem; }
-    .ops-doc h2 { margin: 1.25rem 0 0.5rem; font-size: 1.15rem; }
-    .ops-doc h3 { margin: 1rem 0 0.35rem; font-size: 1rem; font-weight: 600; }
-    .ops-doc pre { background: #f8fafc; padding: 0.75rem; border-radius: 8px; overflow-x: auto; font-size: 0.88rem; }
-    .ops-doc ul, .ops-doc ol { margin: 0.35rem 0 0.75rem 1.25rem; }
-    .ops-doc li { margin: 0.2rem 0; }
-    .ops-doc p { margin: 0.35rem 0 0.65rem; }
-    .ops-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 0.5rem 0 1rem;
-      font-size: 0.92rem;
+    .ops-wrap { max-width: 820px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    .ops-wrap h1 { margin-top: 0; font-size: 1.6rem; }
+    .ops-wrap h2 { font-size: 1.2rem; margin-top: 2rem; border-top: 1px solid #d8dee6; padding-top: 0.75rem; }
+    .ops-wrap h3 { font-size: 1rem; margin-top: 1.25rem; }
+    .ops-wrap ol, .ops-wrap ul { line-height: 1.7; padding-left: 1.4rem; }
+    .ops-wrap li { margin-bottom: 0.35rem; }
+    .ops-wrap blockquote.tip {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+      padding: 0.65rem 0.9rem; margin: 0.75rem 0; font-size: 0.92rem;
     }
-    .ops-table th, .ops-table td {
-      border: 1px solid var(--line, #e5e7eb);
-      padding: 0.4rem 0.55rem;
-      text-align: left;
-      vertical-align: top;
+    .ops-wrap blockquote.warn {
+      background: #fefce8; border: 1px solid #fde68a; border-radius: 8px;
+      padding: 0.65rem 0.9rem; margin: 0.75rem 0; font-size: 0.92rem;
     }
-    .ops-table th { background: #f8fafc; font-weight: 600; }
-    .ops-table tbody tr:nth-child(even) { background: #fafbfc; }
+    .ops-wrap code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.9em; }
+    .ops-wrap pre { background: #f1f5f9; padding: 0.75rem 1rem; border-radius: 8px; overflow-x: auto; }
+    .ops-wrap pre code { background: none; padding: 0; }
+    .back-link { display: inline-block; margin-bottom: 1.25rem; color: var(--accent); font-size: 0.92rem; }
   </style>
 </head>
-<body data-page="home">
-  <header class="site-header">
-    <div class="wrap">
-      <a class="brand" href="./">Meet Scheduler</a>
+<body>
+  <div class="ops-wrap">
+    <a class="back-link" href="<?= htmlspecialchars($back, ENT_QUOTES, 'UTF-8') ?>">← Back to meeting scheduler</a>
+    <div class="ops-body">
+      <?= $html ?>
     </div>
-  </header>
-  <main class="wrap">
-    <section class="panel ops-doc">
-      <?= meet_render_markdown($markdown) ?>
-      <p class="meta"><a href="./">← Back to Meet Scheduler</a></p>
-    </section>
-  </main>
-  <footer class="site-footer">
-    <div class="wrap">
-      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · <a href="./">Home</a></small>
-    </div>
-  </footer>
+    <p class="meta" style="margin-top:1.5rem">Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · <a href="<?= htmlspecialchars($back, ENT_QUOTES, 'UTF-8') ?>">Back to meeting scheduler</a></p>
+  </div>
 </body>
 </html>

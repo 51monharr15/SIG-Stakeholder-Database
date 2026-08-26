@@ -49,39 +49,47 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
       data-build="<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>">
   <?php if ($page === 'home'): ?>
   <header class="site-header">
-    <div class="wrap">
+    <div class="wrap wrap-landing">
       <a class="brand" href="./">Simon's Meeting Scheduler</a>
     </div>
   </header>
   <?php endif; ?>
 
-  <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : '' ?>">
+  <main class="wrap<?= $page === 'scheduler' ? ' wrap-scheduler' : ' wrap-landing' ?>">
     <?php if ($page === 'home'): ?>
-      <section class="panel hero">
-        <h1>Find a meeting time everyone can make</h1>
-        <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
-        <p class="hint">Places can be online (URL), physical, or hybrid. Times are shown in your local timezone and UTC.</p>
-        <form id="create-form" class="create-form">
-          <label>
-            Meeting title
-            <input type="text" name="title" placeholder="Board review" required>
-          </label>
-          <button type="submit">Create meeting</button>
-        </form>
-        <p class="hint">Create meeting generates a private link with a random code. <strong>Save it.</strong><br>Or click/tap <strong>Find my meetings</strong> below to search by Attendee's registered<br>ID AND PIN (Requires you have joined and set a personal pin when you joining).</p>
-        <details class="help-toggle home-collapse">
-          <summary>Find my meetings</summary>
-          <div class="help-body">
-            <p class="meta">Enter the <strong>registered identity</strong> (Identity exactly as when you joined) and <strong>personal PIN</strong> for a list of matching meetings.</p>
-            <form id="list-meetings-form" class="create-form">
+      <div class="landing-stack">
+        <section class="pane-region tint-create">
+          <h1 class="section-title">Find a meeting time everyone can make</h1>
+          <p class="lede">Propose availability, compare overlaps, and agree on a place to meet.</p>
+          <p class="hint">Meeting locations can be online (URL) and physical (Simultaneously!). Times are shown to attendees in their local timezone (and UTC as 'reference').</p>
+          <p class="hint" id="home-local-time">Your local time zone is …</p>
+          <form id="create-form" class="create-form">
+            <label>
+              Meeting title
+              <input type="text" name="title" placeholder="Board review" required>
+            </label>
+            <button type="submit">Create meeting</button>
+          </form>
+          <p class="hint">The <strong>Create meeting</strong> button generates a private link with a random URL (new meetings: 7-letter pronounceable code). <strong>Save it and SEND to other proposed Attendees.</strong></p>
+        </section>
+        <section class="pane-region tint-find">
+          <h2 class="section-title">Find my meetings</h2>
+          <p class="meta">Enter the <strong>registered identity</strong> (exactly as when you joined) and <strong>passcode</strong> for a list of matching meetings.</p>
+          <form id="list-meetings-form" class="create-form">
+            <div class="find-meetings-fields">
               <label>Registered identity <input type="text" name="display_name" required autocomplete="username" placeholder="e.g. Alice@gmail.com or Bob"></label>
-              <label>PIN <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" required autocomplete="off"></label>
-              <button type="submit">List my meetings</button>
-            </form>
-            <div id="list-meetings-result" class="list-meetings-result" hidden></div>
-          </div>
-        </details>
-      </section>
+              <label>Passcode
+                <span class="passcode-field">
+                  <input type="password" name="pin" id="find-pin-input" required autocomplete="off" maxlength="20" title="Stored as all lowercase. Letters, numbers, spaces, and safe specials. 2 to 20 characters. Leading spaces stripped.">
+                  <button type="button" class="passcode-toggle" id="find-pin-toggle" title="Show passcode" aria-label="Show passcode"><svg class="passcode-eye-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg></button>
+                </span>
+              </label>
+            </div>
+            <button type="submit" class="find-meetings-submit">List my meetings</button>
+          </form>
+          <div id="list-meetings-result" class="list-meetings-result" hidden></div>
+        </section>
+      </div>
     <?php else: ?>
       <div id="app" class="app-loading">Loading meeting…</div>
     <?php endif; ?>
@@ -89,7 +97,7 @@ $jsVer = is_readable(__DIR__ . '/assets/js/app.js') ? filemtime(__DIR__ . '/asse
 
   <footer class="site-footer">
     <div class="wrap">
-      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span> · <a href="operations.php">Operations guide</a></small>
+      <small>Build <?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?> · Local times · <span id="footer-tz">…</span> · <a href="operations.php">Installation, Operations and Maintenance Guide</a></small>
     </div>
   </footer>
 

@@ -1,122 +1,149 @@
-# Meet Scheduler — operations guide
+# Installation, Operations and Maintenance Guide
 
-How to install, deploy, and use the meet scheduler day to day.
+How to run and use the meeting scheduler — for organisers, attendees, and anyone installing or maintaining a copy.
+Edited 24/08/26
+## Contents
 
-## What this is
+1. [Operations — using the scheduler](#operations)
+2. [Maintenance](#maintenance)
+3. [Installation](#installation)
 
-A self-contained PHP app under `meet/`. No MySQL. Each meeting is a plain-text file in `meet/data/meets/*.meet`.
+## Operations — using the scheduler {#operations}
 
-## Install from Git
+### Buttons (colour meaning)
 
-```bash
-git clone https://github.com/51monharr15/SIG-Stakeholder-Database.git
-cd SIG-Stakeholder-Database
-git checkout cursor/meet-scheduler-ca2b   # until merged to main
+- **Blue** — an action that saves or changes meeting data (Save, schedule a start on Confirm meeting choices, Add attendee, Copy meeting link).
+- **Green** — navigation (dashboard tabs, “Go to…”).
+- **Light grey / neutral** — Cancel or Close (still clickable).
+- **Muted grey** — disabled but visible. Hover or long-press for “Disabled because …”.
+
+### Setting up a meeting (organiser)
+
+1. On the **landing page**, enter a title and press **Create meeting**. Save the private URL. Use **Find my meetings** (full-width pane below) with registered identity and passcode.
+2. Use **Getting started** for the checklist, or open tabs directly.
+3. **Meeting options** — edit title and description, meeting length, calendar slot duration, weekends, recurrence, and the earliest/latest date and daily hours.
+4. **Attendees** — add yourself first (you become organiser). Optionally set a **passcode** (2–20 characters, stored as lowercase) so you can use *Find my meetings* later.
+5. Optionally add other proposed attendees and grant organiser rights. Anyone with the link can also add themselves. An identity without a passcode can be claimed by anyone.
+6. **My availability** — mark free slots; save any time. Clicking a selected slot deselects it — save again after changes.
+7. **Locations** — propose online or physical places and mark which work for you. Initials show who has OK’d each location.
+8. **Copy meeting link** and send it so others can record availability, locations, agenda, and attachments.
+9. On **Confirm meeting choices**, click a start slot to **save it immediately** as the scheduled meeting start (and end from meeting length). Click the **same** slot again to clear; click a **different** slot to reschedule. Confirm location(s) with the Confirmed toggle. Status becomes *Scheduled* (or *Rescheduled* if you change the start later).
+
+### Joining a meeting (attendee)
+
+1. Open the meeting link. Status is shown at the top of every page.
+2. On **Attendees**, press *This is me* or add yourself. Use your passcode if prompted.
+3. Mark availability on **My availability**; vote or propose on **Locations**.
+4. Open **Confirm meeting choices** to see overlaps (organisers set the scheduled time by clicking a slot; attendees can view only).
+5. Use **Meeting Resources** for description, agenda, decisions, notes, and **attachments** (pre- and post-meeting assets — links or text in one table).
+
+### Dashboard tabs
+
+- **Getting started** — Persistent setup checklist for organisers.
+- **Overview** — Summary: status, description, agenda, attendees, best start times (contiguous same-match starts collapse to a range), location popularity.
+- **Attendees** — Register, claim identity, edit details and passcode, organiser roles.
+- **My availability** — Your free times on the calendar grid. Use **Show 3 / 5 / 7 days** (seven allowed even when weekends are hidden) to fit the screen. Mark day headings to **Copy days** / **Paste** / **Invert days**. Copy keeps a full day sequence (including blank days) as shown left-to-right; Paste fills from the first marked destination onward. On touch, swipe the grid to move dates.
+- **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Empty hours and days can be hidden. Same **Show 3 / 5 / 7 days** control as My availability. Cells show all initials who marked each slot. Organiser status required to edit.
+- **Locations** — Propose and vote; see who OK’d each place. On a phone, tap **Add** or tap outside the field to save a new row (there is no Tab key).
+- **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets). Notes appear on Overview under Agenda and decisions; press Enter for a new line (avoid also inserting `<br>` unless you want an extra blank).
+- **Calendar Options** — Meeting length, slot size, bookable dates and hours (organiser edits; others may view read-only).
+
+### Passcodes {#passcodes}
+
+A passcode protects your attendee row and lets you find meetings from the landing page without the URL.
+
+- 2 to 20 characters: letters, digits, spaces, and safe specials (not `|`). Stored as all lowercase.
+- *Find my meetings* needs registered name **and** passcode.
+- Change or remove it under **Edit my details** on Attendees.
+- Passcode fields include a **Show** / **Hide** eye control inside the field.
+
+> **Warning:** Passcodes are not strong security. Anyone with the meeting link can see the attendee list. They cannot claim a passcode-protected row without the passcode.
+
+### Status values
+
+- **Entering organiser details** — no attendees yet.
+- **Entering attendee details** — attendees present; no scheduled start yet.
+- **Scheduled** — organiser saved a start time on Confirm meeting choices (and may have confirmed location(s)).
+- **Rescheduled** — organiser changed a previously scheduled start.
+- **Past** — current time is after the scheduled start.
+- **Summarised** — past, and attachments exist.
+
+### Pane colours (semantic)
+
+Coloured panes group related topics consistently across the app:
+
+| Tint | Meaning | Examples |
+|------|---------|----------|
+| Lavender | Dates & times | Calendar Options date/time fields, calendar grids, proposed time |
+| Blue | Free text | Description, agenda, decisions, notes |
+| Pink | People | Attendees table and forms |
+| Green | Places | Locations (online and physical are both places) |
+| Amber | Attachments | Meeting Resources attachment table |
+| Light blue / green | Landing page | Create meeting / Find my meetings panes |
+
+Expandable panes show **▶** when collapsed and **▼** when open (same visual size). Pane open/closed state is remembered per meeting.
+
+> **Tip:** Design note for maintainers: availability is stored in UTC; the calendar grid hours use the meeting timezone so everyone marks the same slots. Each person also sees times in their browser timezone.
+
+## Maintenance {#maintenance}
+
+- Meeting data lives under `meet/data/meets/` as plain-text `.meet` files. Back up that directory.
+- Do not put `|` characters in passcodes or pipe-separated fields — they break the file format.
+- After deploying updates, hard-refresh browsers (Ctrl+F5) so `app.js` and `style.css` reload.
+- From *Find my meetings*, you can **Delete** a listed meeting (Are you sure? confirm). Requires the same registered identity and passcode used to list it.
+
+## Installation {#installation}
+
+> **Warning:** **Not a hardened application.** Meet Scheduler is built for trusted groups sharing a private link. It aims to stop easy mistakes (wrong pane, accidental edits by non-organisers), not to resist a determined attacker who has the meeting URL or crafts API requests. Do not use it where strong authentication, audit trails, or hostile-user security are required.
+
+### Local PHP test server
+
+Serve from the `meet` directory (the folder that contains `index.php`), not its parent:
+
+```bat
+cd path\to\SIG-Stakeholder-Database\meet
+php -S localhost:8000
 ```
 
-Deploy **only** the `meet/` folder to your web server (e.g. `public_html/meet/`).
+Open `http://localhost:8000/`. Requires PHP 8.1+.
 
-Requirements:
+### Production
 
-- PHP 8.1+
-- Apache (or equivalent) with `meet/data/` writable by PHP
-- Do **not** expose `meet/data/` over HTTP (`.htaccess` blocks it)
+Deploy the `meet` tree to your web server (Apache recommended). Ensure `meet/data/` is writable by the web user. Pretty URLs are optional; query-string links like `?=slug` always work.
 
-See also: [GIT.md](../GIT.md) · [UPDATING.md](../UPDATING.md) · [LOCAL-TEST.md](../LOCAL-TEST.md)
+### Editing this guide
 
-## Deploy updates
+This page is generated from **`docs/OPERATIONS.md`**. Edit that Markdown file only — do not maintain a second copy of the guide text.
 
-1. `git pull` in your local clone
-2. Upload changed files under `meet/` via FTP/FileZilla (or git-ftp if configured)
-3. **Never overwrite** `meet/data/` on the server — that is live meeting data
-4. Hard-refresh the browser (Ctrl+F5); check footer **Build x.y.z**
+---
 
-## Typical workflow (in tab order)
+## UI consistency audit (maintainers)
 
-### New meeting (no attendees yet)
+Rules applied across the scheduler interface. After UI changes, walk each screen against this list.
 
-1. **Set meeting options** — length, grid step, timezone, recurrence, meeting text
-2. **Choose calendar times** — attendees sign in and mark when they are free
-3. **Meeting availability & confirm** — see overlaps; organiser finalises time and location
-4. **After meeting** — attachments, recordings, summaries
+### Structure
 
-### Meeting already in use
+- **Landing page** — two panes: Create meeting (tint-create), Find my meetings (tint-find, full width; identity and passcode side by side).
+- **Tab working area** — green dashboard button names the destination; inside, brief lead text only (no duplicate title).
+- **Panes** — bordered, semantically tinted regions; tables and wide grids scroll inside the pane, not the window.
+- **Expand/collapse** — ▸ / ▼ on expandable panes; state persisted per meeting; first visit: main panes open; secondary panes (Add another attendee, Merge duplicates) closed; Overview and Getting started excepted.
 
-1. **Add users & choose times** — sign in, register, mark availability
-2. **Meeting availability & confirm**
-3. **After meeting**
-4. **Reset meeting options** (organisers only, far right)
+### Semantic tints
 
-## Roles
+- **Dates & times** — Calendar Options, My availability grid pane, Confirm meeting choices time pane, Overview time blocks.
+- **Free text** — Description, agenda/decisions, notes.
+- **People** — Attendees registered table (includes Edit identity / Switch), separate panes for Add another attendee and Merge duplicates.
+- **Places** — Locations table (URL or place name; online = physical category).
+- **Attachments** — single table (label + content); URLs auto-detected; malformed URLs warned; no separate Records UI.
 
-| Action | Anyone | Signed-in attendee | Organiser |
-|--------|--------|-------------------|-----------|
-| Mark availability on calendar | | ✓ | ✓ |
-| Propose a location | ✓ | ✓ | ✓ |
-| Mark location preferences (lozenges) | | ✓ | ✓ |
-| Remove a proposed location | | | ✓ |
-| Finalise time & location | | | ✓ |
-| Change meeting options | | | ✓ |
-| Edit agenda / decisions / notes | ✓ | ✓ | ✓ |
+### Behaviour
 
-**Calendar** saves *your* availability only. It does **not** set the final meeting time.
+- Checklist ticks only when the user completes a real in-app action (e.g. share step ticks on Copy meeting link, not a manual “mark done” button).
+- Save buttons labelled **Save** only on Meeting Resources panes.
+- Remove dead/unreachable UI code when found.
 
-**Final time:** Meeting availability → **Use as meeting start** → Locations & final time → choose **Final location** → **Finalise**.
+### Documentation alignment
 
-**Location lozenges** = your preferences. **Final location** dropdown = organiser’s decision.
-
-## Find my meetings (home page)
-
-Expand **Find my meetings**, enter the **name and PIN** used when registering for a meeting. Works for any attendee with a PIN set.
-
-## File format safety
-
-Meetings use `@meet v1` text files. Delimiters include:
-
-- `@@ section` headers (e.g. `@@ agenda`)
-- `|` in pipe-separated rows (attendees, locations)
-- `- ` bullet lines for agenda items
-
-On save, the server **sanitises** user text so accidents are unlikely:
-
-- Newlines in agenda/decisions items are collapsed to spaces
-- Lines that look like `@@ section` are prefixed with `# `
-- Pipe characters `|` in names/labels are replaced with `/`
-- Notes are stored in a `@@ notes` section (not the header)
-
-HTML in notes and meeting intros is displayed through a sanitiser in the browser; it is not executed as scripts.
-
-## Where help lives
-
-| Kind | Where |
-|------|--------|
-| Short labels on screen | Tab names, section headings, status line |
-| One-line hints | Grey `meta` paragraphs under headings |
-| Expandable help | `? Help for …` toggles (meeting text, calendar times) |
-| Tooltips | Hover on badges, format toolbar, location lozenges |
-| This guide | `meet/docs/OPERATIONS.md` — also open in the browser as **Operations guide** in the footer (`meet/operations.php`) |
-| Technical reference | `meet/README.md`, `lib/MeetFile.php` |
-
-When you ask a question in testing and we agree wording, it should go **on screen** first (prompt or tooltip), then **here** if it is workflow or policy, not only in chat.
-
-## Git documentation conventions
-
-Common layout in Git repositories:
-
-| File / folder | Purpose |
-|---------------|---------|
-| `README.md` (root or `meet/`) | First thing people read: what it is, quick start, links |
-| `docs/` | Longer guides (this file) |
-| `CONTRIBUTING.md` | How to contribute code (optional) |
-| `CHANGELOG.md` | Version history (optional; we use `VERSION` + commits) |
-
-This project keeps meet-specific docs under `meet/` because the repo also contains other SIG material.
-
-## Data folders (`meet/data/`)
-
-| Folder | Purpose |
-|--------|---------|
-| `meets/` | One `.meet` file per meeting (the real data) |
-| `aliases/` | Maps the random link code (slug) to the meeting file ID — **still required** |
-
-The link you share (e.g. `?abc123def456`) is looked up via `data/aliases/{slug}.alias`, which points to `data/meets/{id}.meet`. This is not an old “meeting name alias” feature; do not delete the `aliases` folder while meetings exist.
+- **How to use this** — mentions pane colour meanings.
+- **Getting started** — brief colour hint; steps reference attachments (not Records).
+- This audit list — update when rules change.

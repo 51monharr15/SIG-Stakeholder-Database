@@ -103,8 +103,8 @@ final class Availability
         }
 
         return [
-            'slots' => array_slice($full, 0, 20),
-            'partial_slots' => array_slice($partial, 0, 20),
+            'slots' => $full,
+            'partial_slots' => $partial,
             'locations' => $bestLocations,
         ];
     }
@@ -120,7 +120,9 @@ final class Availability
             return [];
         }
 
-        $steps = (int) max(1, ceil($durationMinutes / $granularityMinutes));
+        $steps = ($durationMinutes % $granularityMinutes === 0)
+            ? (int) ($durationMinutes / $granularityMinutes)
+            : (int) max(1, ceil($durationMinutes / $granularityMinutes));
         $slots = [];
         for ($i = 0; $i < $steps; $i++) {
             $dt = $start->modify('+' . ($i * $granularityMinutes) . ' minutes')->setTimezone(new \DateTimeZone('UTC'));

@@ -59,7 +59,15 @@ final class MeetStore
         if ($content === false) {
             throw new \RuntimeException('Unable to read meeting file');
         }
-        return MeetFile::parse($content);
+        $meet = MeetFile::parse($content);
+        $beforeAvail = json_encode($meet['availability'] ?? []);
+        $beforePrefs = json_encode($meet['location_preferences'] ?? []);
+        $meet = MeetFile::normalize($meet);
+        if (json_encode($meet['availability'] ?? []) !== $beforeAvail
+            || json_encode($meet['location_preferences'] ?? []) !== $beforePrefs) {
+            $this->save($meet);
+        }
+        return $meet;
     }
 
     public function save(array $meet): array
@@ -73,6 +81,36 @@ final class MeetStore
         $this->writeAlias($meet['slug'], $meet['id']);
 
         return $meet;
+    }
+
+    /** Delete meeting file and its slug alias. Returns true if a file was removed. */
+    public function deleteMeetingBySlug(string $rawSlug): bool
+    {
+        $slug = $this->resolveSlug($rawSlug);
+        $id = $this->lookupIdBySlug($slug);
+        if ($id === null) {
+            return false;
+        }
+        $meetPath = $this->meetPath($id);
+        $aliasPath = $this->aliasPath($slug);
+        $ok = false;
+        if (is_file($meetPath)) {
+            $ok = @unlink($meetPath) || $ok;
+        }
+        if (is_file($aliasPath)) {
+            @unlink($aliasPath);
+        }
+        // Drop any other aliases that still point at this id.
+        $aliasDir = $this->dataDir . '/aliases';
+        if (is_dir($aliasDir)) {
+            foreach (glob($aliasDir . '/*.alias') ?: [] as $path) {
+                $content = trim((string) file_get_contents($path));
+                if ($content === $id) {
+                    @unlink($path);
+                }
+            }
+        }
+        return $ok;
     }
 
     public function update(string $id, callable $mutator): array
@@ -113,14 +151,19 @@ final class MeetStore
 
     public function publicView(array $meet): array
     {
+        $meet = MeetFile::normalize($meet);
         $suggestions = Availability::buildSuggestions($meet);
         $today = gmdate('Y-m-d');
-        $rangeStart = max($meet['range_start'], $today);
-        $rangeEnd = gmdate('Y-m-d', strtotime('+2 years'));
+        $storedStart = (string) ($meet['range_start'] ?? $today);
+        $storedEnd = (string) ($meet['range_end'] ?? '2099-12-31');
+        $openEnded = ($storedEnd === '' || $storedEnd === '2099-12-31');
+        // Recurrence expand uses today..+2y; calendar UI uses stored bookable range.
+        $recurStart = max($storedStart, $today);
+        $recurEnd = gmdate('Y-m-d', strtotime('+2 years'));
         $recurrenceDates = Recurrence::expand(
             $meet['recurrence'],
-            $rangeStart,
-            $rangeEnd
+            $recurStart,
+            $recurEnd
         );
 
         $rawTz = (string) ($meet['timezone'] ?? '');
@@ -134,9 +177,12 @@ final class MeetStore
             'updated' => $meet['updated'],
             'duration_minutes' => $meet['duration_minutes'],
             'slot_granularity_minutes' => $meet['slot_granularity_minutes'],
-            'range_start' => $rangeStart,
-            'range_end' => $rangeEnd,
-            'calendar_start' => $today,
+            'range_start' => $storedStart,
+            'range_start_stored' => $storedStart,
+            'range_end' => $openEnded ? $recurEnd : $storedEnd,
+            'range_end_stored' => $storedEnd,
+            'calendar_start' => $storedStart,
+            'calendar_end' => $openEnded ? null : $storedEnd,
             'recurrence' => $meet['recurrence'],
             'recurrence_label' => Recurrence::describe($meet['recurrence']),
             'recurrence_dates' => $recurrenceDates,
@@ -156,15 +202,25 @@ final class MeetStore
             'location_preferences' => $meet['location_preferences'],
             'notes' => $meet['notes'],
             'show_weekends' => (bool) ($meet['show_weekends'] ?? false),
-            'day_start' => $meet['day_start'] ?? '08:00',
-            'day_end' => $meet['day_end'] ?? '20:00',
+            'day_start' => $meet['day_start'] ?? '09:00',
+            'day_end' => $meet['day_end'] ?? '16:00',
+            'am_start' => $meet['am_start'] ?? '09:00',
+            'am_end' => $meet['am_end'] ?? '12:00',
+            'pm_start' => $meet['pm_start'] ?? '12:00',
+            'pm_end' => $meet['pm_end'] ?? '16:00',
             'timezone' => $normTz,
+            'recorded_timezones' => array_values($meet['recorded_timezones'] ?? []),
             'timezone_needs_save' => $rawTz !== $normTz,
             'organizer_intro' => $meet['organizer_intro'] ?? '',
             'page_times_intro' => $meet['page_times_intro'] ?? '',
             'page_after_intro' => $meet['page_after_intro'] ?? '',
             'confirmed_slot' => $meet['confirmed_slot'],
-            'confirmed_location' => $meet['confirmed_location'],
+            'confirmed_location' => $meet['confirmed_location_online']
+                ?: ($meet['confirmed_location_physical'] ?: $meet['confirmed_location']),
+            'confirmed_location_physical' => $meet['confirmed_location_physical'] ?? null,
+            'confirmed_location_online' => $meet['confirmed_location_online'] ?? null,
+            'confirmed_location_ids' => array_values($meet['confirmed_location_ids'] ?? []),
+            'app_version' => $meet['app_version'] ?? '',
             'suggestions' => $suggestions,
         ];
     }
@@ -177,7 +233,7 @@ final class MeetStore
     public function listMeetingsForPerson(string $displayName, string $pin): array
     {
         $nameKey = strtolower(trim($displayName));
-        $pin = preg_replace('/\D/', '', $pin) ?? '';
+        $pin = MeetFile::normalizePasscode($pin);
         if ($nameKey === '' || $pin === '') {
             return [];
         }
@@ -208,12 +264,29 @@ final class MeetStore
                 $results[] = [
                     'title' => $meet['title'],
                     'slug' => $meet['slug'],
+                    'created' => $meet['created'] ?? '',
+                    'range_start' => $meet['range_start'] ?? '',
+                    'attendee_id' => $att['id'],
                 ];
                 break;
             }
         }
 
-        usort($results, fn ($a, $b) => strcmp($a['title'], $b['title']));
+        usort($results, function ($a, $b) {
+            $dateA = (string) ($a['range_start'] ?? '');
+            if ($dateA === '') {
+                $dateA = substr((string) ($a['created'] ?? ''), 0, 10);
+            }
+            $dateB = (string) ($b['range_start'] ?? '');
+            if ($dateB === '') {
+                $dateB = substr((string) ($b['created'] ?? ''), 0, 10);
+            }
+            $byDate = strcmp($dateB, $dateA);
+            if ($byDate !== 0) {
+                return $byDate;
+            }
+            return strcmp($a['title'], $b['title']);
+        });
 
         return $results;
     }

@@ -1,26 +1,91 @@
 (() => {
   'use strict';
 
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  function queryParam(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function resolveBrowserTz() {
+    const test = String(queryParam('meet_test_tz') || '').trim();
+    if (test) {
+      try {
+        Intl.DateTimeFormat('en-US', { timeZone: test }).format(new Date());
+        return test;
+      } catch (_) { /* ignore invalid test tz */ }
+    }
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+
+  const tz = resolveBrowserTz();
+  // Prefer unambiguous abbreviations only — many letter codes collide worldwide (CST, IST, …).
   const TZ_ALIASES = {
-    EDT: 'America/New_York', EST: 'America/New_York',
-    CDT: 'America/Chicago', CST: 'America/Chicago',
-    MDT: 'America/Denver', MST: 'America/Denver',
-    PDT: 'America/Los_Angeles', PST: 'America/Los_Angeles',
-    BST: 'Europe/London', GMT: 'UTC',
+    UTC: 'UTC', GMT: 'UTC',
+    BST: 'Europe/London',
+    JST: 'Asia/Tokyo',
+    AEST: 'Australia/Sydney',
+    NZST: 'Pacific/Auckland',
+    SAST: 'Africa/Johannesburg',
   };
-  const COMMON_TIMEZONES = [
+  /** World shortlist shown first in Meeting options (not US-centric). */
+  const WORLD_SHORTLIST = [
     'UTC',
-    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'America/Toronto', 'America/Sao_Paulo',
-    'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-    'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney',
+    'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Athens',
+    'Africa/Cairo', 'Africa/Lagos', 'Africa/Johannesburg', 'Africa/Nairobi',
+    'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Tokyo',
+    'Australia/Sydney', 'Pacific/Auckland',
+    'America/Sao_Paulo', 'America/Mexico_City', 'America/New_York', 'America/Chicago',
+    'America/Denver', 'America/Los_Angeles', 'America/Toronto',
   ];
-  const INTRO_PLACEHOLDER = 'Add a short description for attendees — use Set meeting options.';
-  const isTouchUi = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700;
+  const TZ_REGION_ORDER = ['Shortlist', 'UTC', 'Africa', 'America', 'Antarctica', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Other'];
+  const INTRO_PLACEHOLDER = 'Add a short description for attendees — shown in the status bar and Overview.';
+  const isTouchUi = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  function isNarrowScreen() { return window.innerWidth < 700; }
+  function autoDetailsOpen(defaultOpen = true) { return !isNarrowScreen() && defaultOpen; }
   const page = document.body.dataset.page;
 
-  document.getElementById('footer-tz')?.replaceChildren(document.createTextNode(tz));
+  function sanitizePasscode(raw) {
+    return String(raw || '').toLowerCase().trim()
+      .replace(/[|\r\n\t]/g, '')
+      .replace(/[^\x20-\x7e]/g, '')
+      .replace(/ {2,}/g, ' ');
+  }
+  /** Sanitize and require length 2–20 for newly set passcodes (empty if invalid). */
+  function normalizePasscode(raw) {
+    const pin = sanitizePasscode(raw);
+    if (pin.length < 2 || pin.length > 20) return '';
+    return pin;
+  }
+  const OPEN_ENDED_RANGE_END = '2099-12-31';
+
+  function passcodeEyeIcon() {
+    return '<svg class="passcode-eye-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7 1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+  }
+
+  function passcodeInputHtml({
+    name = 'pin',
+    value = '',
+    required = false,
+    placeholder = '',
+    title = PASSCODE_TIP,
+    autocomplete = 'new-password',
+    extraClass = 'input-pin',
+  } = {}) {
+    return `<span class="passcode-field">
+      <input class="${escapeHtml(extraClass)}" name="${escapeHtml(name)}" type="password" value="${escapeHtml(value)}"${required ? ' required' : ''} maxlength="20" size="12" autocomplete="${escapeHtml(autocomplete)}" title="${escapeHtml(title)}" placeholder="${escapeHtml(placeholder)}">
+      <button type="button" class="passcode-toggle" data-action="toggle-passcode" title="Show passcode" aria-label="Show passcode">${passcodeEyeIcon()}</button>
+    </span>`;
+  }
+  const PASSCODE_TIP = '2 to 20 characters: 0–9 a–z and safe specials (not |). Leading spaces removed. Needed to find lost meeting links.';
+  const PASSCODE_LEN_ERR = 'Passcode must be 2 to 20 characters (letters, numbers, spaces, safe specials — not |).';
+  const FIND_IDENTITY_KEY = 'meet_find_identity';
+
+  document.getElementById('footer-tz')?.replaceChildren(
+    document.createTextNode(queryParam('meet_test_tz') ? `${tz} (test)` : tz)
+  );
 
   if (page === 'home') {
     initHome();
@@ -28,7 +93,27 @@
     initScheduler(document.body.dataset.slug);
   }
 
+  document.getElementById('find-pin-toggle')?.addEventListener('click', () => {
+    const input = document.getElementById('find-pin-input');
+    const btn = document.getElementById('find-pin-toggle');
+    if (!input || !btn) return;
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.title = showing ? 'Show passcode' : 'Hide passcode';
+    btn.setAttribute('aria-label', btn.title);
+  });
+
+  // ─── Home page ───────────────────────────────────────────────────────────────
+
   function initHome() {
+    const localTimeEl = document.getElementById('home-local-time');
+    if (localTimeEl) {
+      const now = new Date();
+      const localStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      const utcStr = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+      localTimeEl.textContent = `Your local time zone is ${tz} — ${localStr} and ${utcStr} UTC`;
+    }
+
     document.getElementById('create-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(e.target);
@@ -45,20 +130,85 @@
       const data = new FormData(e.target);
       const box = document.getElementById('list-meetings-result');
       try {
+        const passcode = normalizePasscode(data.get('pin'));
+        if (!passcode && String(data.get('pin') || '').trim()) {
+          throw new Error(PASSCODE_LEN_ERR);
+        }
         const res = await apiPost({
           action: 'list_meetings',
           display_name: data.get('display_name'),
-          pin: data.get('pin'),
+          pin: passcode,
         });
         if (!box) return;
         box.hidden = false;
         if (!res.meetings?.length) {
-          box.innerHTML = '<p class="meta">No meetings found for that name and PIN. Check spelling and that you set a PIN when you registered.</p>';
+          box.innerHTML = '<p class="meta">No meetings found for that name and passcode. Identity misspelt or Passcode not matching.</p>';
           return;
         }
-        box.innerHTML = `<p class="meta">${res.meetings.length} meeting(s):</p><ul>${
-          res.meetings.map((m) => `<li><a href="${escapeHtml(meetingUrl(m.slug))}">${escapeHtml(m.title)}</a> <span class="meta">(${escapeHtml(m.slug)})</span></li>`).join('')
-        }</ul>`;
+        const countLabel = res.meetings.length === 1 ? '1 meeting found' : `${res.meetings.length} meetings found`;
+        sessionStorage.setItem(FIND_IDENTITY_KEY, JSON.stringify({
+          display_name: String(data.get('display_name') || '').trim(),
+          pin: passcode,
+        }));
+        box.innerHTML = `<p class="meta">${countLabel}</p>
+          <table class="meetings-found-table">
+            <tbody>${res.meetings.map((m) => {
+              const when = String(m.range_start || '').trim() || String(m.created || '').slice(0, 10) || '—';
+              const href = meetingUrl(m.slug);
+              return `<tr>
+                <td class="meetings-found-date">${escapeHtml(when)}</td>
+                <td class="meetings-found-title"><a href="${escapeHtml(href)}" data-meeting-slug="${escapeHtml(m.slug)}"${m.attendee_id ? ` data-attendee-id="${escapeHtml(m.attendee_id)}"` : ''}>${escapeHtml(m.title)}</a></td>
+                <td class="meetings-found-actions"><button type="button" class="btn-cancel compact-btn" data-action="delete-found-meeting" data-slug="${escapeHtml(m.slug)}" data-title="${escapeHtml(m.title)}">Delete</button></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>`;
+        box.querySelectorAll('a[data-meeting-slug]').forEach((link) => {
+          link.addEventListener('click', () => {
+            const slug = link.dataset.meetingSlug;
+            const attendeeId = link.dataset.attendeeId || '';
+            const raw = sessionStorage.getItem(FIND_IDENTITY_KEY);
+            if (raw && slug) {
+              try {
+                const id = JSON.parse(raw);
+                sessionStorage.setItem(`meet_auto_claim_${slug}`, JSON.stringify({
+                  ...id,
+                  attendee_id: attendeeId,
+                }));
+              } catch (_) { /* ignore */ }
+            }
+          });
+        });
+        box.querySelectorAll('[data-action="delete-found-meeting"]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const slug = btn.getAttribute('data-slug') || '';
+            const title = btn.getAttribute('data-title') || 'this meeting';
+            if (!slug) return;
+            if (!window.confirm(`Are you sure you want to delete “${title}”? This cannot be undone.`)) return;
+            try {
+              const identity = JSON.parse(sessionStorage.getItem(FIND_IDENTITY_KEY) || '{}');
+              await apiPost({
+                action: 'delete_meeting',
+                slug,
+                display_name: identity.display_name || data.get('display_name'),
+                pin: identity.pin || passcode,
+              });
+              btn.closest('tr')?.remove();
+              const rows = box.querySelectorAll('tbody tr').length;
+              const label = box.querySelector('p.meta');
+              if (label) {
+                label.textContent = rows === 0
+                  ? 'No meetings found for that name and passcode. Identity misspelt or Passcode not matching.'
+                  : (rows === 1 ? '1 meeting found' : `${rows} meetings found`);
+              }
+              if (!rows) {
+                const table = box.querySelector('table');
+                if (table) table.remove();
+              }
+            } catch (err) {
+              alert(err.message || 'Could not delete meeting');
+            }
+          });
+        });
       } catch (err) {
         if (box) {
           box.hidden = false;
@@ -68,6 +218,8 @@
     });
   }
 
+  // ─── Scheduler init ──────────────────────────────────────────────────────────
+
   async function initScheduler(slug) {
     const root = document.getElementById('app');
     const state = {
@@ -76,8 +228,10 @@
       attendeeId: localStorage.getItem(attendeeKey(slug)) || '',
       selectedSlots: new Set(),
       selectedLocations: new Set(),
+      headerMarkedDates: new Set(),
+      availClipboard: null,
       viewStart: startOfDay(new Date()),
-      activeTab: 'calendar',
+      activeTab: 'overview',
       sortOrder: 'date',
       dragging: false,
       dragSelect: true,
@@ -85,8 +239,29 @@
       headerExpanded: false,
       claimingId: null,
       editingAttendeeId: null,
+      editingAttachmentId: null,
+      changingPin: false,
+      pendingConfirmLocation: null,
+      pendingConfirmLocationPhysical: null,
+      pendingConfirmLocationOnline: null,
+      pendingConfirmedLocationIds: null,
+      editingLocationId: null,
+      showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
+      showAllGroupDays: localStorage.getItem(groupDaysKey(slug)) === 'all',
+      dayColPref: Number(localStorage.getItem(dayColsKey(slug)) || 0) || null,
+      openNotesEditor: false,
+      overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
       attendeePanelOpen: undefined,
       lastDayCount: visibleDayCount(),
+      helpOpen: false,
+      locType: 'online',
+      lastNarrow: isNarrowScreen(),
+      expandedLocFields: new Set(),
+      expandedAttachFields: new Set(),
+      altTzIndex: 0,
+      resourceDrafts: null,
+      swipeStartX: null,
+      swipeStartY: null,
     };
 
     try {
@@ -97,61 +272,295 @@
       }
       const explicit = tabFromUrl();
       const signedIn = state.meet.attendees.find((a) => a.id === state.attendeeId);
-      let activeTab = explicit || localStorage.getItem(tabKey(slug))
-        || (state.meet.attendees.length ? 'overview' : 'organiser');
-      if (activeTab === 'organiser' && state.meet.attendees.length && !signedIn?.is_organizer) {
-        activeTab = 'calendar';
-      }
+      let activeTab = explicit || localStorage.getItem(tabKey(slug)) || 'getting-started';
       const validTabs = allValidTabs(state.meet, signedIn);
-      if (!validTabs.includes(activeTab)) activeTab = validTabs[0] || 'calendar';
+      if (!validTabs.includes(activeTab)) activeTab = validTabs[0] || 'getting-started';
       state.activeTab = activeTab;
       if (activeTab === 'calendar') state.scrollCalendarOnRender = true;
       restoreAttendeeSelections(state);
       state.viewStart = calendarMinStart(state.meet);
       await repairMeetingTimezone(state);
+      await tryAutoLoginFromFind(state);
+      wireOperationsLink(slug);
       render(root, state);
     } catch (err) {
       root.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
     }
 
     root.addEventListener('click', (e) => handleClick(e, root, state));
+    root.addEventListener('toggle', (e) => {
+      const pane = e.target.closest('[data-pane-id]');
+      if (pane) savePaneOpenState(state, pane);
+    }, true);
+    root.addEventListener('focusout', (e) => {
+      handleLocationRowBlur(e, root, state);
+      handleAttachmentRowBlur(e, root, state);
+    });
+    root.addEventListener('focusin', (e) => {
+      if (e.target.matches('.loc-cell')) {
+        const row = e.target.closest('[data-location-row]');
+        if (row) row.dataset.locSnapshot = locationRowSnapshot(row);
+      }
+      if (e.target.matches('.attach-cell')) {
+        const row = e.target.closest('[data-attachment-row]');
+        if (row) row.dataset.attachSnapshot = attachmentRowSnapshot(row);
+      }
+    });
     root.addEventListener('change', (e) => handleChange(e, root, state));
+    root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (!e.target.matches('input.loc-cell[data-loc-field="location"]')) return;
+      e.preventDefault();
+      e.target.blur();
+    });
     root.addEventListener('submit', (e) => handleSubmit(e, root, state));
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
     root.addEventListener('pointerover', (e) => handlePointerOver(e, root, state));
+    if (isTouchUi) {
+      root.addEventListener('touchstart', (e) => handlePanelSwipeStart(e, state), { passive: true });
+      root.addEventListener('touchend', (e) => handlePanelSwipeEnd(e, root, state), { passive: true });
+      // Calendar swipe: touchstart on root; move/end on document (see handleCalSwipeStart)
+      // so tracking continues if the finger leaves the grid.
+      root.addEventListener('touchstart', (e) => handleCalSwipeStart(e, state), { passive: true });
+      root.addEventListener('touchcancel', () => {
+        if (state._calSwipeDoc) {
+          document.removeEventListener('touchmove', state._calSwipeDoc.onMove);
+          document.removeEventListener('touchend', state._calSwipeDoc.onEnd);
+          document.removeEventListener('touchcancel', state._calSwipeDoc.onEnd);
+          state._calSwipeDoc = null;
+        }
+        state.calSwipe = null;
+      }, { passive: true });
+    }
     window.addEventListener('pointerup', () => { state.dragging = false; });
     window.addEventListener('resize', () => {
       if (!state.meet) return;
       const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+      const narrow = isNarrowScreen();
+      if (narrow !== state.lastNarrow) {
+        state.lastNarrow = narrow;
+        render(root, state);
         return;
       }
-      const dc = visibleDayCount();
+      const dc = preferredDayCount(state, state.meet);
       if (dc === state.lastDayCount) return;
       state.lastDayCount = dc;
       render(root, state);
     });
   }
 
+  // ─── Utilities ───────────────────────────────────────────────────────────────
+
+  /** When viewer TZ ≠ meeting TZ, show organiser wall time in parentheses (set false to revert). */
+  const SHOW_ORGANISER_TIME_IN_GUTTER = true;
+
+  /** Preferred day columns (3 / 5 / 7). Seven allowed even when weekends are hidden. */
+  function dayColsKey(slug) { return `meet_day_cols_${slug}`; }
+
+  function preferredDayCount(state, m) {
+    let pref = Number(state?.dayColPref);
+    if (![3, 5, 7].includes(pref)) {
+      const stored = Number(localStorage.getItem(dayColsKey(state.slug)));
+      pref = [3, 5, 7].includes(stored) ? stored : 0;
+    }
+    if (![3, 5, 7].includes(pref)) {
+      if (window.innerWidth >= 1200) pref = 7;
+      else if (window.innerWidth >= 900) pref = 5;
+      else if (window.innerWidth >= 640) pref = 5;
+      else pref = 3;
+    }
+    return pref;
+  }
+
+  function renderDayCountToggle(state, m) {
+    const cur = preferredDayCount(state, m);
+    const btn = (n) => {
+      const on = cur === n ? ' day-cols-on' : '';
+      return `<button type="button" class="btn-cancel compact-btn${on}" data-action="set-day-cols" data-cols="${n}" title="Show ${n} day column${n === 1 ? '' : 's'}">${n}</button>`;
+    };
+    return `<div class="day-cols-toggle" role="group" aria-label="Show how many day columns"><span class="meta">Show</span>${btn(3)}${btn(5)}${btn(7)}<span class="meta">days</span></div>`;
+  }
+
+  /** Shared calendar toolbar: view controls left-aligned; explainer on the right. */
+  function renderCalToolbar(controlsHtml, explainHtml) {
+    return `<div class="cal-toolbar">
+      <div class="cal-toolbar-controls">${controlsHtml}</div>
+      ${explainHtml ? `<div class="cal-toolbar-explain meta">${explainHtml}</div>` : ''}
+    </div>`;
+  }
+
   function visibleDayCount() {
+    // Fallback when state/meet not available (resize bootstrap).
     if (window.innerWidth >= 1200) return 7;
     if (window.innerWidth >= 900) return 5;
+    if (window.innerWidth >= 640) return 5;
     return 3;
+  }
+
+  /** Parse meeting length field: minutes, 1.5h, 2,5h, or AM / PM (sets default bookable hours). */
+  function parseDurationField(raw, m) {
+    const s = String(raw || '').trim();
+    if (/^am$/i.test(s)) {
+      const b = durationModeBounds('am', m);
+      return { duration: b.duration, day_start: b.day_start, day_end: b.day_end };
+    }
+    if (/^pm$/i.test(s)) {
+      const b = durationModeBounds('pm', m);
+      return { duration: b.duration, day_start: b.day_start, day_end: b.day_end };
+    }
+    const duration = parseDurationInput(s);
+    return { duration, day_start: null, day_end: null };
+  }
+
+  function formatDurationFieldValue(m) {
+    const mode = inferDurationMode(m);
+    if (mode === 'am') return 'AM';
+    if (mode === 'pm') return 'PM';
+    return formatDurationForInput(m.duration_minutes);
+  }
+
+  function recordedTimezones(m) {
+    const list = [];
+    const add = (z) => {
+      const n = normalizeTimezone(z);
+      if (n && !list.includes(n)) list.push(n);
+    };
+    add(m.timezone);
+    (m.recorded_timezones || []).forEach(add);
+    return list;
+  }
+
+  /** Timezones available on the cycling second line (includes your own for confirmation). */
+  function cycleTimezones(m) {
+    const list = recordedTimezones(m).slice();
+    if (tz && !list.includes(tz)) list.unshift(tz);
+    return list;
+  }
+
+  function currentAltTimezone(state, m) {
+    const alts = cycleTimezones(m);
+    // Need at least one recorded/other zone besides nothing useful to cycle
+    if (alts.length < 2) return null;
+    const i = ((state.altTzIndex % alts.length) + alts.length) % alts.length;
+    return alts[i];
+  }
+
+  function formatWallHourDisplay(hm, m, refDateStr, state = null) {
+    const wall = formatWallHour(hm);
+    const mtz = meetingTz(m);
+    const dateStr = refDateStr || meetingTodayStr(m);
+    const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+    const local = new Date(iso).toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz,
+    });
+    const altTz = state ? currentAltTimezone(state, m) : null;
+    if (!altTz) {
+      return `<span class="tz-local">${escapeHtml(local)}</span>`;
+    }
+    const alt = new Date(iso).toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: altTz,
+    });
+    const tip = altTz === tz
+      ? `${altTz} — your timezone — click for next`
+      : `${altTz} — recorded attendee timezone — click for next`;
+    return `<span class="tz-local">${escapeHtml(local)}</span><button type="button" class="tz-alt-btn" data-action="cycle-alt-tz" title="${escapeHtml(tip)}">${escapeHtml(alt)}</button>`;
+  }
+
+  /** Parse slot size or custom duration: plain minutes, 90m, 1.5h, 2,5h (comma decimal). */
+  function parseDurationInput(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const normalized = s.replace(/,/g, '.');
+    let m = normalized.match(/^(\d+(?:\.\d+)?)\s*h(?:r|ours?)?$/i);
+    if (m) {
+      const mins = Math.round(parseFloat(m[1]) * 60);
+      return mins > 0 ? mins : null;
+    }
+    m = normalized.match(/^(\d+(?:\.\d+)?)\s*m(?:in(?:ute)?s?)?$/i);
+    if (m) {
+      const mins = Math.round(parseFloat(m[1]));
+      return mins > 0 ? mins : null;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      const mins = Math.round(parseFloat(normalized));
+      return mins > 0 ? mins : null;
+    }
+    return null;
+  }
+
+  function formatDurationLabel(minutes) {
+    const m = Math.max(0, Math.round(Number(minutes) || 0));
+    if (m <= 0) return '0 min';
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    if (h && r) return `${h} h ${r} min`;
+    if (h) return `${h} h`;
+    return `${m} min`;
+  }
+
+  function formatDurationForInput(minutes) {
+    return String(Math.max(1, Math.round(Number(minutes) || 60)));
+  }
+
+  function meetingSlotSteps(m) {
+    const duration = Math.max(1, Number(m.duration_minutes) || 60);
+    const gran = Math.max(1, Number(m.slot_granularity_minutes) || 30);
+    const valid = duration % gran === 0;
+    const steps = valid ? duration / gran : Math.max(1, Math.ceil(duration / gran));
+    return { duration, gran, steps, valid };
+  }
+
+  function validateDurationSlotPair(duration, slot) {
+    if (!duration || duration < 1) {
+      return 'Enter a meeting length (plain minutes, or e.g. 60, 1.5h, 2,5h).';
+    }
+    if (!slot || slot < 1) {
+      return 'Enter a calendar slot size (plain minutes, or e.g. 30, 15m).';
+    }
+    if (duration % slot !== 0) {
+      return `Calendar slot (${formatDurationLabel(slot)}) must divide meeting length (${formatDurationLabel(duration)}) evenly.`;
+    }
+    return null;
+  }
+
+  function calendarNavHint(m) {
+    const { duration, gran, steps, valid } = meetingSlotSteps(m);
+    const slotPart = valid && steps > 1
+      ? ` Select ${steps} consecutive ${formatDurationLabel(gran)} slot(s) to cover the full ${formatDurationLabel(duration)} meeting.`
+      : valid
+        ? ` Each slot is ${formatDurationLabel(gran)} — one slot covers the full meeting.`
+        : '';
+    return slotPart;
+  }
+
+  function minutesBetweenTimes(startStr, endStr) {
+    const start = parseTime(startStr);
+    const end = parseTime(endStr);
+    let mins = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+    if (mins <= 0) mins += 24 * 60;
+    return mins;
+  }
+
+  function slotCellTip(m, baseTip) {
+    const { steps, valid, gran } = meetingSlotSteps(m);
+    if (valid && steps > 1) {
+      return `${baseTip} · ${steps} consecutive ${formatDurationLabel(gran)} slots = full meeting`;
+    }
+    if (valid) return `${baseTip} · one slot = full meeting`;
+    return baseTip;
   }
 
   function tabFromUrl() {
     const t = new URLSearchParams(window.location.search).get('view');
-    return ['overview', 'attendees', 'calendar', 'times', 'locations', 'notes', 'after', 'organiser'].includes(t) ? t : null;
+    if (t === 'notes' || t === 'records') return 'agenda';
+    const valid = ['getting-started', 'overview', 'attendees', 'calendar', 'group', 'locations', 'agenda', 'options'];
+    return valid.includes(t) ? t : null;
   }
 
   function isValidIanaTimezone(id) {
     if (!id) return false;
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: id });
-      return true;
-    } catch (_) {
-      return false;
-    }
+    try { Intl.DateTimeFormat(undefined, { timeZone: id }); return true; } catch (_) { return false; }
   }
 
   function normalizeTimezone(raw, fallback = tz) {
@@ -168,18 +577,45 @@
       const short = new Intl.DateTimeFormat('en', { timeZone: id, timeZoneName: 'short' })
         .formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
       return short ? `${id} (${short})` : id;
-    } catch (_) {
-      return id;
-    }
+    } catch (_) { return id; }
+  }
+
+  function timezoneRegion(id) {
+    if (id === 'UTC' || id.startsWith('Etc/')) return 'UTC';
+    const i = id.indexOf('/');
+    if (i < 0) return 'Other';
+    const prefix = id.slice(0, i);
+    if (TZ_REGION_ORDER.includes(prefix)) return prefix;
+    return 'Other';
   }
 
   function timezoneOptions(selected) {
     const current = normalizeTimezone(selected);
     const all = typeof Intl.supportedValuesOf === 'function'
       ? Intl.supportedValuesOf('timeZone')
-      : COMMON_TIMEZONES;
-    const ids = [...new Set([current, tz, ...COMMON_TIMEZONES, ...all])].sort();
-    return ids.map((id) => `<option value="${escapeHtml(id)}"${id === current ? ' selected' : ''}>${escapeHtml(timezoneLabel(id))}</option>`).join('');
+      : WORLD_SHORTLIST;
+    const ids = [...new Set([current, tz, ...WORLD_SHORTLIST, ...all])];
+    const shortSet = new Set(WORLD_SHORTLIST);
+    const groups = new Map();
+    for (const id of ids) {
+      const region = shortSet.has(id) ? 'Shortlist' : timezoneRegion(id);
+      if (!groups.has(region)) groups.set(region, []);
+      groups.get(region).push(id);
+    }
+    const order = TZ_REGION_ORDER.filter((r) => groups.has(r));
+    for (const r of groups.keys()) {
+      if (!order.includes(r)) order.push(r);
+    }
+    return order.map((region) => {
+      const list = groups.get(region).slice().sort((a, b) => a.localeCompare(b));
+      const label = region === 'Shortlist'
+        ? 'World shortlist (common cities)'
+        : region === 'UTC' ? 'UTC' : region;
+      return `<optgroup label="${escapeHtml(label)}">${list.map((id) => {
+        const mine = id === tz ? ' — your timezone' : '';
+        return `<option value="${escapeHtml(id)}"${id === current ? ' selected' : ''}>${escapeHtml(timezoneLabel(id))}${mine}</option>`;
+      }).join('')}</optgroup>`;
+    }).join('');
   }
 
   async function repairMeetingTimezone(state) {
@@ -188,20 +624,16 @@
     if (!me?.is_organizer) return;
     try {
       const data = await apiPost({
-        action: 'update_meta',
-        slug: state.slug,
+        action: 'update_meta', slug: state.slug,
         acting_attendee_id: state.attendeeId,
         timezone: normalizeTimezone(state.meet.timezone),
       });
       state.meet = data.meet;
-    } catch (_) { /* display still uses normalized tz */ }
+    } catch (_) {}
   }
 
-  function meetingTz(m) {
-    return normalizeTimezone(m.timezone);
-  }
+  function meetingTz(m) { return normalizeTimezone(m.timezone); }
 
-  /** Wall clock in meeting TZ → UTC ISO (for slot keys). */
   function wallTimeToUtcIso(y, mo, d, h, mi, timeZone) {
     let t = Date.UTC(y, mo - 1, d, h, mi);
     for (let i = 0; i < 4; i++) {
@@ -239,54 +671,122 @@
   }
 
   function setTab(state, tab) {
-    const signedIn = state.meet?.attendees.find((a) => a.id === state.attendeeId);
-    if (tab === 'organiser' && state.meet?.attendees.length && !signedIn?.is_organizer) {
-      toast('Only meeting organisers can change meeting options', true);
-      tab = 'calendar';
-    }
     state.activeTab = tab;
     if (tab === 'calendar') state.scrollCalendarOnRender = true;
     localStorage.setItem(tabKey(state.slug), tab);
     history.replaceState(null, '', meetingUrl(state.slug, tab));
+    wireOperationsLink(state.slug);
   }
 
   function meetingUrl(slug, view) {
-    const base = `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`;
+    const base = `${window.location.origin}${window.location.pathname}`;
     const v = view ? `&view=${encodeURIComponent(view)}` : '';
-    return `${base}/?=${encodeURIComponent(slug)}${v}`;
+    return `${base}?=${encodeURIComponent(slug)}${v}`;
   }
 
-  function gotoWorkspace(root, state, target) {
-    const routes = {
-      overview: { tab: 'overview' },
-      attendees: { tab: 'attendees' },
-      calendar: { tab: 'calendar', scrollCalendar: true },
-      group: { tab: 'times' },
-      locations: { tab: 'locations' },
-      notes: { tab: 'notes' },
-      records: { tab: 'after' },
-      organiser: { tab: 'organiser' },
-      setup: { tab: 'organiser' },
-    };
-    const cfg = routes[target];
-    if (!cfg) return;
-    setTab(state, cfg.tab);
-    if (cfg.scrollCalendar) state.scrollCalendarOnRender = true;
-    if (cfg.scrollAfterRender) state.scrollAfterRender = cfg.scrollAfterRender;
+  function gotoTab(root, state, tab) {
+    setTab(state, tab);
     render(root, state);
   }
 
   function attendeeKey(slug) { return `meet_attendee_${slug}`; }
   function slotsKey(slug, id) { return `meet_slots_${slug}_${id}`; }
   function tabKey(slug) { return `meet_tab_${slug}`; }
+  function overviewHelpKey(slug) { return `meet_overview_help_${slug}`; }
+  function groupHoursKey(slug) { return `meet_group_hours_${slug}`; }
+  function groupDaysKey(slug) { return `meet_group_days_${slug}`; }
+  function setupOptionsSavedKey(slug) { return `meet_setup_options_saved_${slug}`; }
+  function setupLinkCopiedKey(slug) { return `meet_setup_link_copied_${slug}`; }
+  function paneStorageKey(slug, paneId) { return `meet_pane_${slug}_${paneId}`; }
+
+  function paneIsOpen(state, paneId, { secondary = false } = {}) {
+    const stored = localStorage.getItem(paneStorageKey(state.slug, paneId));
+    if (stored === 'open') return true;
+    if (stored === 'closed') return false;
+    return !secondary;
+  }
+
+  function paneOpenAttr(state, paneId, { secondary = false } = {}) {
+    return paneIsOpen(state, paneId, { secondary }) ? ' open' : '';
+  }
+
+  function paneDetailsAttrs(state, paneId, { secondary = false, extraClass = '' } = {}) {
+    const cls = ['pane-details', 'pane-region', extraClass].filter(Boolean).join(' ');
+    return `class="${cls}" data-pane-id="${escapeHtml(paneId)}"${secondary ? ' data-pane-secondary' : ''}${paneOpenAttr(state, paneId, { secondary })}`;
+  }
+
+  function savePaneOpenState(state, el) {
+    const id = el?.dataset?.paneId;
+    if (!id) return;
+    localStorage.setItem(paneStorageKey(state.slug, id), el.open ? 'open' : 'closed');
+  }
+
+  function wireOperationsLink(slug) {
+    const link = document.querySelector('.site-footer a[href="operations.php"]');
+    if (!link) return;
+    const back = meetingUrl(slug, tabFromUrl() || undefined);
+    link.href = `operations.php?back=${encodeURIComponent(back)}`;
+  }
+
+  function setupChecklistState(m, state, attendee) {
+    const isOrg = !!attendee?.is_organizer;
+    const stepSelf = !!attendee;
+    const stepOptions = localStorage.getItem(setupOptionsSavedKey(state.slug)) === 'yes';
+    const stepResources = !!(m.organizer_intro?.trim() || m.agenda?.length || m.decisions?.length
+      || (m.notes || '').trim() || m.attachments?.length);
+    const stepOthers = (m.attendees?.length || 0) > 1;
+    const stepAvail = !!attendee && countSlotsFor(m, attendee.id) > 0;
+    const stepLocations = (m.locations?.length || 0) > 0;
+    const stepConfirm = !!m.confirmed_slot;
+    const stepShare = localStorage.getItem(setupLinkCopiedKey(state.slug)) === 'yes'
+      || (m.attendees?.length || 0) > 1;
+    const allDone = stepSelf && stepOptions && stepAvail && stepShare;
+    return {
+      isOrg, stepSelf, stepOptions, stepResources, stepOthers, stepAvail, stepLocations,
+      stepConfirm, stepShare, allDone,
+    };
+  }
 
   function restoreAttendeeSelections(state) {
     if (!state.attendeeId) return;
+    state.selectedSlots.clear();
+    for (const [iso, ids] of Object.entries(state.meet.availability || {})) {
+      if ((ids || []).includes(state.attendeeId)) state.selectedSlots.add(iso);
+    }
     const saved = localStorage.getItem(slotsKey(state.slug, state.attendeeId));
     if (saved) {
       try { JSON.parse(saved).forEach((s) => state.selectedSlots.add(s)); } catch (_) {}
     }
     (state.meet.location_preferences[state.attendeeId] || []).forEach((id) => state.selectedLocations.add(id));
+  }
+
+  async function tryAutoLoginFromFind(state) {
+    if (state.attendeeId) return;
+    const raw = sessionStorage.getItem(`meet_auto_claim_${state.slug}`);
+    if (!raw) return;
+    sessionStorage.removeItem(`meet_auto_claim_${state.slug}`);
+    let identity;
+    try { identity = JSON.parse(raw); } catch (_) { return; }
+    let attendeeId = String(identity.attendee_id || '').trim();
+    if (!attendeeId) {
+      const nameKey = String(identity.display_name || '').trim().toLowerCase();
+      const match = state.meet.attendees.find((a) => a.display_name.trim().toLowerCase() === nameKey);
+      if (match) attendeeId = match.id;
+    }
+    if (!attendeeId) return;
+    const target = state.meet.attendees.find((a) => a.id === attendeeId);
+    if (!target) return;
+    try {
+      const data = await apiPost({
+        action: 'claim',
+        slug: state.slug,
+        attendee_id: attendeeId,
+        pin: identity.pin || undefined,
+      });
+      state.attendeeId = data.attendee_id;
+      localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+      restoreAttendeeSelections(state);
+    } catch (_) { /* user can sign in manually on Attendees */ }
   }
 
   async function fetchMeet(slug) {
@@ -303,51 +803,81 @@
     return data;
   }
 
+  // ─── Tab definitions ─────────────────────────────────────────────────────────
+
+  const TAB_DEFS = [
+    { id: 'getting-started', label: 'Getting started', tip: 'Step-by-step checklist for setting up this meeting.' },
+    { id: 'overview',   label: 'Overview',          tip: 'Summary of the meeting — status, attendees, and best overlap times.' },
+    { id: 'attendees',  label: 'Attendees',          tip: 'Register yourself, add others, manage.' },
+    { id: 'locations',  label: 'Locations',          tip: 'Propose locations, mark preferences.' },
+    { id: 'calendar',   label: 'My availability',   tip: 'Mark free slots. Each cell is one calendar slot; select consecutive slots for the full meeting length. Use «◀ ▶» beside dates to move by weekday.' },
+    { id: 'agenda',     label: 'Meeting Resources', tip: 'Description, agenda, notes, attachments.' },
+    { id: 'options',    label: 'Calendar Options',    tip: 'Length, Calendar slot size, 1st/Last dates, Early/Latest times (Organiser R/W, else ReadOnly).' },
+    { id: 'group',      label: 'Confirm meeting choices', tip: 'Group calendar and locations — click a start to save it; click again to clear. Confirm location preferences.' },
+  ];
+
+  function allValidTabs(m, attendee) {
+    return TAB_DEFS.map((t) => t.id);
+  }
+
+  function canEditOptions(m, attendee) {
+    return !m.attendees.length || !!attendee?.is_organizer;
+  }
+
+  function canShowOptions(m, attendee) {
+    return true;
+  }
+
+  function meetingEstablished(m) {
+    return (m.attendees?.length || 0) > 0;
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   function render(root, state) {
     const m = state.meet;
     const attendee = m.attendees.find((a) => a.id === state.attendeeId);
-    const url = shareUrl(state.slug);
     const scrollY = window.scrollY;
     const scrollTarget = state.scrollAfterRender || null;
     state.scrollAfterRender = null;
+    const narrow = isNarrowScreen();
+    const compactHeader = narrow && !state.headerExpanded;
 
     root.innerHTML = `
       <div class="meet-shell">
-        <div class="sticky-top">
+        <div class="sticky-top${compactHeader ? ' sticky-top-compact' : ''}">
           <div class="sticky-top-inner">
-            <div class="sticky-head row">
-              <h1 class="meet-title">${escapeHtml(m.title)}</h1>
-              <div class="row">
-                ${isTouchUi ? `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'Info ▼'}</button>` : `<button type="button" class="secondary compact-btn" data-action="toggle-header">${state.headerExpanded ? 'Less ▲' : 'More ▼'}</button>`}
-                <button type="button" class="secondary compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
+            <div class="sticky-head">
+              <h1 class="meet-title" title="${escapeHtml(m.title)}">${escapeHtml(m.title)}</h1>
+              <div class="sticky-head-actions row">
+                ${narrow ? `<button type="button" class="compact-btn header-toggle-btn" data-action="toggle-header" title="Collapse/Expand for narrow screens">${compactHeader ? 'More ▾' : 'Less ▴'}</button>` : ''}
+                <button type="button" class="compact-btn header-help-btn" data-action="toggle-help" title="How to use this meeting scheduler">How to use this</button>
+                <button type="button" class="compact-btn" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
               </div>
             </div>
-            ${renderMeetingDashboard(m, state, attendee)}
-            ${meetingEstablished(m) ? '' : `<nav class="tab-nav tab-nav-primary" role="tablist">${renderTabNav(m, state, attendee)}</nav>`}
-            <div class="sticky-extras${state.headerExpanded ? ' is-open' : ''}">
-              ${state.activeTab === 'organiser' ? renderIntroBlock(m, state, 'organizer_intro', m.organizer_intro, INTRO_PLACEHOLDER, 'Add a short description for attendees', { withTextHelp: true }) : ''}
-              ${tabPageIntro(m, state)}
-              <p class="meta tz-banner">Hours in <strong>${escapeHtml(meetingTz(m))}</strong> · You: <strong>${escapeHtml(tz)}</strong></p>
-              <div class="share-row row desktop-share">
-                <input class="share-input" type="text" readonly value="${escapeHtml(url)}" id="share-url-input">
-                <button type="button" class="secondary" data-action="copy-link">Copy meeting link</button>
-              </div>
-            </div>
+            ${renderSignedInBanner(m, attendee)}
+            ${compactHeader ? renderMeetingStatusCompact(m, state) : ''}
+            ${!compactHeader ? renderMeetingStatus(m, state) : ''}
+            <nav class="dashboard-nav" aria-label="Meeting sections">
+              ${renderDashboardNav(m, state, attendee)}
+            </nav>
           </div>
         </div>
+        ${state.helpOpen ? `<div class="help-panel-outer">${renderHelpPanel(m, attendee)}</div>` : ''}
         <div class="meet-content">
-          ${state.activeTab === 'overview' ? renderOverviewTab(m, state, attendee) : ''}
+          ${state.activeTab === 'getting-started' ? renderGettingStartedTab(m, state, attendee) : ''}
+          ${state.activeTab === 'overview'  ? renderOverviewTab(m, state, attendee) : ''}
           ${state.activeTab === 'attendees' ? renderAttendeesTab(m, state, attendee) : ''}
-          ${state.activeTab === 'calendar' ? renderCalendarTab(m, state, attendee) : ''}
-          ${state.activeTab === 'times' ? renderGroupAvailabilityTab(m, state, attendee) : ''}
+          ${state.activeTab === 'calendar'  ? renderCalendarTab(m, state, attendee) : ''}
+          ${state.activeTab === 'group'     ? renderGroupAvailabilityTab(m, state, attendee) : ''}
           ${state.activeTab === 'locations' ? renderLocationsTab(m, state, attendee) : ''}
-          ${state.activeTab === 'notes' ? renderNotesTab(m, state, attendee) : ''}
-          ${state.activeTab === 'after' ? renderRecordsTab(m, state) : ''}
-          ${state.activeTab === 'organiser' ? renderOrganiserTab(m, state, attendee) : ''}
+          ${state.activeTab === 'agenda'    ? renderAgendaTab(m, state, attendee) : ''}
+          ${state.activeTab === 'options'   ? renderOptionsTab(m, state, attendee) : ''}
         </div>
       </div>
       <div class="toast" id="toast"></div>
     `;
+
     if (scrollTarget) {
       requestAnimationFrame(() => {
         root.querySelector(`.${scrollTarget}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -356,419 +886,1974 @@
       window.scrollTo(0, scrollY);
     }
     afterRenderScroll(root, state);
+    syncClearPinFields(root.querySelector('.edit-attendee-form'));
+  }
+
+  function syncClearPinFields(form) {
+    if (!form) return;
+    const clearing = form.querySelector('[name="clear_pin"]')?.checked;
+    const newPinField = form.querySelector('[data-clear-pin-target]');
+    const newPinInput = form.querySelector('[name="new_pin"]');
+    if (newPinField) newPinField.hidden = !!clearing;
+    if (newPinInput) {
+      newPinInput.disabled = !!clearing;
+      if (clearing) newPinInput.value = '';
+    }
   }
 
   function afterRenderScroll(root, state) {
-    if (!state.scrollCalendarOnRender || state.activeTab !== 'calendar') return;
-    state.scrollCalendarOnRender = false;
-    requestAnimationFrame(() => {
-      const signedIn = state.meet.attendees.some((a) => a.id === state.attendeeId);
-      const target = signedIn
-        ? root.querySelector('.calendar-save-row')
-        : root.querySelector('.attendee-block');
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    const sticky = root.querySelector('.sticky-top');
+    if (sticky) {
+      document.documentElement.style.setProperty('--sticky-h', `${Math.ceil(sticky.getBoundingClientRect().height)}px`);
+    }
   }
 
-  function calendarReady(state) {
-    return !!state.attendeeId;
+  // ─── Dashboard nav ───────────────────────────────────────────────────────────
+
+  function renderSignedInBanner(m, attendee) {
+    if (!m.attendees?.length) {
+      return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">No attendees yet</p>`;
+    }
+    if (!attendee) {
+      return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">No signed-in attendee</p>`;
+    }
+    const role = attendee.is_organizer ? 'Organiser' : 'Attendee';
+    return `<p class="meta signed-in-banner" title="Manage attendee identities on the Attendees tab">Currently signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> (${role})</p>`;
   }
 
-  function tabBtn(id, label, state, tip = '') {
-    const title = tip ? ` title="${escapeHtml(tip)}"` : '';
-    return `<button type="button" class="tab${state.activeTab === id ? ' active' : ''}" data-action="tab" data-tab="${id}"${title}>${label}</button>`;
+  function renderDashboardNav(m, state, attendee) {
+    const tabs = TAB_DEFS.map((t) => {
+      const active = state.activeTab === t.id;
+      return `<button type="button" class="dash-btn${active ? ' active' : ''}" data-action="tab" data-tab="${t.id}" title="${escapeHtml(t.tip)}">${escapeHtml(t.label)}</button>`;
+    }).join('');
+    const newMeet = `<button type="button" class="dash-btn dash-btn-new" data-action="new-meeting" title="Start a completely fresh meeting">New meeting</button>`;
+    return tabs + newMeet;
   }
 
-  const TAB_TIPS = {
-    overview: 'Summary: who is invited, best overlap times, and current meeting status.',
-    attendees: 'Register attendees, edit your details, and manage the attendee list.',
-    organiser: 'Meeting length, grid step, timezone, recurrence, and description for attendees.',
-    calendar: 'Mark when you are free on the calendar grid.',
-    times: 'See when everyone\'s availability overlaps — who is free on which days and times.',
-    locations: 'Propose meeting locations and finalise time and place (organiser).',
-    notes: 'Agenda items, decisions required before the meeting, and preparatory notes.',
-    after: 'After the meeting: recordings, transcripts, attachments, and summaries.',
+  // ─── Meeting status strip ────────────────────────────────────────────────────
+
+  function rescheduledKey(slug) { return `meet_rescheduled_${slug}`; }
+
+  const STATUS_LABELS = {
+    organiser: 'Entering organiser details',
+    attendee: 'Entering attendee details',
+    scheduled: 'Scheduled',
+    rescheduled: 'Rescheduled',
+    past: 'Past',
+    summarised: 'Summarised',
   };
 
-  function meetingEstablished(m) {
-    return (m.attendees?.length || 0) > 0;
-  }
+  const STATUS_TIP = 'Status progresses as the meeting is set up: entering details → Scheduled (organiser sets a start) → Rescheduled if changed → Past / Summarised after the start. Organisers set and can change the scheduled time and location.';
 
-  function canShowOrganiserTab(m, attendee) {
-    return !m.attendees.length || !!attendee?.is_organizer;
-  }
-
-  function tabNavItems(m, attendee) {
-    const showOrg = canShowOrganiserTab(m, attendee);
-    const established = meetingEstablished(m);
-    if (established) {
-      return [];
+  function meetingStatusKind(m, state) {
+    if (!m.attendees.length) return 'organiser';
+    if (!m.confirmed_slot) return 'attendee';
+    const start = new Date(m.confirmed_slot).getTime();
+    if (Date.now() > start) {
+      return (m.attachments || []).length > 0 ? 'summarised' : 'past';
     }
-    const items = [];
-    if (showOrg) {
-      items.push({ id: 'organiser', label: '1. Set meeting options', tip: TAB_TIPS.organiser });
+    const wasRescheduled = state.wasRescheduled || localStorage.getItem(rescheduledKey(state.slug)) === 'yes';
+    return wasRescheduled ? 'rescheduled' : 'scheduled';
+  }
+
+  function renderMeetingStatusCompact(m, state) {
+    const label = STATUS_LABELS[meetingStatusKind(m, state)];
+    return `<div class="status-strip status-strip-compact" title="${escapeHtml(STATUS_TIP)}">
+      <span class="status-label">Status:</span>
+      <span class="status-value">${escapeHtml(label)}</span>
+    </div>`;
+  }
+
+  function renderMeetingStatus(m, state) {
+    const kind = meetingStatusKind(m, state);
+    const label = STATUS_LABELS[kind];
+    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
+    const recurrenceLabel = escapeHtml(m.recurrence_label || 'One-off');
+    let timeHtml;
+    if (m.confirmed_slot) {
+      timeHtml = `<span class="meta">Time: ${formatTimePair(m.confirmed_slot, m)}</span>`;
+    } else {
+      timeHtml = '<span class="meta">No date and time selected</span>';
     }
-    items.push(
-      { id: 'calendar', label: '2. Choose calendar times', tip: TAB_TIPS.calendar },
-      { id: 'times', label: '3. Group availability', tip: TAB_TIPS.times },
-      { id: 'after', label: '4. Records', tip: TAB_TIPS.after },
-    );
-    return items;
+    const recurrenceHtml = `<span class="meta">Recurrence: ${recurrenceLabel}</span>`;
+    const locIds = confirmedLocationIdsForDisplay(m, state);
+    const hasConfirmedLocs = effectiveConfirmedLocationIds(state, m).length > 0;
+    const locLabel = scheduled || hasConfirmedLocs ? 'Locations' : 'Locations (proposed)';
+    const locHtml = locIds.length
+      ? `<span class="meta">${locLabel}: ${locIds.map((id) => locationInlineHtml(m, id)).join('; ')}</span>`
+      : '<span class="meta">No locations confirmed</span>';
+    return `<div class="status-strip" title="${escapeHtml(STATUS_TIP)}">
+      <span class="status-label">Status:</span>
+      <span class="status-value">${escapeHtml(label)}</span>
+      ${timeHtml}
+      ${recurrenceHtml}
+      ${locHtml}
+      ${renderStatusExpanders(m)}
+    </div>`;
   }
 
-  const DASHBOARD_NAV = {
-    overview: { tab: 'overview', label: 'Meeting overview', tip: TAB_TIPS.overview },
-    attendees: { tab: 'attendees', label: 'Attendees', tip: TAB_TIPS.attendees },
-    calendar: { tab: 'calendar', label: 'My availability', tip: TAB_TIPS.calendar },
-    group: { tab: 'times', label: 'Group availability', tip: TAB_TIPS.times },
-    locations: { tab: 'locations', label: 'Locations & finalise', tip: TAB_TIPS.locations },
-    notes: { tab: 'notes', label: 'Meeting notes', tip: TAB_TIPS.notes },
-    records: { tab: 'after', label: 'Records', tip: TAB_TIPS.after },
-    organiser: { tab: 'organiser', label: 'Meeting options', tip: TAB_TIPS.organiser },
-    setup: { tab: 'organiser', label: 'Meeting setup', tip: TAB_TIPS.organiser },
-  };
+  function renderStatusExpanders(m) {
+    const desc = (m.organizer_intro || '').trim();
+    const descPlain = desc ? desc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    const descSummary = descPlain
+      ? `Description: ${descPlain.slice(0, 72)}${descPlain.length > 72 ? '…' : ''}`
+      : 'Description: none';
+    const descBody = desc
+      ? `<div class="meet-intro-body status-desc-body">${sanitizeHtml(desc)}</div>`
+      : '<p class="meta">No description yet — go to <strong>Meeting Resources</strong> to add one.</p>';
 
-  function dashboardNavItems(m, attendee) {
-    const showOrg = canShowOrganiserTab(m, attendee);
-    if (meetingEstablished(m)) {
-      const keys = ['overview', 'attendees', 'calendar', 'group', 'locations', 'notes', 'records'];
-      if (showOrg) keys.push('organiser');
-      return keys.map((k) => ({ goto: k, ...DASHBOARD_NAV[k] }));
-    }
-    return ['setup', 'calendar', 'group', 'notes'].map((k) => ({ goto: k, ...DASHBOARD_NAV[k] }));
-  }
+    const agenda = m.agenda || [];
+    const decisions = m.decisions || [];
+    const attachments = m.attachments || [];
+    const combinedSummary = `Agenda items (${agenda.length}) · Decisions (${decisions.length}) · Attachments (${attachments.length})`;
 
-  function allValidTabs(m, attendee) {
-    if (meetingEstablished(m)) {
-      const keys = ['overview', 'attendees', 'calendar', 'times', 'locations', 'notes', 'after'];
-      if (canShowOrganiserTab(m, attendee)) keys.push('organiser');
-      return keys;
-    }
-    return [...new Set([...tabNavItems(m, attendee).map((t) => t.id), 'notes', 'locations'])];
-  }
+    const agendaBlock = agenda.length
+      ? `<p class="meta"><strong>Agenda</strong></p><ul class="list-plain status-expand-list">${agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta"><strong>Agenda</strong> — none yet. Go to <strong>Meeting Resources</strong> to add items.</p>';
 
-  function dashboardShortcut(goto, label, state, tabId, tip = '') {
-    const active = state.activeTab === tabId;
-    const title = tip ? ` title="${escapeHtml(tip)}"` : '';
-    return `<button type="button" class="dashboard-shortcut${active ? ' active' : ''}" data-action="goto" data-goto="${goto}"${title}>${escapeHtml(label)}</button>`;
-  }
+    const decisionsBlock = decisions.length
+      ? `<p class="meta"><strong>Decisions required</strong></p><ul class="list-plain status-expand-list">${decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`
+      : '<p class="meta"><strong>Decisions required</strong> — none yet. Go to <strong>Meeting Resources</strong> to add them.</p>';
 
-  function gotoLink(goto, text) {
-    return `<button type="button" class="goto-link" data-action="goto" data-goto="${goto}">${escapeHtml(text)}</button>`;
-  }
+    const attachItems = attachments.map((att) => {
+      if (att.type === 'url' && att.url) {
+        const href = normalizeExternalUrl(att.url);
+        return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label || att.url)}</a> <span class="label-hint">(opens in a new window)</span></li>`;
+      }
+      return `<li>${escapeHtml(att.label || 'Untitled')} — text attachment; open <strong>Meeting Resources</strong> → <strong>Attachments</strong> for the full content.</li>`;
+    }).join('');
+    const attachmentsBlock = attachments.length
+      ? `<p class="meta"><strong>Attachments</strong></p><ul class="list-plain status-expand-list">${attachItems}</ul>`
+      : '<p class="meta"><strong>Attachments</strong> — none yet. Go to <strong>Meeting Resources</strong> to add them.</p>';
 
-  function renderDashboardAttendeeSummary(m) {
-    if (!m.attendees.length) return '<p class="meta dashboard-snippet">No attendees registered yet.</p>';
-    const parts = m.attendees.map((a) => {
-      const slots = countSlotsFor(m, a.id);
-      const org = a.is_organizer ? ' · organiser' : '';
-      return `${escapeHtml(a.display_name)} (${slots} slot${slots === 1 ? '' : 's'}${org})`;
-    });
-    return `<p class="meta dashboard-snippet"><strong>Attendees (${m.attendees.length}):</strong> ${parts.join(' · ')}</p>`;
-  }
-
-  function renderDashboardTimesSummary(m) {
-    const full = (m.suggestions?.slots || []).slice(0, 3);
-    if (!full.length) {
-      return '<p class="meta dashboard-snippet"><strong>Best overlaps:</strong> none yet — attendees need to mark availability.</p>';
-    }
-    const lines = full.map((s) => `${formatSlotLocal(s.slot)} (${s.count}/${m.attendees.length})`);
-    return `<p class="meta dashboard-snippet"><strong>Best overlaps:</strong> ${lines.map((l) => escapeHtml(l)).join(' · ')}</p>`;
-  }
-
-  function renderMeetingDashboard(m, state, attendee) {
-    const established = meetingEstablished(m);
-    const shortcuts = dashboardNavItems(m, attendee)
-      .map(({ goto, tab, label, tip }) => dashboardShortcut(goto, label, state, tab, tip))
-      .join('');
     return `
-      <div class="meeting-dashboard">
-        <h2 class="dashboard-title">Meeting dashboard</h2>
-        ${renderMeetingStatus(m)}
-        ${established ? `${renderDashboardAttendeeSummary(m)}${renderDashboardTimesSummary(m)}` : ''}
-        <nav class="dashboard-shortcuts row" aria-label="Go to meeting section">${shortcuts}</nav>
+      <details class="status-desc">
+        <summary class="meta status-desc-summary">${escapeHtml(descSummary)}</summary>
+        ${descBody}
+      </details>
+      <details class="status-desc">
+        <summary class="meta status-desc-summary">${escapeHtml(combinedSummary)}</summary>
+        <div class="status-desc-body status-combined-body">
+          ${agendaBlock}
+          ${decisionsBlock}
+          ${attachmentsBlock}
+        </div>
+      </details>`;
+  }
+
+  // ─── Help panel ──────────────────────────────────────────────────────────────
+
+  function renderHelpPanel(m, attendee) {
+    const established = meetingEstablished(m);
+    return `
+      <div class="help-panel" id="help-panel">
+        <div class="help-panel-inner">
+          <div class="help-panel-header row">
+            <strong>How to use this meeting scheduler</strong>
+            <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="Close help panel">Close</button>
+          </div>
+          <p class="meta help-tooltip-note">Most fields have tooltips on hover (may not show on mobile). Coloured panes group related topics — dates &amp; times (lavender), free text (blue), people (pink), places (green), attachments (amber).</p>
+          <div class="help-columns">
+            <div class="help-col">
+              <h3 class="help-heading">Setting up a meeting (organiser)</h3>
+              <ol class="help-steps">
+                <li><strong>Attendees</strong> — add yourself first. You become the organiser. Optionally set a passcode so you can find this meeting from the home page later.</li>
+                <li><strong>Calendar Options</strong> — meeting length (whole meeting), calendar slot size (partial availability — must divide meeting length evenly), AM/PM half-day presets, bookable dates and daily hours (edited in your local timezone; stored consistently for everyone). Save when done.</li>
+                <li><strong>Meeting Resources</strong> — optional description, agenda, decisions, notes, attachments (preparation and post-meeting).</li>
+                <li><strong>My availability</strong> — mark when you are free. Select enough consecutive slots for the full meeting length if you can. Press <em>Save</em>.</li>
+                <li><strong>Locations</strong> — propose online and/or physical places; attendees vote which work for them.</li>
+                <li><strong>Share the link</strong> — <em>Copy meeting link</em> and send it to attendees.</li>
+                <li><strong>Confirm meeting choices</strong> — <em>Group calendar</em>: everyone’s marks on one grid. Organiser clicks a start to save it (click again to clear), and confirms location(s). Partial overlap is OK.</li>
+              </ol>
+            </div>
+            <div class="help-col">
+              <h3 class="help-heading">Joining a meeting (attendee)</h3>
+              <ol class="help-steps">
+                <li>Open the meeting link you were sent. You will see the meeting title and current status.</li>
+                <li>Go to <strong>Attendees</strong>. If you are already listed, tick <em>Me</em> on your row and enter your passcode if prompted. If you are not listed, fill in the <em>Add new attendee</em> form with your name.</li>
+                <li>Open <strong>My availability</strong> and mark every slot when you are free. Select enough consecutive slots to cover the full meeting if you can — finer slots mean you can also mark partial availability. Press <em>Save</em>. You can come back and update this any time — clicking a previously selected slot deselects it, so remember to save again.</li>
+                <li>Open <strong>Locations</strong> to see any proposed venues. Click locations that work for you (blue means saved). Click again to remove. You can also propose a new location.</li>
+                <li>Open <strong>Confirm meeting choices</strong> to see the <em>Group calendar</em> — how times overlap and what is scheduled.</li>
+                <li>Check the top status line for the current scheduled time and location.</li>
+                <li>Repeat any of these steps as the meeting evolves — there is no fixed order.</li>
+              </ol>
+            </div>
+          </div>
+          <div class="help-footer">
+            <p class="meta">The <strong>meeting link</strong> is the only way back to this meeting unless you set a passcode. The <em>Find my meetings</em> option on the home page lets you look up a list of meetings <strong>if</strong> you know a registered name <strong>and matching passcode.</strong></p>
+          </div>
+          <div class="help-panel-footer-close row">
+            <button type="button" class="btn-cancel compact-btn" data-action="toggle-help" title="Close help panel">Close / Collapse</button>
+          </div>
+        </div>
       </div>`;
+  }
+
+  // ─── Overview tab ────────────────────────────────────────────────────────────
+
+  // ─── Getting started tab ─────────────────────────────────────────────────────
+
+  function goTabLink(tab, linkText) {
+    return `<button type="button" class="setup-tab-link" data-action="tab" data-tab="${tab}">${escapeHtml(linkText)}</button>`;
+  }
+
+  function formSaveHeader(buttonHtml) {
+    if (!buttonHtml) return '';
+    return `<div class="form-save-header row">${buttonHtml}</div>`;
+  }
+
+  function renderGettingStartedTab(m, state, attendee) {
+    const setup = setupChecklistState(m, state, attendee);
+    const go = (tab, label) => goTabLink(tab, label);
+    return `
+      <section class="panel stack overview-panel">
+        <h2 class="section-title">Getting started</h2>
+        <details class="getting-started-intro" data-pane-id="gs-intro"${paneOpenAttr(state, 'gs-intro')}>
+          <summary class="section-title">Instructions for organisers and attendees. Completed steps marked with a ✓</summary>
+          <p class="meta">Steps below are aimed at the meeting organiser. Attendees skip organiser-only steps. Essential steps for <strong>all</strong> attendees: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>.</p>
+          <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a> at the foot of the page.</p>
+        </details>
+        <ol class="setup-steps">
+          <li>
+            <strong>${setup.stepSelf ? '✓ ' : ''}</strong>
+            Everyone (E): ${go('attendees', 'Go to Attendees')} and <strong>Add yourself as an attendee</strong> —
+            First attendee becomes Meeting Organiser by default and can give others Organiser privilege.
+          </li>
+          <li>
+            <strong>${setup.stepOptions ? '✓ ' : ''}</strong>
+            Organiser (O): <strong>Set Calendar Options</strong> —
+            Organiser status required. Set <strong>meeting length</strong> (full meeting) and <strong>calendar slot size</strong> (partial availability — must divide meeting length evenly). Use <strong>AM/PM presets</strong> for half-day meetings if helpful. Also set earliest/latest dates, daily hours, weekends, and recurrence (future feature) if needed.
+            ${go('options', 'Go to Calendar Options')}
+          </li>
+          <li>
+            <strong>${setup.stepResources ? '✓ ' : ''}</strong>
+            (O/E): <strong>(Optional)</strong> ${go('agenda', 'Go to Meeting Resources')} and edit meeting's title, set / edit description, agenda, attachments, etc.
+          </li>
+          <li>
+            <strong>${setup.stepOthers ? '✓ ' : ''}</strong>
+            (O/E): <strong>(Optional)</strong> ${go('attendees', 'Go to Attendees')} — Add others as proposed attendees.
+            Anyone with the link can add themselves and others. Organisers can grant Organiser to registered attendees.
+          </li>
+          <li>
+            <strong>${setup.stepAvail ? '✓ ' : ''}</strong>
+            (E): ${go('calendar', 'Go to My availability')} and select time slots that work for you. Select enough booking slots for partial or full availability.
+          </li>
+          <li>
+            <strong>${setup.stepLocations ? '✓ ' : ''}</strong>
+            (E): ${go('locations', 'Go to Locations')} — Select/ Propose locations (Online and/or Physical) for attendees to vote on. Any attendee can propose locations.
+          </li>
+          <li>
+            <strong>${setup.stepConfirm ? '✓ ' : ''}</strong>
+            (O): <strong>Confirm meeting choices</strong> —
+            <strong>Organiser status required to edit.</strong> All can view. Click a start to save the meeting date and time (click again to clear). Confirm location(s). (Can be amended.)
+            ${go('group', 'Go to Confirm meeting choices')}
+          </li>
+          <li>
+            <strong>${setup.stepShare ? '✓ ' : ''}</strong>
+            (E): <strong>Share the link</strong> —
+            Copy meeting link and send it to all attendees so they can open this meeting and enter their availability.
+            <span class="row setup-share-row">
+              <button type="button" data-action="copy-link" title="Copy meeting link">Copy meeting link</button>
+            </span>
+          </li>
+        </ol>
+        ${setup.allDone ? '<p class="meta"><strong>Setup complete.</strong> You can keep using this checklist any time, or move on to Overview and the other tabs.</p>' : '<p class="meta">This checklist stays visible at all times.</p>'}
+        <p class="meta">${go('overview', 'Go to Overview')} — View a summary of current meeting details</p>
+      </section>`;
+  }
+
+  // ─── Overview tab ────────────────────────────────────────────────────────────
+
+  function renderOverviewTab(m, state, attendee) {
+    const allSuggestions = collapseOverviewTimeSuggestions(overviewTimeSuggestions(m), m);
+    const suggestionTotal = allSuggestions.length;
+    const sorted = allSuggestions.slice(0, 10);
+    const locationRanked = overviewLocationRankings(m);
+    const locationTotal = locationRanked.length;
+    const topLocations = locationRanked.slice(0, 3);
+    const kind = meetingStatusKind(m, state);
+    const agendaOpen = kind !== 'past' && kind !== 'summarised';
+    const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
+    const availabilityCount = m.attendees.filter((a) => countSlotsFor(m, a.id) > 0).length;
+    const rangeStart = optionsRangeStart(m);
+    const rangeEnd = optionsRangeEnd(m);
+    const openEnded = !rangeEnd;
+    const timeSummary = m.confirmed_slot
+      ? formatTimePair(m.confirmed_slot, m)
+      : (openEnded
+        ? `No time selected yet. Attendees, enter availability from ${escapeHtml(rangeStart)} (start date) onward — end date is open.`
+        : `No time selected yet. Attendees, enter availability between ${escapeHtml(rangeStart)} and ${escapeHtml(rangeEnd)} (Calendar Options start and end dates).`);
+
+    return `
+      <section class="panel stack overview-panel">
+        <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▶ headings to expand</span></h2>
+        <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places.</p>
+        <details class="overview-block tint-dates" data-pane-id="ov-time"${paneOpenAttr(state, 'ov-time')}>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence</summary>
+          <p class="meta"><strong>Scheduled time:</strong> ${timeSummary}</p>
+          <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
+          <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
+        </details>
+        <details class="overview-block tint-text" data-pane-id="ov-agenda"${paneOpenAttr(state, 'ov-agenda', { secondary: !agendaOpen })}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
+          ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to set it.</p>'}
+          ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Meeting Resources</strong> to set them.</p>'}
+          ${(m.notes || '').trim() ? `<p class="meta"><strong>Notes:</strong></p><div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+        </details>
+        <details class="overview-block tint-people" data-pane-id="ov-attendees"${paneOpenAttr(state, 'ov-attendees')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
+          ${renderOverviewAttendeeTable(m)}
+        </details>
+        <details class="overview-block tint-dates" data-pane-id="ov-starts"${paneOpenAttr(state, 'ov-starts')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
+          ${sorted.length
+            ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatOverviewTimeSuggestion(m, s)}</li>`).join('')}</ul>
+               <p class="meta">Confirm one with <strong>Confirm meeting choices</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap. Contiguous starts with the same attendance are shown as a start-time range.</p>`
+            : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Confirm meeting choices</strong>.</p>'}
+        </details>
+        <details class="overview-block tint-places" data-pane-id="ov-locations"${paneOpenAttr(state, 'ov-locations')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
+          ${renderConfirmedLocationsSummary(m, state, scheduled)}
+          ${topLocations.length
+            ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
+            : '<p class="meta">No locations proposed yet.</p>'}
+        </details>
+        <details class="overview-block tint-assets" data-pane-id="ov-attachments"${paneOpenAttr(state, 'ov-attachments', { secondary: !(m.attachments || []).length })}>
+          <summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments (${(m.attachments || []).length})</summary>
+          ${(m.attachments || []).length
+            ? m.attachments.map((a) => renderAttachment(a, attendee)).join('')
+            : '<p class="meta">No attachments yet — add preparation or follow-up files in <strong>Meeting Resources</strong>.</p>'}
+        </details>
+      </section>`;
+  }
+
+  function renderLocationPopularitySummary(m) {
+    if (!m.locations.length) return '<p class="meta">No locations proposed yet.</p>';
+    const ranked = overviewLocationRankings(m).slice(0, 3);
+    return `<ul class="list-plain">${ranked.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`;
+  }
+
+  function overviewLocationRankings(m) {
+    if (!m.locations.length) return [];
+    const prefs = m.location_preferences || {};
+    const counts = new Map(m.locations.map((loc) => [loc.id, 0]));
+    Object.values(prefs).forEach((ids) => {
+      (ids || []).forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+    });
+    return m.locations
+      .map((loc) => ({ loc, votes: counts.get(loc.id) || 0 }))
+      .sort((a, b) => b.votes - a.votes || a.loc.label.localeCompare(b.loc.label));
+  }
+
+  /** Merge full and partial overlap starts for Overview (partial-only was omitted before). */
+  function overviewTimeSuggestions(m) {
+    const bySlot = new Map();
+    for (const s of m.suggestions?.slots || []) {
+      bySlot.set(s.slot, { slot: s.slot, fullCount: s.count, partialCount: 0, kind: 'full' });
+    }
+    for (const s of m.suggestions?.partial_slots || []) {
+      if (bySlot.has(s.slot)) continue;
+      bySlot.set(s.slot, {
+        slot: s.slot,
+        fullCount: (s.attendees_full || []).length,
+        partialCount: (s.attendees_partial || []).length,
+        kind: 'partial',
+      });
+    }
+    return [...bySlot.values()].sort((a, b) => {
+      if (b.fullCount !== a.fullCount) return b.fullCount - a.fullCount;
+      if (b.partialCount !== a.partialCount) return b.partialCount - a.partialCount;
+      return a.slot.localeCompare(b.slot);
+    });
+  }
+
+  function suggestionMatchKey(s) {
+    return `${s.kind}:${s.fullCount}:${s.partialCount}`;
+  }
+
+  /** Collapse contiguous starts that share the same match degree into one range entry. */
+  function collapseOverviewTimeSuggestions(suggestions, m) {
+    const gran = Number(m.slot_granularity_minutes) || 30;
+    const stepMs = gran * 60000;
+    const byTime = [...suggestions].sort((a, b) => a.slot.localeCompare(b.slot));
+    const runs = [];
+    for (const s of byTime) {
+      const prev = runs[runs.length - 1];
+      const prevEnd = prev?.slotEnd || prev?.slot;
+      const adjacent = prev
+        && suggestionMatchKey(prev) === suggestionMatchKey(s)
+        && Math.abs(new Date(s.slot).getTime() - new Date(prevEnd).getTime()) === stepMs;
+      if (adjacent) {
+        prev.slotEnd = s.slot;
+      } else {
+        runs.push({ ...s, slotEnd: s.slot });
+      }
+    }
+    return runs.sort((a, b) => {
+      if (b.fullCount !== a.fullCount) return b.fullCount - a.fullCount;
+      if (b.partialCount !== a.partialCount) return b.partialCount - a.partialCount;
+      return a.slot.localeCompare(b.slot);
+    });
+  }
+
+  function formatOverviewStartRange(firstIso, lastIso) {
+    const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz };
+    const timeOpts = { hour: 'numeric', minute: '2-digit', timeZone: tz };
+    const first = new Date(firstIso);
+    const last = new Date(lastIso);
+    const d1 = first.toLocaleDateString(undefined, dateOpts);
+    const d2 = last.toLocaleDateString(undefined, dateOpts);
+    const t1 = first.toLocaleTimeString(undefined, timeOpts);
+    const t2 = last.toLocaleTimeString(undefined, timeOpts);
+    const range = d1 === d2 ? `${d1}, ${t1} – ${t2}` : `${d1}, ${t1} – ${d2}, ${t2}`;
+    return `<strong>${escapeHtml(range)}</strong> <span class="label-hint">(start times, ${escapeHtml(tz)})</span>`;
+  }
+
+  function formatOverviewTimeSuggestion(m, s) {
+    const total = m.attendees.length;
+    const durLabel = formatDurationLabel(m.duration_minutes);
+    const endSlot = s.slotEnd && s.slotEnd !== s.slot ? s.slotEnd : null;
+    const when = endSlot ? formatOverviewStartRange(s.slot, endSlot) : formatTimePair(s.slot, m);
+    if (s.kind === 'full' || s.fullCount === total) {
+      return `${when} — ${s.fullCount} of ${total} free for full meeting (${durLabel})`;
+    }
+    if (s.fullCount > 0) {
+      const partialNote = s.partialCount ? `; ${s.partialCount} partial` : '';
+      return `${when} — ${s.fullCount} of ${total} for full ${durLabel}${partialNote}`;
+    }
+    const marked = s.fullCount + s.partialCount;
+    return `${when} — ${marked} of ${total} marked (partial overlap)`;
+  }
+
+  function renderConfirmedLocationsSummary(m, state, scheduled) {
+    const ids = scheduled && (m.confirmed_location_ids || []).length
+      ? m.confirmed_location_ids
+      : effectiveConfirmedLocationIds(state, m);
+    const label = scheduled ? 'Confirmed locations' : 'Proposed locations';
+    if (!ids.length) {
+      return `<p class="meta"><strong>${label}:</strong> None yet</p>`;
+    }
+    return `<p class="meta"><strong>${label}:</strong> ${ids.map((id) => locationInlineHtml(m, id)).join('; ')}</p>`;
   }
 
   function renderOverviewAttendeeTable(m) {
     if (!m.attendees.length) return '<p class="meta">No attendees registered yet.</p>';
     return `<table class="data-table overview-attendee-table">
-      <thead><tr><th>Name</th><th>Slots marked</th><th>Role</th></tr></thead>
+      <thead><tr><th>Name</th>${renderAttendeeSlotsLocsHead()}<th class="col-role">Role</th></tr></thead>
       <tbody>${m.attendees.map((a) => `<tr>
         <td>${escapeHtml(a.display_name)}</td>
-        <td>${countSlotsFor(m, a.id)}</td>
-        <td>${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
+        ${renderAttendeeSlotsLocsCell(m, a.id)}
+        <td class="col-role">${a.is_organizer ? 'Organiser' : 'Attendee'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
   }
 
-  function renderOverviewTab(m, state, attendee) {
-    const sorted = sortSuggestions(m, 'date').slice(0, 5);
-    const desc = (m.organizer_intro || '').trim();
-    const showOrg = canShowOrganiserTab(m, attendee);
-    return `
-      <section class="panel stack overview-panel">
-        <h2 class="section-title">Meeting overview</h2>
-        <p class="meta">Use the buttons on the <strong>Meeting dashboard</strong> above to open each section — Attendees, My availability, Group availability, Locations &amp; finalise, Meeting notes, Records${showOrg ? ', and Meeting options' : ''}.</p>
-        <h3 class="section-title">Who is invited</h3>
-        ${renderOverviewAttendeeTable(m)}
-        <p class="meta">${gotoLink('attendees', 'Open attendees →')}</p>
-        <h3 class="section-title">Best overlap times</h3>
-        ${sorted.length
-          ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatTimePair(s.slot)} — ${s.count} of ${m.attendees.length} available</li>`).join('')}</ul>`
-          : '<p class="meta">No overlap times yet — attendees need to mark availability.</p>'}
-        <p class="meta">${gotoLink('group', 'Open group availability →')} · ${gotoLink('calendar', 'Open my availability →')}</p>
-        ${desc ? `<h3 class="section-title">Description for attendees</h3><div class="meet-intro-body">${sanitizeHtml(desc)}</div>` : ''}
-        ${(m.agenda.length || m.decisions.length || (m.notes || '').trim())
-          ? `<h3 class="section-title">Agenda &amp; notes (preview)</h3>
-            ${m.agenda.length ? `<p><strong>Agenda</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-            ${m.decisions.length ? `<p><strong>Decisions required</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-            ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
-            <p class="meta">${gotoLink('notes', 'Open meeting notes →')}</p>`
-          : `<p class="meta">No agenda or notes yet. ${gotoLink('notes', 'Add meeting notes →')}</p>`}
-        <p class="meta">${gotoLink('locations', 'Open locations & finalise →')}${showOrg ? ` · ${gotoLink('organiser', 'Open meeting options →')}` : ''} · ${gotoLink('records', 'Open records →')}</p>
-      </section>`;
+  // ─── Attendees tab ───────────────────────────────────────────────────────────
+
+  function renderAttendeeSlotsLocsHead() {
+    return `<th class="att-slots-locs-head" title="Availability slots marked and locations marked OK with me"><span>Time slots</span><span>locations</span></th>`;
+  }
+
+  function renderAttendeeSlotsLocsCell(m, attendeeId) {
+    const slots = countSlotsFor(m, attendeeId);
+    const locs = countLocationPrefsFor(m, attendeeId);
+    return `<td class="att-slots-locs" title="${slots} time slot(s), ${locs} location(s)">${slots}&nbsp;/&nbsp;${locs}</td>`;
   }
 
   function renderAttendeesTab(m, state, attendee) {
     return `<section class="panel stack">${renderAttendeesSection(m, state, attendee, { standalone: true })}</section>`;
   }
 
-  function renderTabNav(m, state, attendee) {
-    return tabNavItems(m, attendee).map(({ id, label, tip }) => tabBtn(id, label, state, tip)).join('');
-  }
-
-  function renderContinueToCalendar(state) {
-    const ready = calendarReady(state);
-    return `<div class="calendar-continue-row">
-      <button type="button" data-action="goto" data-goto="calendar">Continue to my availability →</button>
-      <p class="meta">${ready
-        ? 'Add more attendees on the <strong>Attendees</strong> page, then open <strong>My availability</strong> to mark when you are free.'
-        : 'Add yourself on the <strong>Attendees</strong> page, or click <strong>This is me</strong> on your row, then open <strong>My availability</strong>.'}</p>
-    </div>`;
-  }
-
-  function tabPageIntro(m, state) {
-    if (state.activeTab === 'times') {
-      return renderIntroBlock(m, state, 'page_times_intro', m.page_times_intro, 'Optional intro for the group availability page.', 'Page intro', { withTextHelp: false });
-    }
-    if (state.activeTab === 'after') {
-      return renderIntroBlock(m, state, 'page_after_intro', m.page_after_intro, 'Optional intro for records and summaries.', 'Page intro', { withTextHelp: false });
-    }
-    return '';
-  }
-
-  function helpToggle(topic, bodyHtml) {
-    return `
-      <details class="help-toggle">
-        <summary><span class="help-q">?</span> Help for ${escapeHtml(topic)}</summary>
-        <div class="help-body meta">${bodyHtml}</div>
-      </details>`;
-  }
-
-  const FMT_TITLES = {
-    strong: 'Wrap selected text in bold tags, or insert bold tags at the cursor',
-    em: 'Wrap selected text in italic tags, or insert italic tags at the cursor',
-    p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
-    br: 'Insert a line break (<br>) at the cursor',
-    a: 'Wrap selected text as a link (opens in a new tab), or insert a link and enter the URL. target="_blank" is added automatically — do not type it in the editor',
-    ul: 'Wrap selected text in one bullet item, or insert a one-item list (line breaks stay inside the same bullet)',
-  };
-
-  function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text', { withTextHelp = false } = {}) {
-    if (state.editingIntro === field) {
-      return `
-        <div class="meet-intro-edit">
-          <p class="field-label-plain">${escapeHtml(editLabel)} <span class="label-hint">(simple HTML)</span></p>
-          ${formatToolbar(field, { withHelp: withTextHelp, helpTopic: editLabel.toLowerCase() })}
-          <textarea id="intro-edit-${field}" name="${field}" rows="4">${escapeHtml(text || '')}</textarea>
-          <div class="row">
-            <button type="button" data-action="save-intro" data-field="${field}">Save</button>
-            <button type="button" class="secondary" data-action="cancel-intro">Cancel</button>
-          </div>
-        </div>`;
-    }
-    const body = (text || '').trim()
-      ? sanitizeHtml(text)
-      : `<span class="intro-placeholder">${escapeHtml(placeholder)}</span>`;
-    return `
-      <div class="meet-intro row">
-        <div class="meet-intro-body">${body}</div>
-        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit description for attendees">✎</button>
-      </div>`;
-  }
-
-  function textEntryHelp(topic) {
-    return helpToggle(topic, 'Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Line breaks in the box show as breaks on the page. <strong>Highlight text first</strong> to wrap it with a button, or click with nothing selected to insert empty tags at the cursor. Allowed: paragraphs, line breaks, bold, italic, links, and lists.');
-  }
-
-  function formatToolbar(field, { withHelp = true, helpTopic = 'meeting text' } = {}) {
-    const help = withHelp ? textEntryHelp(helpTopic) : '';
-    const btn = (fmt, label) => `<button type="button" class="secondary fmt-btn" data-fmt="${fmt}" title="${escapeHtml(FMT_TITLES[fmt])}">${label}</button>`;
-    return `
-      ${help}
-      <div class="fmt-toolbar" data-field="${field}">
-        ${btn('strong', 'Bold')}
-        ${btn('em', 'Italic')}
-        ${btn('p', 'Paragraph')}
-        ${btn('br', 'Line break')}
-        ${btn('a', 'Link')}
-        ${btn('ul', 'List')}
-      </div>`;
-  }
-
-  function renderOrganiserTab(m, state, attendee) {
-    const mtz = meetingTz(m);
-    return `
-      <section class="panel stack">
-        <h2 class="section-title">Set meeting options</h2>
-        ${!m.attendees.length ? '<p class="meta">Step 1: save options below. Step 2: add attendees (at the bottom of this page or on <strong>2. Choose calendar times</strong>).</p>' : ''}
-        <form class="inline-form organizer-form" data-form="update-settings">
-          <div class="form-grid">
-            <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
-            <label>Meeting length (minutes)<input type="number" name="duration_minutes" value="${m.duration_minutes}" min="15" step="15"></label>
-            <label title="How finely attendees can mark when they are free — e.g. 15 means quarter-hour slots on the calendar.">Grid step (minutes)<input type="number" name="slot_granularity_minutes" value="${m.slot_granularity_minutes}" min="15" step="15"></label>
-            ${helpToggle('calendar times', 'Set the <strong>meeting length</strong> and <strong>grid step</strong> (how finely people mark availability). On the calendar, attendees tap every slot when they are free — if someone is only free for part of a meeting window, they should mark just those slots.')}
-            <label>Not before <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_start" value="${escapeHtml(m.day_start)}"></label>
-            <label>Not after <span class="label-hint">(${escapeHtml(mtz)})</span><input type="time" name="day_end" value="${escapeHtml(m.day_end)}"></label>
-            <label class="checkbox-label"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
-          </div>
-          <details class="timezone-block">
-            <summary>Calendar hours timezone <span class="label-hint">(defaults to yours: ${escapeHtml(tz)})</span></summary>
-            <p class="meta">Availability is stored in UTC. The grid &ldquo;not before/after&rdquo; hours use this timezone so everyone marks the same slots. Each person also sees times in their own local timezone.</p>
-            <label>Timezone
-              <select name="timezone">${timezoneOptions(m.timezone)}</select>
-            </label>
-          </details>
-          <label>Add a short description for attendees <span class="label-hint">(simple HTML)</span>
-            ${formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' })}
-            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}">${escapeHtml(m.organizer_intro || '')}</textarea>
-          </label>
-          <details>
-            <summary class="recurrence-summary">Recurrence: ${escapeHtml(m.recurrence_label || 'One-off')}</summary>
-            <label>Recurrence type<select name="recurrence_type">${recurrenceOptions(m.recurrence.type)}</select></label>
-            <div id="recurrence-extra">${recurrenceExtraFields(m.recurrence, m.show_weekends)}</div>
-          </details>
-          <button type="submit">Save meeting options</button>
-        </form>
-        <details class="propose-location-block" open>
-          <summary>Meeting location (optional)</summary>
-          <p class="meta">If you already know the online link or venue, add it here — use <strong>Save location</strong> below (separate from Save meeting options). Proposed locations are not final until you confirm on <strong>Locations &amp; finalise</strong>.</p>
-          ${renderAddLocationForm()}
-        </details>
-        ${!meetingEstablished(m)
-          ? renderAttendeesSection(m, state, attendee, { showContinue: true })
-          : '<p class="meta attendee-tab-hint">Add or manage attendees via <strong>Attendees</strong> on the meeting dashboard.</p>'}
-      </section>`;
-  }
+  // ─── Calendar tab ────────────────────────────────────────────────────────────
 
   function renderCalendarTab(m, state, attendee) {
-    const dayCount = visibleDayCount();
-    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends);
+    const dayCount = preferredDayCount(state, m);
+    const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const recurringSet = new Set(m.recurrence_dates || []);
-    const saveRow = renderSaveRow(state);
     const todayStr = meetingTodayStr(m);
-    const canGoBack = calendarViewStart(state, m) > parseDateIsoLocal(todayStr);
+    const view = calendarViewStart(state, m);
+    const min = calendarMinStart(m);
+    const end = bookableEndDate(m);
+    const canGoBack = view > min;
+    const canGoForward = end
+      ? (!days.length || startOfDay(days[days.length - 1]) < end)
+      : true;
+    const slotHint = calendarNavHint(m);
+    const clipInfo = state.availClipboard?.patterns?.length
+      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day(s) in sequence (${escapeHtml((state.availClipboard.labels || []).join(', ') || '…')}) — mark the first destination day, then Paste. Paste again from another start if you like.</p>`
+      : '';
+    const hoursLine = `Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle recorded timezones (including yours)' : ''}.`;
+    const availExplain = `<strong>Save</strong> keeps new picks and removes slots you turned off. Mark date headings → <strong>Copy days</strong> → mark first destination → <strong>Paste</strong>. <strong>Invert days</strong> toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.`;
 
     return `
       <section class="panel stack calendar-panel">
-        <p class="meta">Mark when <strong>you</strong> are free. Use <strong>Attendees</strong> on the dashboard to register people. Organisers set the final time on <strong>Locations &amp; finalise</strong>.</p>
-        <div class="row meta-line">
-          <span class="badge">${escapeHtml(m.recurrence_label)}</span>
-          <span>From ${escapeHtml(todayStr)} · Grid ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} <strong>${escapeHtml(mtz)}</strong></span>
+        <div class="availability-mark-band">
+          <details class="calendar-instructions" data-pane-id="cal-instructions"${paneOpenAttr(state, 'cal-instructions', { secondary: isNarrowScreen() })}>
+          <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
+          <p class="meta">Each cell is an <strong>availability slot</strong> of ${formatDurationLabel(m.slot_granularity_minutes)}. Drag or tap to select (turns orange with a dashed border), then <strong>Save</strong> to write your selection to the meeting (turns solid blue with initials). Tap, click, or drag a selected slot again to deselect — save again after changes.</p>
+          <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
+          <p class="meta slot-legend-note"><strong>Slot colours:</strong> Solid blue tint = your selection (already saved, or matching what is saved). <strong>Orange dashed</strong> = new pick not saved yet. <strong>Grey dashed</strong> = you turned off a saved slot — still in the meeting until you Save again. Light green = others are available (their initials). A <strong>+</strong> means more initials than fit in the cell (tooltips show the full list).</p>
+          <p class="meta"><strong>Copy / paste</strong> replicates a series of days’ availability (e.g. set a week’s pattern, Copy, Paste onto a new week, then hand-tune). Mark days by selecting column headers. Empty marked days stay in the sequence so gaps are preserved. <strong>Copy days</strong> (reports every marked day) → mark the <strong>first</strong> destination day → <strong>Paste</strong>. Example: Copy Mon, Tue, Wed then paste from Thursday → Thu, Fri, Mon when weekends are excluded, or Thu, Fri, Sat when weekends are allowed.</p>
+          <p class="meta"><strong>Invert days</strong> toggles blank ↔ not-yet-saved selection (orange dashed) on marked days; solid saved picks stay. Adjust, then Save. <strong>Clear selection</strong> restores last saved slots.${isTouchUi ? ' Touch: swipe the grid left/right to move dates (a stronger swipe continues further).' : ''}</p>
+          <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
+          <p class="meta">${hoursLine}</p>
+        </details>
         </div>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
-        ${saveRow}
-        <div class="calendar-toolbar">
-          <button type="button" class="secondary" data-action="prev-days" ${canGoBack ? '' : 'disabled'}>←</button>
-          <strong>${formatDayRangeLabel(days)}</strong>
-          <button type="button" class="secondary" data-action="next-days">→</button>
-        </div>
+        <div class="pane-region tint-dates calendar-grid-pane">
+        ${renderCalToolbar(renderDayCountToggle(state, m), availExplain)}
+        ${clipInfo}
+        ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
+        <div class="calendar-scroll">
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
-          <div class="cal-header">
-            <div class="time-gutter"></div>
-            ${days.map((d) => {
-              const dateStr = toDateIso(d);
-              return `<div class="day-head${recurringSet.has(dateStr) ? ' recurring' : ''}">${formatDayHeadDateStr(dateStr, mtz)}${recurringSet.has(dateStr) ? '<br><small>recurring</small>' : ''}</div>`;
-            }).join('')}
-          </div>
+          ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz, state, availabilityCopy: !!attendee })}
           <div class="cal-body">
             ${hours.map((hm) => `
-              <div class="time-label" title="${escapeHtml(mtz)}">${formatWallHour(hm)}</div>
-              ${days.map((day) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz)).join('')}
+              <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle recorded timezones (including yours)' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
+              ${days.map((day, i) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
+        </div>
+        </div>
+        ${renderSaveRow(state, m, { showTopDuplicate: false, showBottomButton: true })}
         </div>
       </section>`;
   }
 
-  function renderSaveRow(state) {
-    if (!state.attendeeId) {
-      return '';
-    }
-    const hint = isTouchUi
-      ? 'tap slots to select'
-      : 'drag across slots to select a range';
-    return `<div class="row save-row calendar-save-row">
-      <button type="button" data-action="save-availability">Save my availability</button>
-      <span class="meta">${state.selectedSlots.size} slot(s) · ${hint}</span>
-    </div>`;
+  function renderCalendarHeader(days, { canGoBack, canGoForward, canGoBackScreen, canGoForwardScreen, todayStr, m, recurringSet, mtz, state = null, availabilityCopy = false }) {
+    const screenBack = canGoBackScreen !== false && canGoBack;
+    const screenFwd = canGoForwardScreen !== false && canGoForward;
+    return `
+      <div class="cal-header cal-header-nav">
+        <div class="time-gutter cal-nav-gutter" title="Day ◀▶ · screen «» · first/last ⇤⇥">
+          <div class="cal-nav">
+            <div class="cal-nav-row cal-nav-row-day">
+              <button type="button" class="btn-nav cal-nav-btn" data-action="prev-days" title="Previous weekday" ${canGoBack ? '' : 'disabled'} aria-label="Previous day">◀</button>
+              <button type="button" class="btn-nav cal-nav-btn" data-action="next-days" title="Next weekday" ${canGoForward ? '' : 'disabled'} aria-label="Next day">▶</button>
+            </div>
+            <div class="cal-nav-row cal-nav-row-screen">
+              <button type="button" class="btn-nav cal-nav-btn cal-nav-screen" data-action="prev-screen" title="Back one screen of dates" ${screenBack ? '' : 'disabled'} aria-label="Previous screen">«</button>
+              <button type="button" class="btn-nav cal-nav-btn cal-nav-screen" data-action="next-screen" title="Forward one screen of dates" ${screenFwd ? '' : 'disabled'} aria-label="Next screen">»</button>
+            </div>
+            <div class="cal-nav-row cal-nav-row-jump">
+              <button type="button" class="btn-nav cal-nav-btn cal-nav-jump" data-action="go-range-start" title="Jump to earliest bookable date" ${canGoBack ? '' : 'disabled'} aria-label="First date">⇤</button>
+              <button type="button" class="btn-nav cal-nav-btn cal-nav-jump" data-action="go-range-end" title="Jump to latest bookable date" ${canGoForward ? '' : 'disabled'} aria-label="Last date">⇥</button>
+            </div>
+          </div>
+        </div>
+        ${days.map((d, i) => {
+          const dateStr = toDateIso(d);
+          const gap = dayHasGapBefore(days, i);
+          const isToday = dateStr === todayStr;
+          const recur = recurringSet && recurringSet.has(dateStr);
+          const marked = availabilityCopy && state?.headerMarkedDates?.has(dateStr);
+          const label = `${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recur ? '<br><small>recurring</small>' : ''}`;
+          if (availabilityCopy) {
+            return `<button type="button" class="day-head day-head-markable${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}${marked ? ' day-head-marked' : ''}" data-action="toggle-day-mark" data-date="${escapeHtml(dateStr)}" title="Mark this day for Copy days, Paste (start), or Invert days. Copy/paste follow days as shown; empty days stay in the sequence.">${label}</button>`;
+          }
+          return `<div class="day-head${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}" title="${escapeHtml(formatDayHeadDateStr(dateStr, mtz))}${isToday ? ' — today' : ''}">${label}</div>`;
+        }).join('')}
+      </div>`;
   }
 
-  function renderSlotCell(m, state, dateStr, hm, attendee, mtz) {
+  function renderSaveRow(state, m, { showTopDuplicate = true, showBottomButton = true } = {}) {
+    if (!state.attendeeId) return '';
+    const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
+    const saveBtn = `<button type="button" data-action="save-availability" title="Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off)">Save</button>`;
+    const clearBtn = `<button type="button" class="btn-cancel" data-action="clear-selection" title="Discard unsaved picks and pending removals — restore your last saved availability">Clear selection</button>`;
+    const copyDaysBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-days" title="Copy marked days as a sequence (as shown left→right). Empty days stay in the sequence. Uses your current selection on each day.">Copy days</button>`;
+    const pasteBtn = `<button type="button" class="btn-cancel" data-action="paste-avail-days" title="Paste the sequence from the leftmost marked day onward (next displayed days). Adds to selection only. Clipboard kept for another Paste.">Paste</button>`;
+    const invertBtn = `<button type="button" class="btn-cancel" data-action="invert-avail-days" title="On marked days: flip blank ↔ orange dashed. Solid saved selections are left unchanged.">Invert days</button>`;
+    const buttons = `${saveBtn}${clearBtn}${copyDaysBtn}${pasteBtn}${invertBtn}`;
+    const candidateCount = countCandidateSlots(state, m);
+    const pendingClearCount = countPendingClearSlots(state, m);
+    const count = state.selectedSlots.size;
+    const slotMeta = m ? calendarNavHint(m).trim() : '';
+    const candNote = candidateCount ? ` · ${candidateCount} unsaved pick(s)` : '';
+    const clearNote = pendingClearCount ? ` · ${pendingClearCount} to remove on Save` : '';
+    const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
+    const meta = `<span class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span>`;
+    let html = '';
+    if (showTopDuplicate) {
+      // Left-aligned action band (style guide: compact controls left-align). Explain lives in cal-toolbar.
+      html += `<div class="cal-action-band">${buttons}</div>`;
+      html += `<p class="meta cal-action-meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
+    }
+    if (showBottomButton) {
+      html += `<div class="cal-action-band calendar-save-row">${buttons}${meta}</div>`;
+    }
+    return html;
+  }
+
+  function renderSlotCell(m, state, dateStr, hm, attendee, mtz, gapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
-    const ids = m.availability[slotIso] || [];
+    const ids = availabilityIdsAt(m, slotIso);
+    const selected = slotSelectedByUser(state, m, slotIso, attendee?.id);
+    const savedMine = !!attendee && slotSavedForMe(m, slotIso, attendee.id);
+    const candidate = selected && !savedMine;
+    const pendingClear = savedMine && !selected;
+    // Pending clear: still show others’ initials; yours are struck through via CSS on .pending-clear
     const initials = ids.map((id) => attendeeInitials(m, id)).filter(Boolean);
     const label = initials.length ? initials.slice(0, 3).join(' ') + (initials.length > 3 ? '+' : '') : '';
     const names = ids.map((id) => attendeeName(m, id)).join(', ');
-    const tip = names
+    let tip = names
       ? `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)} · ${names}`
       : `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
-    return `<button type="button" class="slot${state.selectedSlots.has(slotIso) ? ' selected' : ''}${ids.length ? ' suggested' : ''}"
-      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}" ${attendee ? '' : 'disabled'}>
+    if (candidate) tip += ' · unsaved pick — press Save to keep';
+    if (pendingClear) tip += ' · will be removed from your availability when you Save';
+    const cellTip = slotCellTip(m, tip);
+    const cls = [
+      'slot',
+      selected ? 'selected' : '',
+      candidate ? 'candidate' : '',
+      pendingClear ? 'pending-clear' : '',
+      !pendingClear && ids.length ? 'suggested' : '',
+      gapBefore ? 'day-gap-before' : '',
+    ].filter(Boolean).join(' ');
+    return `<button type="button" class="${cls}"
+      data-action="toggle-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(cellTip)}" ${attendee ? '' : 'disabled'}>
       ${label ? `<span class="slot-initials">${escapeHtml(label)}</span>` : ''}
       ${ids.length && !label ? `<span class="count">${ids.length}</span>` : ''}
     </button>`;
   }
 
-  function formatTimePair(iso) {
-    return `<strong>${escapeHtml(formatSlotLocal(iso))}</strong> / ${escapeHtml(formatSlotUtc(iso))}`;
+  // ─── Group availability tab ──────────────────────────────────────────────────
+
+  function renderGroupAvailabilityTab(m, state, attendee) {
+    const mtz = meetingTz(m);
+    const dayCount = preferredDayCount(state, m);
+    const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
+    const selected = effectiveConfirmSlot(state, m);
+    const isOrg = !!attendee?.is_organizer;
+    const todayStr = meetingTodayStr(m);
+    const view = calendarViewStart(state, m);
+    const min = calendarMinStart(m);
+    const end = bookableEndDate(m);
+    const canGoBack = view > min;
+    const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
+    const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
+    const days = getConfirmDays(state, m, dayCount, allHours, mtz, selected, fullMap, partialMap);
+    const hours = state.showAllGroupHours
+      ? allHours
+      : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
+    const canGoForward = state.showAllGroupDays
+      ? (end ? (!days.length || startOfDay(days[days.length - 1]) < end) : true)
+      : confirmHasSignalAfter(
+          m,
+          days.length ? days[days.length - 1] : addDays(startOfDay(view), -1),
+          allHours,
+          mtz,
+          selected,
+          fullMap,
+          partialMap
+        );
+    const hideNotes = [];
+    if (!state.showAllGroupHours) hideNotes.push('empty hours are hidden (thicker line = omitted hours)');
+    if (!state.showAllGroupDays) hideNotes.push('empty days are hidden (thicker vertical line = omitted days)');
+    const confirmExplain = `Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.${hideNotes.length ? ` Currently ${hideNotes.join('; ')}.` : ''} <strong>Initials</strong> in cells show everyone who marked that slot.`;
+    const confirmControls = `
+      <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
+      ${renderDayCountToggle(state, m)}`;
+
+    return `
+      <section class="panel stack" id="meeting-availability-pane">
+        <p class="meta pane-lead"><strong>Group calendar &amp; location preferences</strong> — everyone’s availability on one sparse grid (empty hours and days hidden). Click a start time to <strong>set it immediately as the meeting start</strong>; click the same start again to clear. Meeting length ${formatDurationLabel(m.duration_minutes)}; slots ${formatDurationLabel(m.slot_granularity_minutes)} each. Preferred locations below.</p>
+        <details ${paneDetailsAttrs(state, 'group-time', { extraClass: 'confirm-section confirm-section-time tint-dates' })}>
+          <summary title="Click a start on the Group calendar to save or clear it">Confirm a meeting date and time</summary>
+          <div class="confirm-section-inner stack">
+            ${renderScheduledStartStatus(isOrg, m)}
+            ${renderCalToolbar(confirmControls, confirmExplain)}
+            <div class="calendar-scroll">
+            <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
+              ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
+              <div class="cal-body">
+                ${hours.map((hm, hi) => `
+                  <div class="time-label${hourHasGapBefore(hours, hi, m.slot_granularity_minutes) ? ' hour-gap-before' : ''}" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle recorded timezones (including yours)' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
+                  ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i), hourHasGapBefore(hours, hi, m.slot_granularity_minutes))).join('')}
+                `).join('')}
+              </div>
+            </div>
+            </div>
+            <div class="row group-legend">
+              <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees available for full meeting if this start is chosen</span>
+              <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, only partial meeting if this start is chosen</span>
+              <span class="legend-chip partial" title="Some but not all attendees marked this start">Purple = some attendees unavailable if this start is chosen</span>
+              <span class="legend-chip selected" title="Current scheduled meeting start">Dark green border = scheduled start</span>
+            </div>
+            ${renderScheduledStartStatus(isOrg, m)}
+          </div>
+        </details>
+        <details ${paneDetailsAttrs(state, 'group-locations', { extraClass: 'confirm-section confirm-section-locations' })}>
+          <summary>Confirm a meeting location</summary>
+          <div class="confirm-section-inner">
+            <p class="meta pane-lead">Organiser: toggle <strong>Confirmed</strong> (multiple allowed, e.g. one Online and one Meeting Room — saves immediately). Attendees propose and mark <strong>OK with me</strong> on the Locations tab. Row colours match the calendar key (all / some / none OK with this location). URLs open in a new window and can be copied.</p>
+            ${renderLocationsTable(m, state, attendee, { showConfirm: true, isOrg, readOnly: true, voteTint: true, hideOkWithMe: true })}
+          </div>
+        </details>
+      </section>`;
   }
 
-  function bestProposedSlot(m) {
-    const everyone = m.suggestions?.slots?.[0];
-    if (everyone) {
-      return {
-        slot: everyone.slot,
-        count: everyone.count,
-        kind: 'everyone',
-      };
+  function hourHasGapBefore(hours, index, granularityMinutes) {
+    if (index <= 0) return false;
+    const prev = hours[index - 1];
+    const cur = hours[index];
+    const step = Number(granularityMinutes) || 30;
+    const prevMins = prev.hour * 60 + prev.minute;
+    const curMins = cur.hour * 60 + cur.minute;
+    return (curMins - prevMins) > step;
+  }
+
+  function renderScheduledStartStatus(isOrg, m) {
+    const slot = m.confirmed_slot || '';
+    if (!slot) {
+      return `<p class="meta"><strong>Meeting start:</strong> none scheduled yet — click a slot below to save one${isOrg ? '' : ' (organiser only)'}.</p>`;
     }
-    const orgIds = new Set(m.attendees.filter((a) => a.is_organizer).map((a) => a.id));
-    for (const p of m.suggestions?.partial_slots || []) {
-      const full = p.attendees_full || [];
-      const hasOrg = full.some((id) => orgIds.has(id));
-      const hasOther = full.some((id) => !orgIds.has(id));
-      if (hasOrg && hasOther) {
+    return `<p class="meta"><strong>Meeting scheduled:</strong> ${formatTimePair(slot, m)}. Click the same slot again to clear${isOrg ? '' : ' (organiser only)'}.</p>`;
+  }
+
+  function renderAcceptTimeButton(isOrg, state, m) {
+    return renderScheduledStartStatus(isOrg, m);
+  }
+
+  function effectiveConfirmSlot(state, m) {
+    return m.confirmed_slot || '';
+  }
+
+  function effectiveConfirmLocationPhysical(state, m) {
+    if (state.pendingConfirmLocationPhysical === '') return '';
+    if (state.pendingConfirmLocationPhysical) return state.pendingConfirmLocationPhysical;
+    return m.confirmed_location_physical || '';
+  }
+
+  function effectiveConfirmLocationOnline(state, m) {
+    if (state.pendingConfirmLocationOnline === '') return '';
+    if (state.pendingConfirmLocationOnline) return state.pendingConfirmLocationOnline;
+    return m.confirmed_location_online || '';
+  }
+
+  function effectiveConfirmLocations(state, m) {
+    return {
+      physical: effectiveConfirmLocationPhysical(state, m),
+      online: effectiveConfirmLocationOnline(state, m),
+    };
+  }
+
+  /** Legacy helper: prefer online, else physical. */
+  function effectiveConfirmLocation(state, m) {
+    const locs = effectiveConfirmLocations(state, m);
+    return locs.online || locs.physical || '';
+  }
+
+  function legacyConfirmedLocationIds(m) {
+    const ids = [];
+    const add = (id) => {
+      const v = String(id || '').trim();
+      if (v && !ids.includes(v)) ids.push(v);
+    };
+    (m.confirmed_location_ids || []).forEach(add);
+    add(m.confirmed_location_online);
+    add(m.confirmed_location_physical);
+    add(m.confirmed_location);
+    return ids;
+  }
+
+  function effectiveConfirmedLocationIds(state, m) {
+    if (state.pendingConfirmedLocationIds !== null) {
+      return [...state.pendingConfirmedLocationIds];
+    }
+    return legacyConfirmedLocationIds(m);
+  }
+
+  function confirmedLocationIdsForDisplay(m, state) {
+    const scheduled = !!m.confirmed_slot && meetingStatusKind(m, state) !== 'attendee';
+    if (scheduled && (m.confirmed_location_ids || []).length) {
+      return m.confirmed_location_ids;
+    }
+    return effectiveConfirmedLocationIds(state, m);
+  }
+
+  function activeAttendeeIds(m) {
+    return new Set((m.attendees || []).map((a) => a.id));
+  }
+
+  function slotTimeMs(iso) {
+    const ms = new Date(iso).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+
+  function slotsEqual(a, b) {
+    if (!a || !b) return false;
+    const ta = slotTimeMs(a);
+    const tb = slotTimeMs(b);
+    return ta !== null && ta === tb;
+  }
+
+  function hasPendingConfirmChange(state, m) {
+    return false;
+  }
+
+  function isSlotAlreadyAccepted(m, slot) {
+    return !!m.confirmed_slot && slotsEqual(m.confirmed_slot, slot);
+  }
+
+  function suggestionAtSlot(m, slotIso, fullMap, partialMap) {
+    const ts = slotTimeMs(slotIso);
+    if (ts === null) return { full: null, partial: null };
+    const active = activeAttendeeIds(m);
+    for (const [key, val] of fullMap) {
+      if (slotTimeMs(key) === ts) {
+        const attendees = (val.attendees || []).filter((id) => active.has(id));
+        return { full: { ...val, attendees, count: attendees.length }, partial: null };
+      }
+    }
+    for (const [key, val] of partialMap) {
+      if (slotTimeMs(key) === ts) {
+        const attendees_full = (val.attendees_full || []).filter((id) => active.has(id));
+        const attendees_partial = (val.attendees_partial || []).filter((p) => active.has(p.id));
+        const attendees_absent = (val.attendees_absent || []).filter((id) => active.has(id));
         return {
-          slot: p.slot,
-          count: full.length,
-          kind: 'organiser_plus_one',
+          full: null,
+          partial: { ...val, attendees_full, attendees_partial, attendees_absent },
         };
       }
+    }
+    return { full: null, partial: null };
+  }
+
+  function slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap) {
+    const { full, partial } = suggestionAtSlot(m, slotIso, fullMap, partialMap);
+    if (full || partial) return true;
+    return availabilityIdsAt(m, slotIso).length > 0;
+  }
+
+  function groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap) {
+    return days.some((day) => {
+      const slotIso = slotIsoFromMeetingDate(toDateIso(day), hm, mtz);
+      if (slotIso === selected) return true;
+      return slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap);
+    });
+  }
+
+  function groupDayHasSignal(m, day, hours, mtz, selected, fullMap, partialMap) {
+    const dateStr = toDateIso(day);
+    return hours.some((hm) => {
+      const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+      if (selected && slotsEqual(selected, slotIso)) return true;
+      return slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap);
+    });
+  }
+
+  /**
+   * Confirm calendar days for the current view.
+   * "Show N days" means up to N columns. With empty days hidden, scan forward
+   * until N days with marks (or the scheduled start) are found — do not shrink
+   * the column count just because empties were stripped from a short window.
+   */
+  function getConfirmDays(state, m, dayCount, allHours, mtz, selected, fullMap, partialMap) {
+    const view = calendarViewStart(state, m);
+    if (state.showAllGroupDays) {
+      return getVisibleDays(view, dayCount, m.show_weekends, m);
+    }
+    const days = [];
+    let cursor = startOfDay(new Date(view));
+    const minStart = bookableStartDate(m);
+    const maxEnd = bookableEndDate(m);
+    if (minStart && cursor < minStart) cursor = new Date(minStart);
+    let guard = 0;
+    while (days.length < dayCount && guard < 400) {
+      if (maxEnd && cursor > maxEnd) break;
+      const dow = cursor.getDay();
+      if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+        if (groupDayHasSignal(m, cursor, allHours, mtz, selected, fullMap, partialMap)) {
+          days.push(new Date(cursor));
+        }
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return days;
+  }
+
+  /** True if any weekday (per weekends setting) after afterDay still has Confirm signal. */
+  function confirmHasSignalAfter(m, afterDay, allHours, mtz, selected, fullMap, partialMap) {
+    let cursor = addDays(startOfDay(afterDay), 1);
+    const maxEnd = bookableEndDate(m);
+    let guard = 0;
+    while (guard < 400) {
+      if (maxEnd && cursor > maxEnd) return false;
+      const dow = cursor.getDay();
+      if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+        if (groupDayHasSignal(m, cursor, allHours, mtz, selected, fullMap, partialMap)) return true;
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return false;
+  }
+
+  function renderConfirmLocationChoices(m, state, isOrg, selectedLocations) {
+    if (!m.locations.length) return '<p class="meta">No proposed locations yet. Use the Locations tab to add one.</p>';
+    return `<div class="chip-list">${m.locations.map((loc) => {
+      const voters = attendeesForLocation(m, loc.id);
+      const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
+      const allPreferred = m.attendees.length > 0 && voters.length === m.attendees.length;
+      const channel = locationConfirmChannel(loc);
+      const isSelected = channel === 'both'
+        ? selectedLocations.online === loc.id && selectedLocations.physical === loc.id
+        : channel === 'online'
+          ? selectedLocations.online === loc.id
+          : selectedLocations.physical === loc.id;
+      const title = voters.length
+        ? `Preferred by: ${voters.map((a) => attendeeLabel(a)).join(', ')}`
+        : 'No attendee preferences saved yet';
+      return `<button type="button" class="chip confirm-loc-chip${allPreferred ? ' loc-all' : ''}${isSelected ? ' active selected-start' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" ${isOrg ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(locationChipLabel(loc))}${initials ? ` (${escapeHtml(initials)})` : ' (no preferences yet)'}</button>`;
+    }).join('')}</div>`;
+  }
+
+  function attendeesForLocation(m, locationId) {
+    const prefs = m.location_preferences || {};
+    return m.attendees.filter((a) => (prefs[a.id] || []).includes(locationId));
+  }
+
+  function attendeesUnavailableForSlot(m, slotIso) {
+    const ids = new Set(availabilityIdsAt(m, slotIso));
+    return m.attendees.filter((a) => !ids.has(a.id));
+  }
+
+  function formatGroupSlotInitials(m, ids) {
+    return (ids || []).map((id) => attendeeInitials(m, id)).filter(Boolean).join(' ');
+  }
+
+  function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap, gapBefore = false, hourGapBefore = false) {
+    const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+    let cls = 'empty';
+    let tip = `${formatSlotLocal(slotIso)} · ${formatSlotUtc(slotIso)}`;
+    let initials = '';
+    const atSlotIds = availabilityIdsAt(m, slotIso);
+    const allAtSlot = m.attendees.length > 0 && atSlotIds.length === m.attendees.length;
+    const { full: fullEntry, partial: partialEntry } = suggestionAtSlot(m, slotIso, fullMap, partialMap);
+    if (fullEntry) {
+      const s = fullEntry;
+      cls = 'full';
+      tip += ` · all attendees free for full meeting (${s.count}/${m.attendees.length})`;
+      const idList = atSlotIds.length ? atSlotIds : (s.attendees || []);
+      initials = formatGroupSlotInitials(m, idList);
+    } else if (partialEntry) {
+      const p = partialEntry;
+      const fullCount = (p.attendees_full || []).length;
+      if (fullCount === m.attendees.length) {
+        cls = 'full';
+        tip += ` · all attendees free for full meeting (${fullCount}/${m.attendees.length})`;
+      } else if (allAtSlot || fullCount > 0) {
+        cls = 'partial-full';
+        tip += fullCount > 0
+          ? ` · ${fullCount}/${m.attendees.length} free for full meeting; others partial or absent`
+          : ' · all attendees marked at this start, but not for the full meeting duration';
+      } else {
+        cls = 'partial';
+        tip += ' · some attendees available (not full duration for everyone)';
+      }
+      const idList = atSlotIds.length
+        ? atSlotIds
+        : ((p.attendees_full || []).length ? p.attendees_full : []);
+      initials = formatGroupSlotInitials(m, idList);
+    } else if (atSlotIds.length) {
+      // Fallback when suggestion maps miss a slot: judge duration locally
+      const fullIds = attendeesFullForStart(m, slotIso);
+      if (fullIds.length === m.attendees.length && m.attendees.length > 0) {
+        cls = 'full';
+        tip += ` · all attendees free for full meeting (${fullIds.length}/${m.attendees.length})`;
+      } else if (allAtSlot) {
+        cls = 'partial-full';
+        tip += ' · all attendees marked at this start, but not for the full meeting duration';
+      } else {
+        cls = 'partial';
+        tip += ' · some attendees available';
+      }
+      initials = formatGroupSlotInitials(m, atSlotIds);
+    } else {
+      tip += ' · no availability marked';
+    }
+    const selectedClass = selected && slotsEqual(selected, slotIso) ? ' selected-start' : '';
+    const gapClass = `${gapBefore ? ' day-gap-before' : ''}${hourGapBefore ? ' hour-gap-before' : ''}`;
+    return `<button type="button" class="slot group-slot ${cls}${selectedClass}${gapClass}" data-action="use-slot" data-slot="${escapeHtml(slotIso)}" title="${escapeHtml(tip)}">${initials ? `<span class="slot-initials">${escapeHtml(initials)}</span>` : ''}</button>`;
+  }
+
+  /** Attendee ids who are free for the whole meeting window starting at slotIso. */
+  function attendeesFullForStart(m, slotIso) {
+    const { duration, gran, steps, valid } = meetingSlotSteps(m);
+    const stepCount = valid ? steps : Math.max(1, Math.ceil(duration / gran));
+    const startMs = new Date(slotIso).getTime();
+    if (Number.isNaN(startMs)) return [];
+    const windowKeys = [];
+    for (let i = 0; i < stepCount; i++) {
+      windowKeys.push(new Date(startMs + i * gran * 60000).toISOString());
+    }
+    return m.attendees
+      .map((a) => a.id)
+      .filter((id) => windowKeys.every((key) => availabilityIdsAt(m, key).includes(id)));
+  }
+
+  function availabilityIdsAt(m, iso) {
+    const active = activeAttendeeIds(m);
+    let ids = [];
+    if (m.availability?.[iso]) ids = m.availability[iso];
+    else {
+      const target = slotTimeMs(iso);
+      if (target === null) return [];
+      for (const [key, keyIds] of Object.entries(m.availability || {})) {
+        if (slotTimeMs(key) === target) {
+          ids = keyIds;
+          break;
+        }
+      }
+    }
+    return ids.filter((id) => active.has(id));
+  }
+
+  // ─── Locations tab ───────────────────────────────────────────────────────────
+
+  function locationRowFields(loc) {
+    if (!loc) return { notes: '', location: '' };
+    if (loc.kind === 'row') {
+      try {
+        const o = JSON.parse(loc.detail || '{}');
+        const generic = loc.label === 'Online' || loc.label === 'Physical';
+        const online = o.online || '';
+        const physical = o.physical || '';
+        return {
+          notes: generic ? '' : (loc.label || ''),
+          location: locationDisplayFromParts(online, physical),
+        };
+      } catch (_) {
+        return { notes: loc.label || '', location: loc.detail || '' };
+      }
+    }
+    if (['video', 'phone', 'hybrid'].includes(loc.kind)) {
+      const url = extractUrlFromDetail(loc.detail) || loc.detail || '';
+      return { notes: loc.label || '', location: url };
+    }
+    return {
+      notes: loc.label || '',
+      location: String(loc.detail || '').trim(),
+    };
+  }
+
+  function locationDisplayFromParts(online, physical) {
+    if (online && physical) return `${online} · ${physical}`;
+    return online || physical || '';
+  }
+
+  /** @deprecated Legacy helper for unused chip UI */
+  function locationConfirmChannel(loc) {
+    const f = locationRowFields(loc);
+    const parsed = parseLocationFieldText(f.location);
+    if (parsed.online && parsed.physical) return 'both';
+    if (parsed.online) return 'online';
+    return 'physical';
+  }
+
+  function looksLikeMalformedUrl(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return false;
+    if (/^https?:\/\//i.test(raw) || isWellFormedUrl(normalizeExternalUrl(raw))) return false;
+    const markers = ['/', '.', 'ww', ':', 'ttp'];
+    let count = 0;
+    for (const m of markers) if (raw.includes(m)) count++;
+    return count >= 3;
+  }
+
+  function parseLocationFieldText(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return { online: '', physical: '' };
+    if (/^https?:\/\//i.test(raw) || isWellFormedUrl(normalizeExternalUrl(raw))) {
+      return { online: normalizeExternalUrl(raw), physical: '' };
+    }
+    if (looksLikeMalformedUrl(raw)) {
+      return { online: '', physical: raw, malformedUrl: true };
+    }
+    return { online: '', physical: raw };
+  }
+
+  function readLocationRowInputs(row) {
+    const notes = row.querySelector('[data-loc-field="notes"]')?.value.trim() || '';
+    const location = row.querySelector('[data-loc-field="location"]')?.value.trim() || '';
+    const parsed = parseLocationFieldText(location);
+    return { notes, ...parsed };
+  }
+
+  function locationRowSnapshot(row) {
+    const { notes, online, physical } = readLocationRowInputs(row);
+    return JSON.stringify({
+      notes,
+      location: locationDisplayFromParts(online, physical),
+    });
+  }
+
+  function selectElementContents(el) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    } catch (_) { /* ignore */ }
+  }
+
+  function renderLocFieldDisplay(m, state, locId, field, value, { readOnly }) {
+    if (!value) return '—';
+    const key = `${locId || 'new'}:${field}`;
+    const expanded = state.expandedLocFields?.has(key);
+    const href = field === 'location' ? normalizeExternalUrl(value) : '';
+    const isUrl = field === 'location' && isWellFormedUrl(href);
+
+    if (readOnly && isUrl) {
+      if (!expanded && value.length <= 48) {
+        return `<span class="loc-url-wrap">
+          <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>
+          <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+          <span class="label-hint">(Click/Tap to open in a new window)</span>
+        </span>`;
+      }
+      if (expanded) {
+        return `<span class="loc-url-wrap">
+          <span class="loc-selectable-text loc-url-full" data-loc-select="${escapeHtml(key)}" tabindex="0" title="Full link — selected for copy">${escapeHtml(value)}</span>
+          <span class="loc-url-actions row">
+            <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
+            <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
+            <span class="label-hint">(Click/Tap to open in a new window)</span>
+          </span>
+        </span>`;
+      }
+      const shown = `${value.slice(0, 45)}…`;
+      return `<button type="button" class="loc-expand-btn loc-url-text" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show full link (selects all for copy)">${escapeHtml(shown)}</button>`;
+    }
+
+    if (readOnly) {
+      const lines = String(value).split('\n');
+      const needsClamp = !expanded && (lines.length > 3 || String(value).length > 120);
+      if (needsClamp) {
+        return `<button type="button" class="loc-expand-btn loc-text-clamp" data-action="expand-loc-cell" data-loc-expand="${escapeHtml(key)}" title="Show all (selects for copy)">${escapeHtml(value)}</button>`;
+      }
+      if (expanded) {
+        return `<span class="loc-selectable-text loc-text-full" data-loc-select="${escapeHtml(key)}" tabindex="0">${escapeHtml(value)}</span>`;
+      }
+    }
+
+    return escapeHtml(value);
+  }
+
+  function renderLocationRowCells(m, state, attendee, loc, { showConfirm = false, isOrg = false, readOnly = false, hideOkWithMe = false } = {}) {
+    const id = loc?.id || '';
+    const f = locationRowFields(loc);
+    const canEdit = !!attendee && !readOnly;
+    const voters = loc ? attendeesForLocation(m, loc.id) : [];
+    const initials = voters.map((a) => a.initials || deriveInitials(a.display_name)).filter(Boolean).join(' ');
+    const worksSelected = loc && attendee && state.selectedLocations.has(loc.id);
+    const confirmedIds = effectiveConfirmedLocationIds(state, m);
+    const isConfirmed = loc && confirmedIds.includes(loc.id);
+
+    const notesCell = canEdit
+      ? `<textarea class="loc-cell loc-cell-textarea" data-loc-field="notes" rows="3" placeholder="${loc ? 'Notes' : 'Add new…'}" title="Notes">${escapeHtml(f.notes)}</textarea>`
+      : renderLocFieldDisplay(m, state, id, 'notes', f.notes, { readOnly: true });
+
+    const locationCell = canEdit
+      ? `<input type="text" class="loc-cell" data-loc-field="location" value="${escapeHtml(f.location)}" placeholder="URL or place name" title="URL or place name">`
+      : renderLocFieldDisplay(m, state, id, 'location', f.location, { readOnly: true });
+
+    const addCell = canEdit && !loc
+      ? `<button type="button" class="compact-btn" data-action="save-location-row" title="Add this location (or tap outside the fields)">Add</button>`
+      : '';
+
+    const worksCell = !loc
+      ? (addCell || '—')
+      : readOnly
+        ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : '?'}</span>`
+        : !attendee
+          ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : '?'}</span>`
+          : `<button type="button" class="loc-ok-toggle${worksSelected ? ' on' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}" title="${worksSelected ? 'Remove — OK with me' : 'OK with me — saves immediately'}" aria-label="OK with me">${worksSelected ? 'Yes' : '?'}</button>`;
+
+    const confirmCell = showConfirm && loc
+      ? (isOrg
+        ? `<button type="button" class="loc-confirm-btn${isConfirmed ? ' on' : ''}" data-action="pick-confirm-location" data-location-id="${escapeHtml(loc.id)}" title="Confirmed for meeting">${isConfirmed ? '✓' : '○'}</button>`
+        : (isConfirmed ? '✓' : '—'))
+      : '';
+
+    return `
+      <td class="loc-cell-notes">${notesCell}</td>
+      <td class="loc-cell-location">${locationCell}</td>
+      <td class="loc-ok-with">${initials ? escapeHtml(initials) : '—'}</td>
+      ${hideOkWithMe ? '' : `<td class="loc-ok-me">${worksCell}</td>`}
+      ${showConfirm ? `<td class="loc-confirm-col">${confirmCell}</td>` : ''}`;
+  }
+
+  function locationVoteRowClass(m, loc) {
+    if (!loc) return '';
+    const n = m.attendees.length;
+    if (n <= 0) return 'loc-vote-none';
+    const ok = attendeesForLocation(m, loc.id).length;
+    if (ok === n) return 'loc-vote-full';
+    if (ok > 0) return 'loc-vote-partial';
+    return 'loc-vote-none';
+  }
+
+  function renderLocationsTable(m, state, attendee, { showConfirm = false, isOrg = false, readOnly = false, voteTint = false, hideOkWithMe = false } = {}) {
+    const confirmCol = showConfirm ? '<th title="Organiser confirms for the meeting">Confirmed</th>' : '';
+    const okMeHead = hideOkWithMe
+      ? ''
+      : '<th class="loc-ok-me-head" title="Toggle if this location works for you"><span>OK</span><span>with me</span></th>';
+    const existingRows = m.locations.map((loc) => {
+      const voteClass = voteTint ? locationVoteRowClass(m, loc) : '';
+      return `
+      <tr class="loc-row${voteClass ? ` ${voteClass}` : ''}" data-location-row data-location-id="${escapeHtml(loc.id)}">
+        ${renderLocationRowCells(m, state, attendee, loc, { showConfirm, isOrg, readOnly, hideOkWithMe })}
+      </tr>`;
+    }).join('');
+    const newRow = attendee && !readOnly ? `
+      <tr class="loc-row loc-row-new" data-location-row data-location-id="">
+        ${renderLocationRowCells(m, state, attendee, null, { showConfirm: false, isOrg: false, readOnly: false })}
+      </tr>` : '';
+    const wrapClass = voteTint ? 'pane-region confirm-locations-plain' : 'pane-region tint-places';
+    return `<div class="${wrapClass}"><div class="locations-table-scroll"><table class="data-table locations-table${voteTint ? ' locations-table-vote' : ''}">
+      <thead><tr>
+        <th>Notes</th>
+        <th>Location</th>
+        <th title="Initials of attendees who marked OK with me">OK with</th>
+        ${okMeHead}
+        ${confirmCol}
+      </tr></thead>
+      <tbody>${newRow}${existingRows}</tbody>
+    </table></div></div>`;
+  }
+
+  function renderLocationsTab(m, state, attendee) {
+    const hint = attendee
+      ? `<p class="meta pane-lead">Proposed URLs or place names in the <strong>top row</strong> are added to the table. On a phone, tap <strong>Add</strong> or tap outside the field to save (there is no Tab key).</p>
+         <p class="meta pane-lead">Toggle <strong>OK with me</strong> to record your preference. Tap/click overflow cells to expand; use <strong>Copy</strong> after expanding a link.</p>`
+      : '<p class="meta pane-lead">Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me.</p>';
+    return `
+      <section class="panel stack" id="meeting-locations-pane">
+        ${hint}
+        ${renderLocationsTable(m, state, attendee)}
+      </section>`;
+  }
+
+  async function handleLocationRowBlur(e, root, state) {
+    if (!e.target.matches('.loc-cell')) return;
+    const row = e.target.closest('[data-location-row]');
+    if (!row) return;
+    const rowRef = row;
+    requestAnimationFrame(async () => {
+      if (rowRef.contains(document.activeElement)) return;
+      await saveLocationRow(root, state, rowRef);
+    });
+  }
+
+  async function saveLocationRow(root, state, row) {
+    if (!state.attendeeId) return;
+    const id = row.dataset.locationId || '';
+    const snapshot = row.dataset.locSnapshot || '';
+    const currentSnap = locationRowSnapshot(row);
+    if (snapshot && snapshot === currentSnap) return;
+
+    const { notes, online, physical } = readLocationRowInputs(row);
+    const locationText = row.querySelector('[data-loc-field="location"]')?.value.trim() || '';
+    if (looksLikeMalformedUrl(locationText)) {
+      const ok = confirm('This location looks like a badly formed URL. Save it as plain text instead?');
+      if (!ok) return;
+    }
+    if (!online && !physical) {
+      if (id && row.dataset.locSaving !== '1') {
+        const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+        if (!me?.is_organizer) {
+          render(root, state);
+          toast('Only the organiser can remove a location row', true);
+          return;
+        }
+        row.dataset.locSaving = '1';
+        try {
+          const data = await apiPost({
+            action: 'remove_location',
+            slug: state.slug,
+            acting_attendee_id: state.attendeeId,
+            location_id: id,
+          });
+          state.meet = data.meet;
+          state.selectedLocations.delete(id);
+          render(root, state);
+          toast('Location row removed');
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          delete row.dataset.locSaving;
+        }
+      }
+      return;
+    }
+    if (online && !isWellFormedUrl(normalizeExternalUrl(online))) {
+      toast('Location URL must be well-formed (https://…)', true);
+      return;
+    }
+    const payload = {
+      slug: state.slug,
+      notes,
+      location_text: row.querySelector('[data-loc-field="location"]')?.value.trim() || '',
+    };
+    if (row.dataset.locSaving === '1') return;
+    row.dataset.locSaving = '1';
+    try {
+      let data;
+      if (id) {
+        data = await apiPost({ action: 'update_location', location_id: id, ...payload });
+      } else {
+        data = await apiPost({ action: 'add_location', ...payload });
+      }
+      state.meet = data.meet;
+      row.dataset.locSnapshot = currentSnap;
+      render(root, state);
+      toast(id ? 'Location saved' : 'Location added');
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      delete row.dataset.locSaving;
+    }
+  }
+
+  function renderEditLocationForm(loc, attendee) {
+    const editKind = ['physical', 'other'].includes(loc.kind) ? 'physical' : 'video';
+    const url = extractUrlFromDetail(loc.detail) || 'https://';
+    const physDetail = String(loc.detail || '').replace(extractUrlFromDetail(loc.detail) || '', '').replace(/^[\s·]+/, '').trim();
+    const canDelete = !!attendee?.is_organizer;
+    return `
+      <form class="inline-form edit-location-form" data-form="edit-location">
+        <input type="hidden" name="location_id" value="${escapeHtml(loc.id)}">
+        <label>Type
+          <select name="kind">
+            <option value="video"${editKind === 'video' ? ' selected' : ''}>Online</option>
+            <option value="physical"${editKind === 'physical' ? ' selected' : ''}>Physical</option>
+          </select>
+        </label>
+        <label>Label <input name="label" required value="${escapeHtml(loc.label)}"></label>
+        <label class="loc-edit-online"${editKind === 'video' ? '' : ' hidden'}>Meeting link <input name="online_url" type="url" value="${escapeHtml(editKind === 'video' ? url : 'https://')}" autocapitalize="off" spellcheck="false"></label>
+        <label class="loc-edit-physical"${editKind === 'physical' ? '' : ' hidden'}>Location details <input name="physical_address" value="${escapeHtml(editKind === 'physical' ? (physDetail || loc.detail || '') : '')}"></label>
+        <div class="row">
+          <button type="submit">Save location</button>
+          ${canDelete ? `<button type="button" class="btn-cancel" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}">Delete location</button>` : ''}
+          <button type="button" class="btn-cancel" data-action="cancel-edit-location">Cancel</button>
+        </div>
+      </form>`;
+  }
+
+  // ─── Meeting Resources tab ─────────────────────────────────────────────────
+
+  function attachmentUnifiedContent(att) {
+    if (att.type === 'url') return att.url || '';
+    return att.body || '';
+  }
+
+  function findMalformedUrlsInText(text) {
+    const bad = [];
+    const re = /https?:\/\/[^\s<>"']+/gi;
+    let m;
+    while ((m = re.exec(String(text || ''))) !== null) {
+      const norm = normalizeExternalUrl(m[0]);
+      if (!isWellFormedUrl(norm)) bad.push(m[0]);
+    }
+    return bad;
+  }
+
+  function parseAttachmentContent(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return { type: 'text', body: '' };
+    const single = text.replace(/<[^>]+>/g, '').trim();
+    if (/^https?:\/\//i.test(single) && !/\s/.test(single)) {
+      const url = normalizeExternalUrl(single);
+      if (isWellFormedUrl(url)) return { type: 'url', url };
+    }
+    return { type: 'text', body: text };
+  }
+
+  function renderAttachFieldDisplay(state, attId, value, { readOnly }) {
+    if (!value) return '—';
+    const key = `${attId || 'new'}:content`;
+    const expanded = state.expandedAttachFields.has(key);
+    const plain = String(value).replace(/<[^>]+>/g, ' ');
+    if (readOnly && !expanded && plain.length > 120) {
+      return `<button type="button" class="loc-expand-btn loc-text-clamp" data-action="expand-attach-cell" data-attach-expand="${escapeHtml(key)}" title="Show all">${escapeHtml(plain)}</button>`;
+    }
+    if (readOnly && expanded) {
+      return `<span class="loc-selectable-text" data-attach-select="${escapeHtml(key)}" tabindex="0">${sanitizeHtml(value)}</span>`;
+    }
+    return escapeHtml(plain.slice(0, 120));
+  }
+
+  function renderAttachmentsTable(m, state, attendee) {
+    const canEdit = !!attendee;
+    const rows = (m.attachments || []).map((att) => {
+      const content = attachmentUnifiedContent(att);
+      return `<tr class="attach-row" data-attachment-row data-attachment-id="${escapeHtml(att.id)}" data-attach-snapshot="${escapeHtml(attachmentRowSnapshotFromAtt(att))}">
+        <td class="attach-cell-label">${canEdit
+          ? `<input type="text" class="attach-cell" data-attach-field="label" value="${escapeHtml(att.label)}" placeholder="Label">`
+          : escapeHtml(att.label)}</td>
+        <td class="attach-cell-content">${canEdit
+          ? `<textarea class="attach-cell" data-attach-field="content" rows="3" placeholder="URL or text (simple HTML)">${escapeHtml(content)}</textarea>`
+          : renderAttachFieldDisplay(state, att.id, content, { readOnly: true })}</td>
+      </tr>`;
+    }).join('');
+    const newRow = canEdit ? `<tr class="attach-row attach-row-new" data-attachment-row data-attachment-id="">
+      <td class="attach-cell-label"><input type="text" class="attach-cell" data-attach-field="label" placeholder="Add new…"></td>
+      <td class="attach-cell-content"><textarea class="attach-cell" data-attach-field="content" rows="3" placeholder="URL or text (simple HTML)"></textarea></td>
+    </tr>` : '';
+    return `<div class="pane-region-scroll attachments-table-scroll"><table class="data-table attachments-table">
+      <thead><tr><th>Label</th><th>Content</th></tr></thead>
+      <tbody>${newRow}${rows}</tbody>
+    </table></div>`;
+  }
+
+  function attachmentRowSnapshotFromAtt(att) {
+    return `${att.label || ''}|${attachmentUnifiedContent(att)}`;
+  }
+
+  function attachmentRowSnapshot(row) {
+    const label = row.querySelector('[data-attach-field="label"]')?.value || '';
+    const content = row.querySelector('[data-attach-field="content"]')?.value || '';
+    return `${label}|${content}`;
+  }
+
+  async function handleAttachmentRowBlur(e, root, state) {
+    if (!e.target.matches('.attach-cell')) return;
+    const row = e.target.closest('[data-attachment-row]');
+    if (!row) return;
+    const rowRef = row;
+    requestAnimationFrame(async () => {
+      if (rowRef.contains(document.activeElement)) return;
+      await saveAttachmentRow(root, state, rowRef);
+    });
+  }
+
+  async function saveAttachmentRow(root, state, row) {
+    if (!state.attendeeId) return;
+    const id = row.dataset.attachmentId || '';
+    const snapshot = row.dataset.attachSnapshot || '';
+    const currentSnap = attachmentRowSnapshot(row);
+    if (snapshot && snapshot === currentSnap) return;
+
+    const label = row.querySelector('[data-attach-field="label"]')?.value.trim() || '';
+    const contentRaw = row.querySelector('[data-attach-field="content"]')?.value || '';
+    if (!label && !contentRaw.trim()) return;
+
+    const malformed = findMalformedUrlsInText(contentRaw);
+    if (malformed.length) {
+      toast(`Malformed URL: ${malformed[0]}`, true);
+      return;
+    }
+
+    const parsed = parseAttachmentContent(contentRaw);
+    try {
+      if (id) {
+        if (!label) { toast('Label required', true); return; }
+        const payload = { action: 'update_attachment', slug: state.slug, attachment_id: id, label };
+        if (parsed.type === 'url') payload.url = parsed.url;
+        else payload.body = parsed.body;
+        const data = await apiPost(payload);
+        state.meet = data.meet;
+      } else if (label) {
+        const payload = { action: 'add_attachment', slug: state.slug, label, type: parsed.type };
+        if (parsed.type === 'url') payload.url = parsed.url;
+        else payload.body = parsed.body;
+        const data = await apiPost(payload);
+        state.meet = data.meet;
+      }
+      render(root, state);
+      toast('Saved');
+    } catch (err) { toast(err.message, true); }
+  }
+
+  function renderAgendaTab(m, state, attendee) {
+    const canEditDesc = !!attendee;
+    const drafts = state.resourceDrafts || {};
+    const introVal = drafts.organizer_intro != null ? drafts.organizer_intro : (m.organizer_intro || '');
+    const agendaVal = drafts.agenda != null ? drafts.agenda : (m.agenda || []).join('\n');
+    const decisionsVal = drafts.decisions != null ? drafts.decisions : (m.decisions || []).join('\n');
+    const notesVal = drafts.notes != null ? drafts.notes : (m.notes || '');
+    const saveBtn = (formId) => `<button type="submit" form="${formId}" class="compact-btn">Save</button>`;
+    const attachCount = (m.attachments || []).length;
+
+    return `
+      <section class="panel stack" id="meeting-agenda-pane">
+        <p class="meta pane-lead">Description, agenda, decisions, notes, and attachments — pre- and post-meeting assets in one place.</p>
+        <details ${paneDetailsAttrs(state, 'mr-description', { extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Description for attendees <span class="label-hint">(simple HTML — status bar &amp; Overview)</span></span>${canEditDesc ? saveBtn('form-update-description') : ''}</summary>
+          <div class="pane-details-body">
+          <form class="inline-form" data-form="update-description" id="form-update-description">
+            ${canEditDesc ? formatToolbar('organizer_intro', { withHelp: true, helpTopic: 'meeting description' }) : ''}
+            <textarea name="organizer_intro" rows="4" placeholder="${escapeHtml(INTRO_PLACEHOLDER)}"${canEditDesc ? '' : ' readonly'}>${escapeHtml(introVal)}</textarea>
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-description')}</div>` : '<p class="meta">Sign in on Attendees to edit.</p>'}
+          </form>
+          </div>
+        </details>
+        <details ${paneDetailsAttrs(state, 'mr-agenda', { secondary: true, extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Agenda &amp; decisions <span class="label-hint">(each line is a bullet on Overview and status strip)</span></span>${canEditDesc ? saveBtn('form-update-agenda') : ''}</summary>
+          <div class="pane-details-body">
+          <form class="inline-form" data-form="update-agenda" id="form-update-agenda">
+            <label>Agenda<textarea name="agenda" rows="4">${escapeHtml(agendaVal)}</textarea></label>
+            <label>Decisions required<textarea name="decisions" rows="3">${escapeHtml(decisionsVal)}</textarea></label>
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-agenda')}</div>` : ''}
+          </form>
+          </div>
+        </details>
+        <details ${paneDetailsAttrs(state, 'mr-notes', { secondary: true, extraClass: 'tint-text' })}>
+          <summary class="pane-summary-with-save"><span>Notes <span class="label-hint">(shown on Overview under Agenda and decisions)</span></span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
+          <div class="pane-details-body">
+          <form class="inline-form" data-form="update-notes" id="form-update-notes">
+            <label>Notes
+              ${canEditDesc ? formatToolbar('notes', { withHelp: false }) : ''}
+              <textarea name="notes" rows="5">${escapeHtml(notesVal)}</textarea>
+            </label>
+            <p class="meta">Press Enter for a new line — line breaks are shown automatically. Do not also insert <code>&lt;br&gt;</code> tags unless you want an extra blank line.</p>
+            ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-notes')}</div>` : ''}
+          </form>
+          </div>
+        </details>
+        <details ${paneDetailsAttrs(state, 'mr-attachments', { extraClass: 'tint-assets' })}>
+          <summary>Attachments (${attachCount})</summary>
+          <div class="pane-details-body">
+            <p class="meta">Preparation or follow-up links/text. Edit a cell and tab out to save. Leading spaces on URLs are stripped.</p>
+            ${canEditDesc || attachCount ? renderAttachmentsTable(m, state, attendee) : '<p class="meta">No attachments yet.</p>'}
+          </div>
+        </details>
+      </section>`;
+  }
+
+  // ─── Meeting options tab ─────────────────────────────────────────────────────
+
+  function inferDurationMode(m) {
+    const amMins = minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00');
+    const pmMins = minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00');
+    if (Number(m.duration_minutes) === amMins) return 'am';
+    if (Number(m.duration_minutes) === pmMins) return 'pm';
+    return 'custom';
+  }
+
+  function durationModeBounds(mode, m) {
+    if (mode === 'am') {
+      return {
+        duration: minutesBetweenTimes(m.am_start || '09:00', m.am_end || '12:00'),
+        day_start: m.am_start || '09:00',
+        day_end: m.am_end || '12:00',
+      };
+    }
+    if (mode === 'pm') {
+      return {
+        duration: minutesBetweenTimes(m.pm_start || '12:00', m.pm_end || '16:00'),
+        day_start: m.pm_start || '12:00',
+        day_end: m.pm_end || '16:00',
+      };
     }
     return null;
   }
 
-  function isWellFormedUrl(str) {
-    try {
-      const u = new URL(str);
-      return u.protocol === 'http:' || u.protocol === 'https:';
-    } catch (_) {
-      return false;
+  function meetingWallToLocalTimeValue(wallHm, m) {
+    const mtz = meetingTz(m);
+    const dateStr = meetingTodayStr(m);
+    const hm = parseTime(wallHm) || { hour: 9, minute: 0 };
+    const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+    return new Date(iso).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz,
+    });
+  }
+
+  function localTimeValueToMeetingWall(localHm, m) {
+    const mtz = meetingTz(m);
+    const dateStr = meetingTodayStr(m);
+    const hm = parseTime(localHm) || { hour: 9, minute: 0 };
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    const iso = wallTimeToUtcIso(y, mo, d, hm.hour, hm.minute, tz);
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: mtz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date(iso)).map((x) => [x.type, x.value])
+    );
+    return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+  }
+
+  function renderOptionsTab(m, state, attendee) {
+    const canEdit = canEditOptions(m, attendee);
+    const mtz = meetingTz(m);
+    const headerSaveBtn = canEdit ? '<button type="submit" form="update-settings-form">Save</button>' : '';
+    const rangeEndDisplay = optionsRangeEnd(m);
+    const localStart = meetingWallToLocalTimeValue(m.day_start, m);
+    const localEnd = meetingWallToLocalTimeValue(m.day_end, m);
+    return `
+      <section class="panel stack">
+        <div class="pane-title-row row">
+          <p class="meta pane-lead"><strong>Don't forget to save after making changes.</strong> Meeting length, Calendar slot size, Bookable dates and hours.${canEdit ? '' : ' View only — organiser can edit.'}</p>
+        </div>
+        ${canEdit && !m.attendees.length ? `<div class="row">
+          <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="getting-started">Back to Getting started</button>
+          <button type="button" class="btn-nav compact-btn" data-action="tab" data-tab="attendees">Next step: Attendees →</button>
+        </div>` : ''}
+        <form id="update-settings-form" class="inline-form organizer-form" data-form="update-settings">
+          <input type="hidden" name="timezone" value="${escapeHtml(mtz)}">
+          <fieldset class="options-fieldset"${canEdit ? '' : ' disabled'}>
+          <details ${paneDetailsAttrs(state, 'opts-length', { extraClass: 'tint-dates' })}>
+            <summary class="pane-summary-with-save"><span>Meeting length &amp; calendar</span>${canEdit ? headerSaveBtn : ''}</summary>
+            <div class="pane-details-body">
+            <div class="form-grid">
+              <label>Title<input name="title" value="${escapeHtml(m.title)}"></label>
+            </div>
+            <div class="form-grid options-duration-grid">
+              <label title="Minutes, 1.5h, 2,5h, or AM / PM (sets default bookable hours)">Meeting length
+                <input type="text" name="duration_input" value="${escapeHtml(formatDurationFieldValue(m))}" placeholder="e.g. 60, 1.5h, AM, PM">
+              </label>
+              <label title="Granularity for partial availability — must divide meeting length evenly">Calendar slot size
+                <input type="text" name="slot_granularity_input" value="${escapeHtml(formatDurationForInput(m.slot_granularity_minutes))}" placeholder="e.g. 30, 15m">
+              </label>
+              <label class="checkbox-label" title="When off, Saturday and Sunday are hidden from calendar navigation"><input type="checkbox" name="show_weekends" ${m.show_weekends ? 'checked' : ''}> Include weekends</label>
+            </div>
+            <p class="meta options-duration-hint"><strong>Calendar slot size</strong> is one granularity at which attendees can confirm availability to indicate partial attendance.${!meetingSlotSteps(m).valid ? ' <strong>Slot size must divide meeting length evenly.</strong>' : ''} Changing meeting length or slot size does <strong>not</strong> remap saved availability — attendees should review <strong>My availability</strong> and save again.</p>
+            ${canEdit ? `<div class="pane-save-row">${headerSaveBtn}</div>` : ''}
+            </div>
+          </details>
+          <details ${paneDetailsAttrs(state, 'opts-booking', { extraClass: 'tint-dates' })}>
+            <summary class="pane-summary-with-save"><span>Bookable dates &amp; daily hours</span>${canEdit ? headerSaveBtn : ''}</summary>
+            <div class="pane-details-body">
+            <p class="meta">Daily hours are edited in <strong>your</strong> local timezone (${escapeHtml(tz)}) and stored in UTC so everyone sees consistent local times. Meeting base timezone (first attendee): ${escapeHtml(mtz)}.</p>
+            <div class="options-booking-grid">
+              <label title="Earliest date this meeting is open for scheduling.">Start date<input type="date" name="range_start" value="${escapeHtml(optionsRangeStart(m))}"></label>
+              <label title="Earliest start time each day in your local timezone.">Start time <span class="label-hint">(${escapeHtml(tz)})</span><input type="time" name="day_start_local" value="${escapeHtml(localStart)}"></label>
+              <label title="Latest date this meeting is open for scheduling. Leave blank for open-ended.">End date <span class="label-hint">(optional)</span><input type="date" name="range_end" value="${escapeHtml(rangeEndDisplay)}"></label>
+              <label title="Latest end time each day in your local timezone.">End time <span class="label-hint">(${escapeHtml(tz)})</span><input type="time" name="day_end_local" value="${escapeHtml(localEnd)}"></label>
+            </div>
+            ${canEdit ? `<div class="pane-save-row">${headerSaveBtn}</div>` : ''}
+            </div>
+          </details>
+          <details ${paneDetailsAttrs(state, 'opts-recurrence', { secondary: true, extraClass: 'tint-dates pane-future' })}>
+            <summary>Recurrence (future feature)</summary>
+            <div class="pane-details-body">
+            <p class="meta">One-off scheduling only for now. Recurrence design is parked.</p>
+            </div>
+          </details>
+          </fieldset>
+        </form>
+      </section>`;
+  }
+
+  function optionsRangeStart(m) {
+    return m.range_start_stored || m.range_start || meetingTodayStr(m);
+  }
+
+  function optionsRangeEnd(m) {
+    const stored = m.range_end_stored || '';
+    return (stored === '' || stored === OPEN_ENDED_RANGE_END) ? '' : stored;
+  }
+
+  // ─── Attendees section ───────────────────────────────────────────────────────
+
+  function attendeePanelIsOpen(state, m, attendee) {
+    if (state.attendeePanelOpen !== undefined) return state.attendeePanelOpen;
+    return !meetingEstablished(m) || !attendee;
+  }
+
+  function renderAttendeesSection(m, state, attendee, { showContinue = false, standalone = false } = {}) {
+    const signedIn = !!attendee;
+    const established = meetingEstablished(m);
+    const panelOpen = standalone || attendeePanelIsOpen(state, m, attendee);
+    const listHint = signedIn
+      ? (attendee.is_organizer
+        ? 'Toggle Organiser rights for others. <strong>Delete</strong> removes a row. Expand <strong>Merge duplicate attendees</strong> if needed.'
+        : 'Duplicate rows can be merged — expand <strong>Merge duplicate attendees</strong> if needed.')
+      : (m.attendees.length
+        ? 'Toggle <strong>Signed-in as</strong> if you are listed (enter passcode if set), or add yourself below.'
+        : 'Fill in the form below to add yourself. The first attendee becomes the meeting organiser.');
+    const claiming = m.attendees.find((a) => a.id === state.claimingId);
+    const showOrganiserCol = signedIn && attendee.is_organizer;
+    const colCount = 6 + (showOrganiserCol ? 2 : 0);
+    const regPaneId = standalone ? 'att-registered' : 'att-registered-cal';
+
+    const identityBar = signedIn ? `<div class="row attendee-identity-bar">
+      <button type="button" class="compact-btn" data-action="edit-attendee" title="Edit your display name, contact, or passcode">Edit identity</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="switch-user" title="Sign out on this browser">Switch user</button>
+    </div>` : '';
+
+    const tableBlock = `
+        <div class="attendee-table-panel">
+        <div class="table-wrap table-wrap-compact attendee-table-wrap">
+          <table class="data-table attendee-table">
+            <thead><tr><th class="col-me" title="Toggle Signed-in as for this row">Signed-in as</th><th>Name</th><th>Initials</th><th>Contact</th>${renderAttendeeSlotsLocsHead()}<th>Passcode</th>${showOrganiserCol ? '<th class="col-organiser" title="Toggle organiser rights">Organiser</th><th class="col-delete">Delete</th>' : ''}</tr></thead>
+            <tbody>
+              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        </div>`;
+
+    const registeredInner = signedIn || m.attendees.length
+      ? `${identityBar}${tableBlock}${claiming ? renderClaimPinForm(claiming) : ''}${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee, state) : ''}`
+      : '';
+
+    const addPane = (signedIn || m.attendees.length)
+      ? renderAddAttendeeForm(!!attendee, m, state)
+      : '';
+    const mergePane = signedIn && attendee?.is_organizer ? renderOrganiserMergePanel(m, state) : '';
+    const tail = `${addPane}${mergePane}${showContinue ? renderContinueToCalendar(state) : ''}`;
+
+    if (!signedIn && !m.attendees.length) {
+      const firstAdd = renderAddAttendeeForm(false, m, state);
+      if (standalone) return `<p class="meta pane-lead">${listHint}</p>${firstAdd}`;
+      return `<div class="attendee-block stack attendee-block-first"><div class="attendee-block-body stack">${firstAdd}</div></div>`;
     }
+
+    const registeredPane = `<details ${paneDetailsAttrs(state, regPaneId, { secondary: !signedIn, extraClass: 'tint-people' })}>
+      <summary>Registered attendees (${m.attendees.length || 'none yet'})</summary>
+      <div class="pane-details-body stack">${registeredInner}</div>
+    </details>`;
+
+    if (standalone) {
+      return `<p class="meta pane-lead">${listHint}</p>${registeredPane}${tail}`;
+    }
+
+    const summaryLabel = established && signedIn
+      ? `Registered attendees (${m.attendees.length}) — click to expand`
+      : `Registered attendees (${m.attendees.length || 'none yet'})`;
+    return `
+      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
+        <summary class="attendee-block-summary">${summaryLabel} <span class="label-hint">— ${listHint}</span></summary>
+        <div class="attendee-block-body stack">${registeredInner}${tail}</div>
+      </details>`;
+  }
+
+  function renderContinueToCalendar(state) {
+    const ready = !!state.attendeeId;
+    return `<div class="calendar-continue-row">
+      <button type="button" class="btn-nav" data-action="tab" data-tab="calendar" title="Open My availability">Continue to My availability →</button>
+      <p class="meta">${ready
+        ? 'Mark your availability on <strong>My availability</strong>.'
+        : 'Add yourself above, then go to <strong>My availability</strong>.'}</p>
+    </div>`;
+  }
+
+  function renderAddAttendeeForm(signedIn, m, state) {
+    const formId = 'add-attendee-form';
+    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn add-summary-save">${signedIn ? 'Save Attendee Identity' : 'Save New Attendee'}</button>`;
+    const fieldGuide = `<p class="meta add-field-guide">Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode optional — ${PASSCODE_TIP}</p>`;
+    const fields = `
+            <div class="add-attendee-fields">
+              <label class="field-name">Display name
+                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email" title="Any text identifying this attendee">
+              </label>
+              <label class="field-initials">Initials (optional)
+                <input class="input-initials" name="initials" maxlength="6" size="6" title="Defaults from display name if blank">
+              </label>
+              <label class="field-pin">Passcode (optional)
+                ${passcodeInputHtml({ name: 'pin', placeholder: 'For Find my meetings', autocomplete: 'new-password' })}
+              </label>
+              <label class="field-contact">Contact (optional)
+                <input class="input-contact" name="contact" maxlength="120" placeholder="email, URL, phone" autocomplete="email" title="Comma-separated email, URL, phone, or free text">
+              </label>
+            </div>`;
+
+    if (signedIn) {
+      return `
+        <details ${paneDetailsAttrs(state, 'att-add', { secondary: true, extraClass: 'tint-people' })}>
+          <summary class="add-attendee-summary"><span class="add-attendee-summary-label">Add another attendee</span>${saveBtn}</summary>
+          <div class="pane-details-body">
+          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
+            ${fieldGuide}
+            <p class="meta">This app doesn't email — 'You' must share the meeting link manually. They can sign in from the table (passcode required if set). You stay signed in as yourself.</p>
+            ${fields}
+          </form>
+          </div>
+        </details>`;
+    }
+
+    const hasOthers = (m.attendees?.length || 0) > 0;
+    const summary = hasOthers
+      ? 'Add yourself as an attendee'
+      : 'Add yourself as an attendee';
+    const body = `
+          <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
+            ${fieldGuide}
+            ${fields}
+            <button type="submit" class="add-attendee-submit-full">Save New Attendee</button>
+          </form>`;
+
+    if (!hasOthers) {
+      return `<div class="pane-region tint-people add-attendee-first">
+          <p class="section-title add-attendee-first-title">${escapeHtml(summary)}</p>
+          ${body}
+        </div>`;
+    }
+
+    return `
+        <details ${paneDetailsAttrs(state, 'att-add-first', { extraClass: 'tint-people' })}>
+            <summary class="add-attendee-summary">
+              <span class="add-attendee-summary-label">${escapeHtml(summary)}</span>
+              ${saveBtn}
+            </summary>
+          <div class="pane-details-body">${body}</div>
+        </details>`;
+  }
+
+  function renderEditAttendeeForm(a, state) {
+    const hasPinAlready = a.has_pin;
+    return `
+        <form class="inline-form edit-attendee-form" data-form="edit-attendee">
+          <h3 class="section-title">Edit my details</h3>
+          <input type="hidden" name="attendee_id" value="${escapeHtml(a.id)}">
+          <div class="add-attendee-fields">
+            <label class="field-name">Display name
+              <input class="input-name" name="display_name" required maxlength="80" value="${escapeHtml(a.display_name)}">
+            </label>
+            <label class="field-initials">Initials (optional)
+              <input class="input-initials" name="initials" maxlength="6" size="6" value="${escapeHtml(a.initials || '')}" title="Defaults from display name if blank">
+            </label>
+            <label class="field-contact">Contact (optional)
+              <input class="input-contact" name="contact" maxlength="120" placeholder="email, phone" value="${escapeHtml(a.contact || '')}">
+            </label>
+          </div>
+          <div class="pin-change-block">
+            <div class="pin-inline-row">
+              <label class="field-new-pin"${hasPinAlready ? ' data-clear-pin-target' : ''}>${hasPinAlready ? 'New passcode (optional)' : 'Passcode (optional)'}
+                ${passcodeInputHtml({ name: 'new_pin', placeholder: hasPinAlready ? 'leave blank to keep' : '2 to 20 characters', autocomplete: 'new-password' })}
+              </label>
+              ${hasPinAlready ? `<label class="checkbox-label pin-clear-inline"><input type="checkbox" name="clear_pin" data-toggle="clear-pin"> Remove passcode</label>` : ''}
+            </div>
+            <p class="meta">Already signed in — current passcode not required. ${PASSCODE_TIP}</p>
+          </div>
+          <div class="row">
+            <button type="submit">Save my details</button>
+            <button type="button" class="btn-cancel" data-action="cancel-edit-attendee" title="Cancel and return without saving">Cancel</button>
+          </div>
+        </form>`;
+  }
+
+  function renderAttendeeRow(m, state, current, a, { signedIn, showOrganiserCol }) {
+    const isSelf = current?.id === a.id;
+    const dupOfSelf = current && a.id !== current.id
+      && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
+    const pinCell = a.has_pin ? 'Set' : 'Not set';
+    let meCell;
+    if (dupOfSelf && current) {
+      meCell = `<td class="col-me"><button type="button" class="sign-in-toggle merge-tick" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}" title="Merge duplicate into your row">○</button></td>`;
+    } else {
+      const isOn = signedIn && isSelf;
+      meCell = `<td class="col-me"><button type="button" class="sign-in-toggle${isOn ? ' on' : ''}" data-action="toggle-sign-in" data-attendee-id="${escapeHtml(a.id)}" data-has-pin="${a.has_pin ? '1' : '0'}" title="${isOn ? 'Sign out' : 'Sign in as this attendee'}">${isOn ? '●' : '○'}</button></td>`;
+    }
+
+    const organiserCell = showOrganiserCol
+      ? `<td class="col-organiser"><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
+      : '';
+
+    const deleteCell = showOrganiserCol
+      ? `<td class="col-delete"><button type="button" class="btn-cancel compact-btn" data-action="delete-attendee" data-attendee-id="${escapeHtml(a.id)}" title="Remove this attendee from the meeting">Delete</button></td>`
+      : '';
+
+    return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
+      ${meCell}
+      <td>${escapeHtml(a.display_name)}</td>
+      <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
+      <td>${renderContactCell(a)}</td>
+      ${renderAttendeeSlotsLocsCell(m, a.id)}
+      <td>${pinCell}</td>
+      ${organiserCell}
+      ${deleteCell}
+    </tr>`;
+  }
+
+  function renderClaimPinForm(target) {
+    const needsPin = target.has_pin;
+    return `
+      <form class="inline-form claim-form" data-form="claim">
+        <input type="hidden" name="attendee_id" value="${escapeHtml(target.id)}">
+        <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your passcode to sign in' : 'optionally set a passcode, then press Continue'}</p>
+        <label>${needsPin ? 'Passcode' : 'Passcode (optional)'}
+          ${passcodeInputHtml({ name: 'pin', required: needsPin, autocomplete: 'one-time-code', placeholder: needsPin ? '' : 'optional' })}
+        </label>
+        <div class="row">
+          <button type="submit">Continue</button>
+          <button type="button" class="btn-cancel" data-action="cancel-claim" title="Cancel and return">Cancel</button>
+        </div>
+      </form>`;
+  }
+
+  function renderOrganiserMergePanel(m, state) {
+    const keepId = m.attendees[0]?.id || '';
+    const removeId = m.attendees.length > 1 ? m.attendees[1].id : keepId;
+    const optHtml = (selectedId) => m.attendees.map((a, i) =>
+      `<option value="${escapeHtml(a.id)}"${a.id === selectedId ? ' selected' : ''}>${i + 1}. ${escapeHtml(attendeeLabel(a))}</option>`
+    ).join('');
+    return `
+      <details ${paneDetailsAttrs(state, 'att-merge', { secondary: true, extraClass: 'tint-people' })}>
+        <summary>Merge duplicate attendees</summary>
+        <div class="pane-details-body">
+        <form class="inline-form row" data-form="merge-organiser">
+          <label>Keep row 1 <select name="keep_id" required>${optHtml(keepId)}</select></label>
+          <label>Remove row 2 <select name="remove_id" required>${optHtml(removeId)}</select></label>
+          <button type="submit">Merge</button>
+        </form>
+        <p class="meta">Availability from the removed row is combined into the kept row.</p>
+        </div>
+      </details>`;
+  }
+
+  // ─── Location helpers ────────────────────────────────────────────────────────
+
+  function locationKindLabel(kind) {
+    return { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[kind] || kind;
+  }
+
+  function locationChipLabel(loc) {
+    if (loc.kind === 'row') {
+      const f = locationRowFields(loc);
+      const parts = [];
+      if (f.notes) parts.push(f.notes);
+      if (f.location) parts.push(f.location);
+      return parts.join(' · ') || 'Location';
+    }
+    const kind = locationKindLabel(loc.kind);
+    const service = String(loc.label || '').trim();
+    const detail = loc.detail ? ` — ${loc.detail}` : '';
+    if (service && service.toLowerCase() !== kind.toLowerCase() && service.toLowerCase() !== 'physical location') {
+      return `${kind} (${service})${detail}`;
+    }
+    return `${kind}${detail}`;
+  }
+
+  function locationInlineHtml(m, locationId) {
+    if (!locationId) return '<span class="label-hint">No location scheduled yet.</span>';
+    const loc = m.locations.find((l) => l.id === locationId);
+    if (!loc) return escapeHtml(locationId);
+    if (loc.kind === 'row') {
+      const f = locationRowFields(loc);
+      const parts = [];
+      if (f.notes) parts.push(escapeHtml(f.notes));
+      if (f.location) {
+        const href = normalizeExternalUrl(f.location);
+        parts.push(isWellFormedUrl(href)
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(f.location)}</a>`
+          : escapeHtml(f.location));
+      }
+      return parts.join(' · ') || escapeHtml(locationId);
+    }
+    const url = extractUrlFromDetail(loc.detail);
+    const kind = locationKindLabel(loc.kind);
+    const service = String(loc.label || '').trim();
+    let html = escapeHtml(kind);
+    if (service && service.toLowerCase() !== kind.toLowerCase() && service.toLowerCase() !== 'physical location') {
+      html += ` <span class="label-hint">(${escapeHtml(service)})</span>`;
+    }
+    if (url && isWellFormedUrl(url)) {
+      html += ` — <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+      const rest = String(loc.detail || '').replace(url, '').replace(/^[\s·]+/, '').trim();
+      if (rest) html += ` <span class="label-hint">(${escapeHtml(rest)})</span>`;
+    } else if (loc.detail) {
+      html += ` — ${escapeHtml(loc.detail)}`;
+    }
+    return html;
+  }
+
+  function isWellFormedUrl(str) {
+    try { const u = new URL(str); return u.protocol === 'http:' || u.protocol === 'https:'; } catch (_) { return false; }
   }
 
   function extractUrlFromDetail(detail) {
@@ -780,382 +2865,18 @@
     return '';
   }
 
-  function locationDisplayHtml(m, locationId) {
-    if (!locationId) {
-      return '<span class="label-hint">No location agreed — propose or select on <strong>Locations &amp; finalise</strong>.</span>';
-    }
-    const loc = m.locations.find((l) => l.id === locationId);
-    if (!loc) return escapeHtml(locationId);
-    const url = extractUrlFromDetail(loc.detail);
-    let html = escapeHtml(loc.label);
-    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
-    html += ` <span class="label-hint">(${escapeHtml(kind)})</span>`;
-    if (url && isWellFormedUrl(url)) {
-      html += ` — <a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
-    } else if (loc.detail) {
-      html += ` <span class="label-hint">(${escapeHtml(loc.detail)})</span>`;
-    }
-    return html;
-  }
-
-  function confirmedLocationText(m) {
-    return locationDisplayHtml(m, m.confirmed_location);
-  }
-
-  function renderMeetingStatus(m) {
-    const finalisedTip = 'To change the final time or location: open Locations & finalise and use Update final meeting time / location (organiser only).';
-    if (m.confirmed_slot) {
-      return `<div class="meeting-status">
-        <p class="status-head"><span class="status-label">Current status:</span> <span class="badge good" title="${escapeHtml(finalisedTip)}">Finalised</span></p>
-        <p class="meta">Time: ${formatTimePair(m.confirmed_slot)}</p>
-        <p class="meta">Location: ${locationDisplayHtml(m, m.confirmed_location)}</p>
-      </div>`;
-    }
-    const proposed = bestProposedSlot(m);
-    let timeHint = 'No agreed time yet — mark availability on <strong>My availability</strong>.';
-    if (proposed?.kind === 'everyone') {
-      timeHint = `Earliest where <strong>everyone</strong> is available: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length})</span>`;
-    } else if (proposed?.kind === 'organiser_plus_one') {
-      timeHint = `Earliest where <strong>organiser and another attendee</strong> overlap: ${formatTimePair(proposed.slot)} <span class="label-hint">(${proposed.count} of ${m.attendees.length} free for the full meeting)</span>`;
-    }
-    const locHint = m.confirmed_location
-      ? locationDisplayHtml(m, m.confirmed_location)
-      : (m.locations?.length
-        ? `<span class="label-hint">${m.locations.length} location(s) proposed — not finalised. Agree one on <strong>Locations &amp; finalise</strong>.</span>`
-        : '<span class="label-hint">No location agreed — propose or select on <strong>Locations &amp; finalise</strong>.</span>');
-    return `<div class="meeting-status">
-      <p class="status-head"><span class="status-label">Current status:</span> <span class="badge">Scheduling</span></p>
-      <p class="meta">Time: ${timeHint}</p>
-      <p class="meta">Location: ${locHint}</p>
-    </div>`;
-  }
-
-  function locationDetailSuffix(m, id) {
-    const loc = m.locations.find((l) => l.id === id);
-    if (!loc?.detail) return '';
-    const short = String(loc.detail).length > 48 ? `${String(loc.detail).slice(0, 45)}…` : loc.detail;
-    return ` (${escapeHtml(short)})`;
-  }
-
-  function locationChipLabel(loc) {
-    const kind = { video: 'Online', physical: 'Physical', phone: 'Phone', hybrid: 'Hybrid', other: 'Other' }[loc.kind] || loc.kind;
-    const detail = loc.detail ? ` — ${loc.detail}` : '';
-    return `${loc.label} (${kind})${detail}`;
-  }
-
-  function renderFullSuggestion(m, s, mtz) {
-    return `
-      <div class="suggestion">
-        <p class="suggestion-time">${formatTimePair(s.slot)}</p>
-        <span class="meta">${s.count} of ${m.attendees.length} · ${escapeHtml(s.attendees.map((id) => attendeeLabelById(m, id)).join(', '))}</span>
-        <div class="row suggestion-actions">
-          <button type="button" data-action="jump-slot" data-slot="${escapeHtml(s.slot)}">Show on calendar</button>
-          <button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(s.slot)}">Use as meeting start</button>
-        </div>
-      </div>`;
-  }
-
-  function renderPartialSuggestion(m, p, mtz) {
-    const lines = [];
-    if (p.attendees_full?.length) {
-      lines.push(`Free for whole ${m.duration_minutes}-minute meeting: ${p.attendees_full.map((id) => attendeeLabelById(m, id)).join(', ')}`);
-    }
-    (p.attendees_partial || []).forEach((a) => {
-      lines.push(`${attendeeLabelById(m, a.id)} marked only ${a.slots_marked} of ${a.slots_needed} grid steps needed for this start time`);
-    });
-    if (p.attendees_absent?.length) {
-      lines.push(`No slots marked yet: ${p.attendees_absent.map((id) => attendeeLabelById(m, id)).join(', ')}`);
-    }
-    return `
-      <div class="suggestion partial">
-        <p class="suggestion-time">${formatTimePair(p.slot)}</p>
-        <span class="meta">${escapeHtml(lines.join(' · '))}</span>
-        <div class="row suggestion-actions">
-          <button type="button" data-action="jump-slot" data-slot="${escapeHtml(p.slot)}">Show on calendar</button>
-          ${p.attendees_full?.length ? `<button type="button" class="secondary" data-action="use-slot" data-slot="${escapeHtml(p.slot)}">Use as meeting start</button>` : ''}
-        </div>
-      </div>`;
-  }
-
-  function renderProposedStartBlock(m, slotVal) {
-    if (m.confirmed_slot) {
-      return `<p class="confirmed-time-display"><span class="label-hint">Currently selected as final meeting time:</span> ${formatTimePair(m.confirmed_slot)}</p>`;
-    }
-    if (slotVal) {
-      return `<p class="confirmed-time-display"><span class="label-hint">Proposed (not yet final):</span> ${formatTimePair(slotVal)}</p>`;
-    }
-    return '<p class="meta">Choose a time from the <strong>Meeting availability</strong> pane above using &ldquo;Use as meeting start&rdquo;.</p>';
-  }
-
-  function renderFinaliseSection(m, state, attendee, slotVal) {
-    if (!attendee?.is_organizer) {
-      return `<p class="meta">Only <strong>organisers</strong> can lock in the final meeting time and location. Choose a location in the dropdown below when you are an organiser, or ask the organiser to finalise. Anyone can propose locations above.</p>`;
-    }
-    return `
-      <details open><summary>Finalise meeting time &amp; location (organiser only)</summary>
-        <p class="meta">Pick the <strong>final location</strong> from the dropdown, then press the button below. You can change these later.</p>
-        <form class="inline-form" data-form="confirm" id="confirm-form">
-          <label>Currently proposed meeting start time
-            ${renderProposedStartBlock(m, slotVal)}
-            <input type="hidden" name="confirmed_slot" id="confirmed-slot-hidden" value="${escapeHtml(slotVal)}">
-            <details class="technical-slot-details">
-              <summary>Technical UTC format (optional)</summary>
-              <p class="meta">Stored as one UTC instant. <strong>T</strong> separates date and time; <strong>Z</strong> means UTC.</p>
-              <input class="mono" data-action="edit-confirmed-slot" value="${escapeHtml(slotVal)}" placeholder="2026-08-18T13:00:00.000Z">
-            </details>
-          </label>
-          <label>Final location <span class="label-hint">(organiser chooses)</span>
-            <select name="confirmed_location"><option value="">— none —</option>
-              ${m.locations.map((l) => `<option value="${escapeHtml(l.id)}"${m.confirmed_location === l.id ? ' selected' : ''}>${escapeHtml(locationChipLabel(l))}</option>`).join('')}
-            </select>
-          </label>
-          <button type="submit">${m.confirmed_slot ? 'Update final meeting time / location' : 'Finalise meeting time & location'}</button>
-        </form>
-      </details>`;
-  }
-
-  function renderGroupAvailabilityTab(m, state, attendee) {
-    const sorted = sortSuggestions(m, state.sortOrder);
-    const partial = sortPartialSuggestions(m, state.sortOrder);
-    const mtz = meetingTz(m);
-    return `
-      <section class="panel stack" id="meeting-availability-pane">
-        <h2 class="section-title">Group availability</h2>
-        <p class="meta">When is everyone (or most people) free? Mark your own slots on ${gotoLink('calendar', 'My availability')}. Set locations on ${gotoLink('locations', 'Locations & finalise')}.</p>
-        <div class="row" style="justify-content:space-between">
-          <h3 class="section-title" style="margin:0">Overlap analysis</h3>
-          <label class="sort-label">Sort
-            <select data-action="sort-order">
-              <option value="date"${state.sortOrder === 'date' ? ' selected' : ''}>Soonest first</option>
-              <option value="count"${state.sortOrder === 'count' ? ' selected' : ''}>Most matches</option>
-              <option value="names"${state.sortOrder === 'names' ? ' selected' : ''}>By names</option>
-            </select>
-          </label>
-        </div>
-        <p class="meta">Start times where <strong>every attendee</strong> marked enough consecutive grid steps for the full <strong>${m.duration_minutes}-minute</strong> meeting. Times shown as <strong>${escapeHtml(tz)}</strong> / UTC.</p>
-        <h3 class="section-title">Everyone available (full meeting)</h3>
-        <div class="suggestions-scroll">
-          ${sorted.length ? sorted.map((s) => renderFullSuggestion(m, s, mtz)).join('') : '<p class="meta">No times where everyone is free for the whole meeting yet.</p>'}
-        </div>
-        <h3 class="section-title">Not everyone available</h3>
-        <p class="meta">Each row is a possible meeting start. Someone may be free for the whole meeting, part of it, or not have responded yet.</p>
-        <div class="suggestions-scroll">
-          ${partial.length ? partial.map((p) => renderPartialSuggestion(m, p, mtz)).join('') : '<p class="meta">No partial overlaps yet.</p>'}
-        </div>
-      </section>
-      ${!m.attendees.length ? renderAttendeesSection(m, state, attendee) : ''}`;
-  }
-
-  function renderLocationsTab(m, state, attendee) {
-    const slotVal = m.confirmed_slot || state.pendingConfirmSlot || '';
-    return `
-      <section class="panel stack" id="meeting-locations-pane">
-        <h2 class="section-title">Locations &amp; final time</h2>
-        <p class="meta">Propose where the meeting could happen, mark your preferences, then (as organiser) lock in the final time and place. See overlaps on ${gotoLink('group', 'Group availability')}.</p>
-        <details class="propose-location-block" open><summary>Propose a location</summary>
-          <p class="meta">Anyone can propose a location. Add as many options as you need.</p>
-          ${renderAddLocationForm()}
-        </details>
-        <h3 class="section-title">Proposed locations</h3>
-        <p class="meta">Select/deselect locations that are OK for you (light blue = selected), then <strong>Save location preferences</strong>.</p>
-        <div class="chip-list">${m.locations.length ? m.locations.map((loc) => renderLocationItem(m, state, attendee, loc)).join('') : '<p class="meta">No locations proposed yet — use Propose a location above.</p>'}</div>
-        ${attendee ? '<button type="button" class="secondary" data-action="save-locations">Save location preferences</button>' : '<p class="meta">Sign in to mark location preferences.</p>'}
-        ${renderFinaliseSection(m, state, attendee, slotVal)}
-      </section>`;
-  }
-
-  function renderNotesTab(m, state, attendee) {
-    return `
-      <section class="panel stack" id="meeting-notes-pane">
-        <h2 class="section-title">Meeting notes</h2>
-        <p class="meta">Agenda items, decisions required before the meeting, and preparatory notes. After the meeting, use ${gotoLink('records', 'Records')} for transcripts and attachments.</p>
-        <h3 class="section-title">Agenda &amp; decisions required</h3>
-        <p class="meta">One item per line. Notes support simple HTML.</p>
-        ${m.agenda.length ? `<ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet.</p>'}
-        ${m.decisions.length ? `<p><strong>Decisions required</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : ''}
-        ${(m.notes || '').trim() ? `<div class="meet-intro-body notes-display">${sanitizeHtml(m.notes)}</div>` : ''}
-        <details><summary>Edit agenda / decisions / notes</summary>
-          <form class="inline-form" data-form="update-meta">
-            <label>Agenda <span class="label-hint">(one item per line)</span><textarea name="agenda" rows="4">${escapeHtml(m.agenda.join('\n'))}</textarea></label>
-            <label>Decisions required <span class="label-hint">(one per line)</span><textarea name="decisions" rows="3">${escapeHtml(m.decisions.join('\n'))}</textarea></label>
-            <label>Notes <span class="label-hint">(simple HTML)</span>
-              ${formatToolbar('notes', { withHelp: false })}
-              <textarea name="notes" rows="3">${escapeHtml(m.notes || '')}</textarea>
-            </label>
-            <button type="submit">Save</button>
-          </form>
-        </details>
-      </section>`;
-  }
-
-  function renderRecordsTab(m, state) {
-    return `
-      <section class="panel stack">
-        <h2 class="section-title">Records</h2>
-        <p class="meta">After the meeting: recordings, transcripts, attachments, and summaries. Pre-meeting agenda and notes are on ${gotoLink('notes', 'Meeting notes')}.</p>
-        <h3 class="section-title">Recordings, transcripts &amp; AI summaries</h3>
-        ${m.attachments.length ? m.attachments.map(renderAttachment).join('') : '<p class="meta">Nothing attached yet.</p>'}
-        <details><summary>Add attachment</summary>
-          <form class="inline-form" data-form="add-attachment">
-            <input name="label" required placeholder="Label">
-            <select name="type"><option value="url">URL</option><option value="text">Text summary</option></select>
-            <input name="url" type="url" placeholder="https://example.com/...">
-            <p class="meta">Use a full web address starting with https:// (not a page on this site).</p>
-            <textarea name="body" rows="3" placeholder="Paste summary (plain text)"></textarea>
-            <button type="submit">Attach</button>
-          </form>
-        </details>
-      </section>`;
-  }
-
-  function renderAddAttendeeForm(signedIn, attendee) {
-    const modeRow = signedIn ? '' : `
-        <fieldset class="add-mode-row">
-          <legend class="label-hint">Adding</legend>
-          <div class="mode-options">
-            <label class="mode-choice"><input type="radio" name="add_mode" value="self" checked><span>Myself</span></label>
-            <label class="mode-choice"><input type="radio" name="add_mode" value="propose"><span>Someone else</span></label>
-          </div>
-        </fieldset>`;
-    const pinRow = signedIn ? '' : `
-          <label class="field-pin">PIN <span class="label-hint">(optional)</span>
-            <input class="input-pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="12">
-          </label>`;
-    const extras = signedIn ? '' : `
-        <p class="meta propose-hint" data-show-when="propose" hidden>They are not emailed — share the meeting link. They claim their row with <strong>This is me</strong>.</p>`;
-    const intro = signedIn
-      ? `<p class="meta">You are signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser. Use this form to add <strong>someone else</strong> — you are already listed above.</p>`
-      : '<p class="meta">Add yourself as an attendee, or propose someone else as a potential attendee.</p>';
-    return `
-        <div class="add-attendee-block">
-          <h3 class="section-title">Add new attendee</h3>
-          ${intro}
-          <form class="inline-form add-attendee-form" data-form="add-attendee">
-            ${signedIn ? '<input type="hidden" name="add_mode" value="propose">' : ''}
-            ${modeRow}
-            <div class="add-attendee-fields">
-              <label class="field-name">Display name
-                <input class="input-name" name="display_name" required maxlength="80" placeholder="e.g. name or email">
-              </label>
-              <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-                <input class="input-initials" name="initials" maxlength="4">
-              </label>
-              <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-                <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" inputmode="email" autocomplete="email">
-              </label>
-              ${pinRow}
-            </div>
-            ${extras}
-            <button type="submit">Add attendee</button>
-          </form>
-        </div>`;
-  }
-
-  function renderEditAttendeeForm(a) {
-    return `
-        <form class="inline-form edit-attendee-form" data-form="edit-attendee">
-          <h3 class="section-title">Edit my details</h3>
-          <input type="hidden" name="attendee_id" value="${escapeHtml(a.id)}">
-          <div class="add-attendee-fields">
-            <label class="field-name">Display name
-              <input class="input-name" name="display_name" required maxlength="80" value="${escapeHtml(a.display_name)}">
-            </label>
-            <label class="field-initials">Initials <span class="label-hint">(opt.)</span>
-              <input class="input-initials" name="initials" maxlength="4" value="${escapeHtml(a.initials || '')}">
-            </label>
-            <label class="field-contact">Contact <span class="label-hint">(opt.)</span>
-              <input class="input-contact" name="contact" maxlength="80" placeholder="email or phone" value="${escapeHtml(a.contact || '')}">
-            </label>
-          </div>
-          <div class="row">
-            <button type="submit">Save my details</button>
-            <button type="button" class="secondary" data-action="cancel-edit-attendee">Cancel</button>
-          </div>
-        </form>`;
-  }
-
-  function attendeePanelIsOpen(state, m, attendee) {
-    if (state.attendeePanelOpen !== undefined) return state.attendeePanelOpen;
-    return !meetingEstablished(m) || !attendee;
-  }
-
-  function renderAttendeesSection(m, state, attendee, { showContinue = false, standalone = false } = {}) {
-    const signedIn = !!attendee;
-    const established = meetingEstablished(m);
-    const panelOpen = standalone || attendeePanelIsOpen(state, m, attendee);
-    const summaryLabel = established && signedIn && !standalone
-      ? `Registered attendees (${m.attendees.length}) — click to expand`
-      : `Registered attendees (${m.attendees.length || 'none yet'})`;
-    const listHint = signedIn
-      ? (attendee.is_organizer
-        ? 'Remove duplicate rows or merge attendees below if needed.'
-        : 'Use Remove duplicate (keep me) if you appear more than once.')
-      : 'Click <strong>This is me</strong> on your row if you are already listed.';
-    const claiming = m.attendees.find((a) => a.id === state.claimingId);
-    const showOrganiserCol = signedIn && attendee.is_organizer;
-    const colCount = 5 + (showOrganiserCol ? 1 : 0);
-
-    const body = `
-        ${signedIn ? `<p class="meta signed-in-line">Signed in as <strong>${escapeHtml(attendeeLabel(attendee))}</strong> on this browser
-          ${!attendee.has_pin ? `<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>` : '<span class="badge" title="PIN set">PIN</span>'}
-          <button type="button" class="secondary compact-btn" data-action="switch-user">Switch user</button>
-          <button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit my details</button>
-        </p>` : ''}
-        ${listHint ? `<p class="meta">${listHint}</p>` : ''}
-        <div class="table-wrap table-wrap-compact">
-          <table class="data-table attendee-table">
-            <thead><tr><th>Name</th><th>Initials</th><th>Contact</th><th>Slots</th>${showOrganiserCol ? '<th>Organiser</th>' : ''}<th></th></tr></thead>
-            <tbody>
-              ${m.attendees.length ? m.attendees.map((a) => renderAttendeeRow(m, state, attendee, a, { signedIn, showOrganiserCol })).join('') : `<tr><td colspan="${colCount}">None yet</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-        ${claiming ? renderClaimPinForm(claiming) : ''}
-        ${signedIn && state.editingAttendeeId === attendee.id ? renderEditAttendeeForm(attendee) : ''}
-        ${signedIn && attendee.is_organizer ? renderOrganiserMergePanel(m) : ''}
-        ${renderAddAttendeeForm(signedIn, attendee)}
-        ${showContinue ? renderContinueToCalendar(state) : ''}`;
-
-    if (standalone) {
-      return `
-      <div class="attendee-block stack attendee-block-standalone">
-        <h2 class="section-title">Registered attendees</h2>
-        ${body}
-      </div>`;
-    }
-
-    return `
-      <details class="attendee-block stack"${panelOpen ? ' open' : ''}>
-        <summary class="attendee-block-summary">${summaryLabel}</summary>
-        <div class="attendee-block-body stack">
-        ${body}
-        </div>
-      </details>`;
-  }
-
-  function renderLocationItem(m, state, attendee, loc) {
-    const selected = state.selectedLocations.has(loc.id);
-    return `<div class="location-item">
-      <button type="button" class="chip${selected ? ' active' : ''}" data-action="toggle-location" data-location="${escapeHtml(loc.id)}"
-        title="${selected ? 'Click to deselect, then Save location preferences' : 'Click to select, then Save location preferences'}">
-        ${escapeHtml(locationChipLabel(loc))}
-      </button>
-      ${attendee?.is_organizer ? `<button type="button" class="secondary compact-btn" data-action="delete-location" data-location-id="${escapeHtml(loc.id)}" title="Remove this location proposal">Remove</button>` : ''}
-    </div>`;
-  }
-
-  function renderAddLocationForm() {
+  function renderAddLocationForm(state) {
+    const locType = state.locType || 'online';
+    const isOnline = locType === 'online';
     return `
       <form class="inline-form add-location-form" data-form="add-location">
-        <label>Type
-          <select name="location_mode">
-            <option value="online">Online</option>
-            <option value="physical">Physical</option>
-            <option value="hybrid">Hybrid</option>
-            <option value="phone">Phone / dial-in</option>
+        <label>Location type
+          <select name="loc_type">
+            <option value="online"${isOnline ? ' selected' : ''}>Online</option>
+            <option value="physical"${!isOnline ? ' selected' : ''}>Physical</option>
           </select>
         </label>
-        <div data-loc-fields="online" class="loc-fields">
+        <div data-loc-fields="online" class="loc-fields"${isOnline ? '' : ' hidden'}>
           <label>Service
             <select name="online_service">
               <option value="Zoom">Zoom</option>
@@ -1164,151 +2885,332 @@
               <option value="Other">Other</option>
             </select>
           </label>
-          <label>Meeting link <input name="online_url" placeholder="https://..."></label>
+          <label>Meeting link (optional)
+            <input name="online_url" type="url" value="https://" placeholder="https://" autocapitalize="off" autocomplete="url" spellcheck="false">
+          </label>
         </div>
-        <div data-loc-fields="physical" class="loc-fields" hidden>
-          <label>Name <input name="physical_label" placeholder="e.g. Main office"></label>
-          <label>Address <input name="physical_address" placeholder="Street, city"></label>
+        <div data-loc-fields="physical" class="loc-fields"${!isOnline ? '' : ' hidden'}>
+          <label>Location details <input name="physical_address" placeholder="Venue name, address, room, phone, or joining note"></label>
         </div>
-        <div data-loc-fields="hybrid" class="loc-fields" hidden>
-          <label>Name <input name="hybrid_label" placeholder="e.g. Office + Zoom"></label>
-          <label>Online link <input name="hybrid_url" placeholder="https://..."></label>
-          <label>Address <input name="hybrid_address" placeholder="Street, city"></label>
-        </div>
-        <div data-loc-fields="phone" class="loc-fields" hidden>
-          <label>Label <input name="phone_label" placeholder="e.g. Conference line"></label>
-          <label>Dial-in <input name="phone_detail" placeholder="Phone number or instructions"></label>
-        </div>
-        <p class="meta span-full">Save adds another option to the list above — you can propose several.</p>
-        <button type="submit">Save location</button>
+        <p class="meta span-full">Propose online and physical locations independently — save each one separately. You can propose several of each.</p>
+        <button type="submit">Save new location</button>
       </form>`;
   }
 
   function buildLocationPayload(fd) {
-    const mode = fd.get('location_mode') || 'online';
-    let built;
-    if (mode === 'physical') {
-      const label = String(fd.get('physical_label') || '').trim();
-      const addr = String(fd.get('physical_address') || '').trim();
-      if (!label && !addr) throw new Error('Enter a venue name or address before saving');
-      built = {
-        label: label || 'Physical location',
-        kind: 'physical',
-        detail: addr,
-      };
-    } else if (mode === 'hybrid') {
-      const rawUrl = String(fd.get('hybrid_url') || '').trim();
-      const url = rawUrl ? normalizeExternalUrl(rawUrl) : '';
-      const addr = String(fd.get('hybrid_address') || '').trim();
-      if (!url && !addr) throw new Error('Enter an online link and/or a physical address before saving');
-      if (url && !isWellFormedUrl(url)) throw new Error('Online link must be a valid URL starting with https://');
-      built = {
-        label: String(fd.get('hybrid_label') || 'Hybrid').trim() || 'Hybrid',
-        kind: 'hybrid',
-        detail: [url, addr].filter(Boolean).join(' · '),
-      };
-    } else if (mode === 'phone') {
-      const detail = String(fd.get('phone_detail') || '').trim();
-      if (!detail) throw new Error('Enter dial-in details before saving');
-      built = {
-        label: String(fd.get('phone_label') || 'Phone').trim() || 'Phone',
-        kind: 'phone',
-        detail,
-      };
-    } else {
-      const rawUrl = String(fd.get('online_url') || '').trim();
-      if (!rawUrl) throw new Error('Enter a meeting link URL before saving');
-      const url = normalizeExternalUrl(rawUrl);
-      if (!isWellFormedUrl(url)) throw new Error('Meeting link must be a valid URL starting with https://');
-      built = {
-        label: String(fd.get('online_service') || 'Online').trim() || 'Online',
-        kind: 'video',
-        detail: url,
-      };
+    const locType = String(fd.get('loc_type') || 'online');
+    const addr = String(fd.get('physical_address') || '').trim();
+    const rawUrl = String(fd.get('online_url') || '').trim();
+    const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
+    const service = String(fd.get('online_service') || 'Online').trim() || 'Online';
+
+    if (locType === 'physical') {
+      if (!addr) throw new Error('Enter physical location details before saving');
+      return { label: 'Physical location', kind: 'physical', detail: addr };
     }
-    return built;
+    if (url && !isWellFormedUrl(url)) {
+      throw new Error('Please enter a validly formatted link starting with https://');
+    }
+    return { label: service, kind: 'video', detail: url || 'Link to be added' };
   }
 
-  function renderOrganiserMergePanel(m) {
-    const opts = m.attendees.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(attendeeLabel(a))}</option>`).join('');
+  // ─── Format helpers ───────────────────────────────────────────────────────────
+
+  const FMT_TITLES = {
+    strong: 'Wrap selected text in bold tags, or insert bold tags at the cursor',
+    em: 'Wrap selected text in italic tags, or insert italic tags at the cursor',
+    p: 'Wrap selected text in a paragraph, or insert an empty paragraph at the cursor',
+    br: 'Insert a line break (<br>) at the cursor',
+    a: 'Wrap selected text as a link (opens in a new tab), or insert a link at the cursor',
+    ul: 'Wrap selected text in a bullet list, or insert a one-item list',
+  };
+
+  function renderIntroBlock(m, state, field, text, placeholder, editLabel = 'Meeting text', { withTextHelp = false } = {}) {
+    if (state.editingIntro === field) {
+      return `
+        <div class="meet-intro-edit">
+          <p class="field-label-plain">${escapeHtml(editLabel)} <span class="label-hint">(simple HTML)</span></p>
+          ${formatToolbar(field, { withHelp: withTextHelp, helpTopic: editLabel.toLowerCase() })}
+          <textarea id="intro-edit-${field}" name="${field}" rows="4">${escapeHtml(text || '')}</textarea>
+          <div class="row">
+            <button type="button" data-action="save-intro" data-field="${field}">Save</button>
+            <button type="button" class="btn-cancel" data-action="cancel-intro">Cancel</button>
+          </div>
+        </div>`;
+    }
+    const body = (text || '').trim()
+      ? sanitizeHtml(text)
+      : `<span class="intro-placeholder">${escapeHtml(placeholder)}</span>`;
     return `
-      <details class="merge-organiser-panel help-toggle">
-        <summary><span class="help-q">?</span> Merge any two attendees (organiser)</summary>
-        <form class="inline-form row" data-form="merge-organiser">
-          <label>Merge into (keep this row) <select name="keep_id" required>${opts}</select></label>
-          <label>Merge from (delete this row) <select name="remove_id" required>${opts}</select></label>
-          <button type="submit">Merge</button>
-        </form>
-        <p class="meta help-body">Availability from the second person is combined into the first; the second row is removed. You do not need their PIN as organiser.</p>
+      <div class="meet-intro row">
+        <div class="meet-intro-body">${body}</div>
+        <button type="button" class="icon-btn" data-action="edit-intro" data-field="${field}" title="Edit this section text">✎</button>
+      </div>`;
+  }
+
+  function helpToggle(topic, bodyHtml) {
+    return `
+      <details class="help-toggle">
+        <summary><span class="help-q">?</span> Help for ${escapeHtml(topic)}</summary>
+        <div class="help-body meta">${bodyHtml}</div>
       </details>`;
   }
 
-  function renderAttendeeRow(m, state, current, a, { signedIn, showOrganiserCol }) {
-    const isSelf = current?.id === a.id;
-    const dupOfSelf = current && a.id !== current.id
-      && a.display_name.trim().toLowerCase() === current.display_name.trim().toLowerCase();
-    const pinBadge = a.has_pin ? '<span class="badge" title="PIN protected">PIN</span>' : '';
-    const orgBadge = a.is_organizer ? '<span class="badge good">Org</span>' : '';
-    const actions = [];
-
-    if (isSelf && signedIn) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="edit-attendee">Edit</button>`);
-    }
-
-    if (isSelf && !a.has_pin) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="set-pin">Set PIN</button>`);
-    }
-
-    if (!signedIn) {
-      if (!current || isSelf) {
-        actions.push(`<button type="button" class="secondary compact-btn" data-action="claim-row" data-attendee-id="${escapeHtml(a.id)}">${isSelf ? 'You' : 'This is me'}</button>`);
-      }
-    } else if (current && a.id !== current.id && dupOfSelf) {
-      actions.push(`<button type="button" class="secondary compact-btn" data-action="merge-into-me" data-remove-id="${escapeHtml(a.id)}">Remove duplicate (keep me)</button>`);
-    }
-
-    const organiserCell = showOrganiserCol
-      ? `<td><input type="checkbox" data-action="toggle-organizer" data-attendee-id="${escapeHtml(a.id)}" ${a.is_organizer ? 'checked' : ''} aria-label="Meeting organiser for ${escapeHtml(a.display_name)}"></td>`
-      : '';
-
-    return `<tr class="attendee-row${isSelf ? ' is-self' : ''}${!signedIn ? ' is-selectable' : ''}">
-      <td>${escapeHtml(a.display_name)} ${pinBadge} ${orgBadge}</td>
-      <td>${escapeHtml(a.initials || deriveInitials(a.display_name))}</td>
-      <td>${renderContactCell(a)}</td>
-      <td>${countSlotsFor(m, a.id)}</td>
-      ${organiserCell}
-      <td class="attendee-actions">${actions.join(' ') || (isSelf ? '<span class="meta">You</span>' : '')}</td>
-    </tr>`;
+  function textEntryHelp(topic) {
+    return helpToggle(topic, 'Enter plain text or simple HTML. Tags not in the allowed list are stripped on save. Allowed: paragraphs, line breaks, bold, italic, links, and lists.');
   }
 
-  function renderClaimPinForm(target) {
-    const needsPin = target.has_pin;
+  function formatToolbar(field, { withHelp = true, helpTopic = 'meeting text' } = {}) {
+    const help = withHelp ? textEntryHelp(helpTopic) : '';
+    const btn = (fmt, label) => `<button type="button" class="btn-cancel fmt-btn" data-fmt="${fmt}" title="${escapeHtml(FMT_TITLES[fmt])}">${label}</button>`;
     return `
-      <form class="inline-form claim-form" data-form="claim">
-        <input type="hidden" name="attendee_id" value="${escapeHtml(target.id)}">
-        <p class="meta"><strong>${escapeHtml(target.display_name)}</strong> — ${needsPin ? 'enter your PIN, then press Enter or click Continue' : 'optional: set a numeric PIN, then press Enter or click Continue'}</p>
-        <label>${needsPin ? 'PIN' : 'PIN (optional)'}
-          <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" ${needsPin ? 'required' : ''} maxlength="12">
-        </label>
-        <div class="row">
-          <button type="submit">${needsPin ? 'Continue' : 'Continue'}</button>
-          <button type="button" class="secondary" data-action="cancel-claim">Cancel</button>
+      ${help}
+      <div class="fmt-toolbar" data-field="${field}">
+        ${btn('strong', 'Bold')}${btn('em', 'Italic')}${btn('p', 'Paragraph')}${btn('br', 'Line break')}${btn('a', 'Link')}${btn('ul', 'List')}
+      </div>`;
+  }
+
+  function renderAttachment(att, attendee = null, state = null) {
+    const canEdit = !!attendee;
+    const editing = state?.editingAttachmentId === att.id;
+    if (editing && canEdit) {
+      return `
+        <form class="inline-form attachment-edit-form" data-form="edit-attachment">
+          <input type="hidden" name="attachment_id" value="${escapeHtml(att.id)}">
+          <label>Label <input name="label" required value="${escapeHtml(att.label)}"></label>
+          ${att.type === 'text'
+            ? `<label>Text <textarea name="body" rows="4">${escapeHtml(att.body || '')}</textarea></label>`
+            : `<label>Link <input name="url" type="url" value="${escapeHtml(att.url || 'https://')}" autocapitalize="off"></label>`}
+          <div class="row">
+            <button type="submit">Save attachment</button>
+            <button type="button" class="btn-cancel" data-action="cancel-edit-attachment">Cancel</button>
+          </div>
+        </form>`;
+    }
+    const actions = canEdit ? `
+      <button type="button" class="compact-btn" data-action="edit-attachment" data-attachment-id="${escapeHtml(att.id)}">Edit</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="delete-attachment" data-attachment-id="${escapeHtml(att.id)}">Delete</button>` : '';
+    if (att.type === 'text') {
+      return `<details class="attachment attachment-text"${state?.openAttachmentId === att.id ? ' open' : ''}>
+        <summary class="attachment-summary">${escapeHtml(att.label)}</summary>
+        <div class="attachment-inner">
+          ${actions}
+          <pre class="attachment-body">${escapeHtml(att.body || '')}</pre>
         </div>
-      </form>`;
-  }
-
-  function renderAttachment(att) {
-    if (att.type === 'text') return `<div class="attachment"><strong>${escapeHtml(att.label)}</strong><pre class="attachment-body">${escapeHtml(att.body || '')}</pre></div>`;
+      </details>`;
+    }
     const href = normalizeExternalUrl(att.url);
-    return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a></div>`;
+    return `<div class="attachment"><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(att.label)}</a> <span class="label-hint">(opens in a new window)</span>${actions}</div>`;
   }
 
-  function normalizeExternalUrl(url) {
-    const raw = String(url || '').trim();
-    if (!raw) return '#';
-    if (/^https?:\/\//i.test(raw)) return raw;
-    if (raw.startsWith('//')) return `https:${raw}`;
-    return `https://${raw.replace(/^\/+/, '')}`;
+  function formatTimePair(iso, m = null) {
+    const range = formatSlotLocalRange(iso, m);
+    return `<strong>${escapeHtml(range)}</strong> <span class="label-hint">(${escapeHtml(tz)})</span> (${escapeHtml(formatSlotUtc(iso))})`;
+  }
+
+  function meetingEndIso(startIso, m) {
+    const mins = Number(m?.duration_minutes) || 60;
+    return new Date(new Date(startIso).getTime() + mins * 60000).toISOString();
+  }
+
+  function formatSlotLocalRange(startIso, m) {
+    if (!startIso) return '';
+    const start = new Date(startIso);
+    const end = new Date(meetingEndIso(startIso, m));
+    const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz };
+    const timeOpts = { hour: 'numeric', minute: '2-digit', timeZone: tz };
+    const d1 = start.toLocaleDateString(undefined, dateOpts);
+    const d2 = end.toLocaleDateString(undefined, dateOpts);
+    const t1 = start.toLocaleTimeString(undefined, timeOpts);
+    const t2 = end.toLocaleTimeString(undefined, timeOpts);
+    if (d1 === d2) return `${d1}, ${t1} – ${t2}`;
+    return `${d1}, ${t1} – ${d2}, ${t2}`;
+  }
+
+  function slotSelectedByUser(state, m, slotIso, attendeeId) {
+    if (!attendeeId || state.attendeeId !== attendeeId) return false;
+    return state.selectedSlots.has(slotIso);
+  }
+
+  function bestProposedSlot(m) {
+    const everyone = m.suggestions?.slots?.[0];
+    if (everyone) return { slot: everyone.slot, count: everyone.count, kind: 'everyone' };
+    const orgIds = new Set(m.attendees.filter((a) => a.is_organizer).map((a) => a.id));
+    for (const p of m.suggestions?.partial_slots || []) {
+      const full = p.attendees_full || [];
+      if (full.some((id) => orgIds.has(id)) && full.some((id) => !orgIds.has(id))) {
+        return { slot: p.slot, count: full.length, kind: 'organiser_plus_one' };
+      }
+    }
+    return null;
+  }
+
+  // ─── Event handlers ───────────────────────────────────────────────────────────
+
+  function captureResourceDrafts(root) {
+    const drafts = {};
+    const intro = root.querySelector('[data-form="update-description"] [name="organizer_intro"]');
+    const agenda = root.querySelector('[data-form="update-agenda"] [name="agenda"]');
+    const decisions = root.querySelector('[data-form="update-agenda"] [name="decisions"]');
+    const notes = root.querySelector('[data-form="update-notes"] [name="notes"]');
+    if (intro) drafts.organizer_intro = intro.value;
+    if (agenda) drafts.agenda = agenda.value;
+    if (decisions) drafts.decisions = decisions.value;
+    if (notes) drafts.notes = notes.value;
+    return drafts;
+  }
+
+  function handlePanelSwipeStart(e, state) {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (e.target.closest('.calendar, .cal-body, .calendar-scroll, .locations-table-scroll, .attendee-table-wrap, input, textarea, select, button, a')) return;
+    state.swipeStartX = e.touches[0].clientX;
+    state.swipeStartY = e.touches[0].clientY;
+  }
+
+  function handlePanelSwipeEnd(e, root, state) {
+    if (state.calSwipe?.active || state.calSwipe?.axis === 'h') {
+      state.swipeStartX = null;
+      state.swipeStartY = null;
+      return;
+    }
+    if (state.swipeStartX == null || !e.changedTouches || !e.changedTouches.length) {
+      state.swipeStartX = null;
+      state.swipeStartY = null;
+      return;
+    }
+    const dx = e.changedTouches[0].clientX - state.swipeStartX;
+    const dy = e.changedTouches[0].clientY - state.swipeStartY;
+    state.swipeStartX = null;
+    state.swipeStartY = null;
+    if (Math.abs(dx) < 80 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    const tabs = allValidTabs(state.meet, state.meet.attendees.find((a) => a.id === state.attendeeId));
+    const idx = tabs.indexOf(state.activeTab);
+    if (idx < 0 || tabs.length < 2) return;
+    const next = dx < 0
+      ? tabs[(idx + 1) % tabs.length]
+      : tabs[(idx - 1 + tabs.length) % tabs.length];
+    gotoTab(root, state, next);
+  }
+
+  function handleCalSwipeStart(e, state) {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (!e.target.closest('.calendar-scroll, .calendar')) return;
+    if (e.target.closest('.cal-nav, button.day-head-markable, input, textarea, select, a')) return;
+    if (!['calendar', 'group'].includes(state.activeTab)) return;
+    if (state.calSwipeMomentumTimer) {
+      clearTimeout(state.calSwipeMomentumTimer);
+      state.calSwipeMomentumTimer = null;
+    }
+    const t = e.touches[0];
+    const now = performance.now();
+    state.calSwipe = {
+      active: true,
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastT: now,
+      originX: t.clientX,
+      vel: 0,
+      axis: null,
+      stepped: false,
+      samples: [{ t: now, x: t.clientX }],
+    };
+    const root = document.getElementById('app');
+    const onMove = (ev) => handleCalSwipeMove(ev, root, state);
+    const onEnd = (ev) => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+      state._calSwipeDoc = null;
+      handleCalSwipeEnd(ev, root, state);
+    };
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+    state._calSwipeDoc = { onMove, onEnd };
+  }
+
+  function advanceCalendarByDisplayedDays(root, state, delta) {
+    if (!state.meet || !delta) return;
+    const next = clampViewStart(
+      state.meet,
+      shiftViewByDisplayedDays(calendarViewStart(state, state.meet), delta, state.meet.show_weekends),
+      state
+    );
+    if (+next === +calendarViewStart(state, state.meet)) return false;
+    state.viewStart = next;
+    render(root, state);
+    return true;
+  }
+
+  function handleCalSwipeMove(e, root, state) {
+    const s = state.calSwipe;
+    if (!s?.active || !e.touches?.[0]) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.startX;
+    const dy = t.clientY - s.startY;
+    if (!s.axis) {
+      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
+      s.axis = Math.abs(dx) > Math.abs(dy) * 1.25 ? 'h' : 'v';
+      if (s.axis === 'v') {
+        s.active = false;
+        return;
+      }
+    }
+    if (s.axis !== 'h') return;
+    if (e.cancelable) e.preventDefault();
+    const now = performance.now();
+    s.samples.push({ t: now, x: t.clientX });
+    s.samples = s.samples.filter((p) => now - p.t < 120);
+    if (s.samples.length >= 2) {
+      const a = s.samples[0];
+      const b = s.samples[s.samples.length - 1];
+      s.vel = (b.x - a.x) / Math.max(1, b.t - a.t);
+    }
+    s.lastX = t.clientX;
+    s.lastT = now;
+    const stepPx = 40;
+    let delta = t.clientX - s.originX;
+    while (Math.abs(delta) >= stepPx) {
+      const dir = delta < 0 ? 1 : -1; // finger left → later days
+      if (!advanceCalendarByDisplayedDays(root, state, dir)) break;
+      s.originX += dir > 0 ? -stepPx : stepPx;
+      s.stepped = true;
+      delta = t.clientX - s.originX;
+    }
+  }
+
+  function handleCalSwipeEnd(e, root, state) {
+    const s = state.calSwipe;
+    state.calSwipe = null;
+    if (!s || s.axis !== 'h') return;
+    if (s.stepped) state.calSwipeIgnoreClickUntil = performance.now() + 450;
+    if (state.calSwipeMomentumTimer) {
+      clearTimeout(state.calSwipeMomentumTimer);
+      state.calSwipeMomentumTimer = null;
+    }
+    // Recent-window velocity — finger often stops before lift so last sample alone is too slow.
+    let vel = s.vel;
+    if (s.samples?.length >= 2) {
+      const a = s.samples[0];
+      const b = s.samples[s.samples.length - 1];
+      vel = (b.x - a.x) / Math.max(1, b.t - a.t);
+    }
+    const speed = Math.abs(vel);
+    if (speed < 0.18) return;
+    const dir = vel < 0 ? 1 : -1;
+    let remaining = Math.min(14, Math.max(1, Math.round(speed * 16)));
+    const tick = () => {
+      state.calSwipeMomentumTimer = null;
+      if (remaining <= 0 || !state.meet) return;
+      if (!advanceCalendarByDisplayedDays(root, state, dir)) return;
+      remaining -= 1;
+      if (remaining > 0) {
+        const delay = 32 + (14 - remaining) * 8;
+        state.calSwipeMomentumTimer = setTimeout(tick, delay);
+      }
+    };
+    state.calSwipeMomentumTimer = setTimeout(tick, 24);
   }
 
   async function handleSubmit(e, root, state) {
@@ -1320,94 +3222,278 @@
     try {
       let data;
       if (kind === 'add-attendee') {
-        const mode = fd.get('add_mode') || 'self';
         const contact = validateContact(fd.get('contact'));
+        const wasSignedIn = !!state.attendeeId;
+        const rawPin = String(fd.get('pin') || '').trim();
+        const normPin = normalizePasscode(rawPin);
+        if (rawPin !== '' && normPin === '') {
+          throw new Error(PASSCODE_LEN_ERR);
+        }
         const payload = {
           action: 'join', slug: state.slug,
           display_name: fd.get('display_name'), contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
           client_timezone: tz,
         };
-        if (mode === 'self') {
-          payload.pin = fd.get('pin') || undefined;
-          data = await apiPost(payload);
+        if (normPin) payload.pin = normPin;
+        data = await apiPost(payload);
+        if (!wasSignedIn) {
           state.attendeeId = data.attendee_id;
           localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
-        } else {
-          data = await apiPost(payload);
         }
         form.reset();
       } else if (kind === 'claim') {
-        data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: fd.get('attendee_id'), pin: fd.get('pin') || undefined });
+        const rawClaimPin = String(fd.get('pin') || '').trim();
+        const claimPin = sanitizePasscode(rawClaimPin);
+        data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: fd.get('attendee_id'), pin: claimPin || undefined });
         state.attendeeId = data.attendee_id;
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
         state.claimingId = null;
       } else if (kind === 'update-settings') {
-        data = await apiPost({ action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId, title: fd.get('title'),
-          duration_minutes: Number(fd.get('duration_minutes')), slot_granularity_minutes: Number(fd.get('slot_granularity_minutes')),
-          day_start: fd.get('day_start'), day_end: fd.get('day_end'),
-          timezone: normalizeTimezone(fd.get('timezone')),
+        const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+        if (!canEditOptions(state.meet, me)) {
+          throw new Error('Only a meeting organiser can change these settings.');
+        }
+        const parsed = parseDurationField(fd.get('duration_input'), state.meet);
+        let duration = parsed.duration;
+        let dayStart = parsed.day_start;
+        let dayEnd = parsed.day_end;
+        if (!dayStart) {
+          dayStart = localTimeValueToMeetingWall(fd.get('day_start_local') || fd.get('day_start'), state.meet);
+        }
+        if (!dayEnd) {
+          dayEnd = localTimeValueToMeetingWall(fd.get('day_end_local') || fd.get('day_end'), state.meet);
+        }
+        if (!duration) throw new Error('Enter meeting length: minutes, 1.5h, 2,5h, AM, or PM.');
+        const slotGran = parseDurationInput(fd.get('slot_granularity_input'));
+        const durationErr = validateDurationSlotPair(duration, slotGran);
+        if (durationErr) throw new Error(durationErr);
+        const rangeStart = String(fd.get('range_start') || '').trim() || meetingTodayStr(state.meet);
+        const rangeEnd = String(fd.get('range_end') || '').trim() || OPEN_ENDED_RANGE_END;
+        data = await apiPost({
+          action: 'update_meta', slug: state.slug, acting_attendee_id: state.attendeeId,
+          title: fd.get('title'),
+          duration_minutes: duration,
+          slot_granularity_minutes: slotGran,
+          day_start: dayStart, day_end: dayEnd,
+          range_start: rangeStart, range_end: rangeEnd,
+          timezone: normalizeTimezone(fd.get('timezone') || state.meet.timezone),
           show_weekends: fd.get('show_weekends') === 'on',
-          organizer_intro: fd.get('organizer_intro'), recurrence: buildRecurrenceFromForm(fd) });
+          client_timezone: tz,
+        });
+      } else if (kind === 'add-location-row') {
+        const onlineLabel = String(fd.get('online_label') || '').trim();
+        const onlineUrl = String(fd.get('online_url') || '').trim();
+        const physicalLabel = String(fd.get('physical_label') || '').trim();
+        const physicalDetail = String(fd.get('physical_detail') || '').trim();
+        if (!onlineLabel && !physicalLabel) throw new Error('Enter an online label and/or a physical place name.');
+        if (onlineLabel) {
+          let detail = (!onlineUrl || onlineUrl === 'https://') ? 'Link to be added' : normalizeExternalUrl(onlineUrl);
+          if (onlineUrl && onlineUrl !== 'https://' && !isWellFormedUrl(detail)) {
+            throw new Error('Online link must be a well-formed URL (https://…).');
+          }
+          data = await apiPost({ action: 'add_location', slug: state.slug, label: onlineLabel, kind: 'video', detail });
+          state.meet = data.meet;
+        }
+        if (physicalLabel) {
+          data = await apiPost({ action: 'add_location', slug: state.slug, label: physicalLabel, kind: 'physical', detail: physicalDetail });
+          state.meet = data.meet;
+        }
+        form.reset();
+      } else if (kind === 'update-description') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.organizer_intro = String(fd.get('organizer_intro') || '');
+        const payload = {
+          action: 'update_meta', slug: state.slug,
+          organizer_intro: fd.get('organizer_intro'),
+          client_timezone: tz,
+        };
+        if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
+        data = await apiPost(payload);
+        delete state.resourceDrafts.organizer_intro;
+      } else if (kind === 'update-agenda') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.agenda = String(fd.get('agenda') || '');
+        state.resourceDrafts.decisions = String(fd.get('decisions') || '');
+        const payload = {
+          action: 'update_meta', slug: state.slug,
+          agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')),
+          client_timezone: tz,
+        };
+        if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
+        data = await apiPost(payload);
+        delete state.resourceDrafts.agenda;
+        delete state.resourceDrafts.decisions;
+      } else if (kind === 'update-notes') {
+        state.resourceDrafts = captureResourceDrafts(root);
+        state.resourceDrafts.notes = String(fd.get('notes') || '');
+        const payload = {
+          action: 'update_meta', slug: state.slug,
+          notes: fd.get('notes'),
+          client_timezone: tz,
+        };
+        if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
+        data = await apiPost(payload);
+        delete state.resourceDrafts.notes;
       } else if (kind === 'update-meta') {
-        data = await apiPost({ action: 'update_meta', slug: state.slug, agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes') });
+        const payload = {
+          action: 'update_meta', slug: state.slug,
+          agenda: lines(fd.get('agenda')), decisions: lines(fd.get('decisions')), notes: fd.get('notes'),
+        };
+        if (fd.get('organizer_intro') != null) payload.organizer_intro = fd.get('organizer_intro');
+        if (state.attendeeId) payload.acting_attendee_id = state.attendeeId;
+        data = await apiPost(payload);
       } else if (kind === 'add-location') {
         const built = buildLocationPayload(fd);
-        if (!built.label) throw new Error('Location label required');
+        const duplicate = (state.meet.locations || []).some((loc) => {
+          return String(loc.label || '').trim().toLowerCase() === String(built.label || '').trim().toLowerCase()
+            && String(loc.kind || '').trim().toLowerCase() === String(built.kind || '').trim().toLowerCase()
+            && String(loc.detail || '').trim().toLowerCase() === String(built.detail || '').trim().toLowerCase();
+        });
+        if (duplicate) throw new Error('That location already exists. Edit details or add a unique option.');
         data = await apiPost({ action: 'add_location', slug: state.slug, label: built.label, kind: built.kind, detail: built.detail });
         form.reset();
+        state.locType = 'online';
+      } else if (kind === 'edit-location') {
+        const locId = String(fd.get('location_id') || '');
+        const existing = (state.meet.locations || []).find((l) => l.id === locId);
+        if (!existing) throw new Error('Location not found');
+        const locKind = String(fd.get('kind') || 'video');
+        let detail = '';
+        if (locKind === 'video' || locKind === 'phone') {
+          const rawUrl = String(fd.get('online_url') || '').trim();
+          const url = (!rawUrl || rawUrl === 'https://') ? '' : normalizeExternalUrl(rawUrl);
+          if (url && !isWellFormedUrl(url)) throw new Error('Please enter a validly formatted link starting with https://');
+          detail = url || 'Link to be added';
+        } else {
+          detail = String(fd.get('physical_address') || '').trim();
+          if (!detail) throw new Error('Enter physical location details before saving');
+        }
+        data = await apiPost({
+          action: 'update_location',
+          slug: state.slug,
+          location_id: locId,
+          label: String(fd.get('label') || '').trim(),
+          kind: locKind,
+          detail,
+        });
+        state.editingLocationId = null;
       } else if (kind === 'add-attachment') {
-        const type = fd.get('type');
-        const url = type === 'url' ? normalizeExternalUrl(fd.get('url')) : undefined;
+        const type = fd.get('attachment_type') || 'url';
+        const rawUrl = String(fd.get('url') || '').trim();
+        const url = type === 'url' ? normalizeExternalUrl(rawUrl) : undefined;
+        if (type === 'url' && (!rawUrl || rawUrl === 'https://' || !isWellFormedUrl(url))) {
+          throw new Error('Please enter a validly formatted link starting with https://');
+        }
         data = await apiPost({ action: 'add_attachment', slug: state.slug, label: fd.get('label'), type, url, body: fd.get('body') });
+      } else if (kind === 'edit-attachment') {
+        const rawUrl = String(fd.get('url') || '').trim();
+        const body = fd.get('body');
+        const payload = {
+          action: 'update_attachment',
+          slug: state.slug,
+          attachment_id: fd.get('attachment_id'),
+          label: fd.get('label'),
+        };
+        if (rawUrl !== '') {
+          const url = normalizeExternalUrl(rawUrl);
+          if (rawUrl === 'https://' || !isWellFormedUrl(url)) {
+            throw new Error('Please enter a validly formatted link starting with https://');
+          }
+          payload.url = url;
+        }
+        if (body !== null) payload.body = body;
+        data = await apiPost(payload);
+        state.editingAttachmentId = null;
       } else if (kind === 'confirm') {
-        data = await apiPost({ action: 'confirm', slug: state.slug, acting_attendee_id: state.attendeeId, confirmed_slot: fd.get('confirmed_slot'), confirmed_location: fd.get('confirmed_location') });
+        data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_slot: fd.get('confirmed_slot'),
+        });
         state.pendingConfirmSlot = null;
+        state.pendingConfirmedLocationIds = null;
       } else if (kind === 'merge-organiser') {
         const keepId = fd.get('keep_id');
         const removeId = fd.get('remove_id');
         if (keepId === removeId) throw new Error('Choose two different attendees');
-        data = await apiPost({
-          action: 'merge_attendees', slug: state.slug, keep_id: keepId, remove_id: removeId,
-          acting_attendee_id: state.attendeeId,
-        });
+        data = await apiPost({ action: 'merge_attendees', slug: state.slug, keep_id: keepId, remove_id: removeId, acting_attendee_id: state.attendeeId });
         if (state.attendeeId === removeId) {
           state.attendeeId = keepId;
           localStorage.setItem(attendeeKey(state.slug), keepId);
         }
       } else if (kind === 'edit-attendee') {
         const contact = validateContact(fd.get('contact'));
-        data = await apiPost({
-          action: 'update_attendee',
-          slug: state.slug,
+        const newPinRaw = String(fd.get('new_pin') || '').trim();
+        const newPin = normalizePasscode(newPinRaw);
+        if (newPinRaw !== '' && newPin === '') {
+          throw new Error(PASSCODE_LEN_ERR);
+        }
+        const clearPin = fd.get('clear_pin') === 'on';
+        const payload = {
+          action: 'update_attendee', slug: state.slug,
           acting_attendee_id: state.attendeeId,
           attendee_id: fd.get('attendee_id'),
           display_name: fd.get('display_name'),
           contact,
           initials: fd.get('initials') || deriveInitials(fd.get('display_name')),
-        });
+        };
+        if (clearPin || newPin !== '') {
+          payload.new_pin = newPin;
+          payload.skip_current_pin = true;
+          if (clearPin) payload.clear_pin = true;
+        }
+        data = await apiPost(payload);
         state.editingAttendeeId = null;
+        state.changingPin = false;
         state.attendeePanelOpen = true;
         state.scrollAfterRender = 'attendee-block';
       } else return;
+
       state.meet = data.meet;
-      if (kind === 'add-attendee' && (fd.get('add_mode') || 'self') === 'self') restoreAttendeeSelections(state);
+      if (kind === 'add-attendee' && state.attendeeId === data.attendee_id) restoreAttendeeSelections(state);
       else if (kind === 'claim') restoreAttendeeSelections(state);
+      if (kind === 'update-settings') {
+        localStorage.setItem(setupOptionsSavedKey(state.slug), 'yes');
+        state.viewStart = calendarMinStart(state.meet);
+      }
+      if (kind === 'update-meta') state.openNotesEditor = false;
+      if (kind === 'add-attendee' || kind === 'claim') {
+        state.overviewHelpOpen = false;
+        localStorage.setItem(overviewHelpKey(state.slug), 'closed');
+      }
       if (kind === 'add-attendee' || kind === 'claim') state.scrollAfterRender = 'attendee-block';
       render(root, state);
-      if (kind === 'add-location') toast('Location added — finalise it on Locations & finalise');
+
+      if (kind === 'add-location') toast('Location saved');
+      else if (kind === 'add-location-row') toast('Location(s) added');
       else if (kind === 'add-attendee') {
-        const mode = fd.get('add_mode') || 'self';
-        toast(mode === 'self' ? 'You are signed in — mark your availability on the calendar' : 'Attendee added — share the meeting link with them');
+        toast(state.attendeeId === data.attendee_id
+          ? 'You are signed in. Next: mark availability, then share the meeting link.'
+          : 'Attendee saved — you stay signed in as yourself.');
       }
-      else if (kind === 'edit-attendee') toast('Your details were updated');
-      else if (kind === 'confirm') toast('Final time saved — see summary under the meeting title');
-      else if (kind === 'update-settings') toast('Meeting options saved');
+      else if (kind === 'edit-attendee') toast(fd.get('clear_pin') === 'on' ? 'Passcode removed' : 'Your details were updated');
+      else if (kind === 'confirm') toast('Meeting time agreed — status updated');
+      else if (kind === 'update-settings') {
+        toast(state.attendeeId
+          ? 'Calendar options saved.'
+          : 'Calendar options saved. Next: add yourself as attendee (or return to Getting started).');
+      } else if (kind === 'update-description') toast('Description saved');
+      else if (kind === 'update-agenda') toast('Agenda saved');
+      else if (kind === 'update-notes') toast('Notes saved');
+      else if (kind === 'update-meta') toast('Saved');
       else toast('Saved');
     } catch (err) { toast(err.message, true); }
   }
 
   async function handleClick(e, root, state) {
+    const locSelect = e.target.closest('[data-loc-select]');
+    if (locSelect) {
+      selectElementContents(locSelect);
+      return;
+    }
+
     const btn = e.target.closest('[data-action], [data-fmt]');
     if (!btn) return;
 
@@ -1417,22 +3503,40 @@
     }
 
     const action = btn.dataset.action;
-    if (action === 'goto') { gotoWorkspace(root, state, btn.dataset.goto); return; }
-    if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); return; }
+
+    if (action === 'tab') { setTab(state, btn.dataset.tab); render(root, state); window.scrollTo(0, 0); return; }
+
     if (action === 'copy-link') {
       const input = document.getElementById('share-url-input');
       const link = input?.value || shareUrl(state.slug);
       try {
         await navigator.clipboard.writeText(link);
+        localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes');
         toast('Link copied');
-      } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); toast('Link copied'); }
-      return;
-    }
-    if (action === 'toggle-header') {
-      state.headerExpanded = !state.headerExpanded;
+      } catch (_) { if (input) { input.value = link; input.select(); } document.execCommand('copy'); localStorage.setItem(setupLinkCopiedKey(state.slug), 'yes'); toast('Link copied'); }
       render(root, state);
       return;
     }
+
+    if (action === 'toggle-help') {
+      state.helpOpen = !state.helpOpen;
+      if (state.helpOpen && isNarrowScreen()) state.headerExpanded = true;
+      render(root, state);
+      return;
+    }
+    if (action === 'edit-agenda-decisions') {
+      state.openNotesEditor = true;
+      setTab(state, 'agenda');
+      state.scrollAfterRender = 'notes-edit-details';
+      render(root, state);
+      return;
+    }
+    if (action === 'toggle-header') { state.headerExpanded = !state.headerExpanded; render(root, state); return; }
+
+    if (action === 'preset-duration-am' || action === 'preset-duration-pm') {
+      return;
+    }
+
     if (action === 'edit-intro') { state.editingIntro = btn.dataset.field; render(root, state); return; }
     if (action === 'cancel-intro') { state.editingIntro = null; render(root, state); return; }
     if (action === 'save-intro') {
@@ -1449,48 +3553,330 @@
       } catch (err) { toast(err.message, true); }
       return;
     }
-    if (action === 'toggle-slot') { toggleSlot(state, btn.dataset.slot); render(root, state); return; }
-    if (action === 'toggle-location') {
-      const id = btn.dataset.location;
-      state.selectedLocations.has(id) ? state.selectedLocations.delete(id) : state.selectedLocations.add(id);
+
+    if (action === 'toggle-slot') {
+      if (state.dragHandledClick) {
+        state.dragHandledClick = false;
+        return;
+      }
+      if (state.calSwipeIgnoreClickUntil && performance.now() < state.calSwipeIgnoreClickUntil) return;
+      if (state.calSwipe?.stepped || state.calSwipe?.axis === 'h') return;
+      toggleSlot(state, btn.dataset.slot);
       render(root, state);
-      toast(state.selectedLocations.has(id) ? 'Location selected — press Save location preferences' : 'Location deselected — press Save location preferences');
       return;
     }
+
+    if (action === 'expand-attach-cell') {
+      const key = btn.dataset.attachExpand;
+      if (!key) return;
+      const opening = !state.expandedAttachFields.has(key);
+      if (state.expandedAttachFields.has(key)) state.expandedAttachFields.delete(key);
+      else state.expandedAttachFields.add(key);
+      render(root, state);
+      if (opening) {
+        requestAnimationFrame(() => {
+          const el = root.querySelector(`[data-attach-select="${CSS.escape(key)}"]`);
+          if (el) selectElementContents(el);
+        });
+      }
+      return;
+    }
+
+    if (action === 'cycle-alt-tz') {
+      state.altTzIndex = (state.altTzIndex || 0) + 1;
+      render(root, state);
+      return;
+    }
+
+    if (action === 'expand-loc-cell') {
+      const key = btn.dataset.locExpand;
+      if (!key) return;
+      const opening = !state.expandedLocFields.has(key);
+      if (state.expandedLocFields.has(key)) state.expandedLocFields.delete(key);
+      else state.expandedLocFields.add(key);
+      render(root, state);
+      if (opening) {
+        requestAnimationFrame(() => {
+          const el = root.querySelector(`[data-loc-select="${CSS.escape(key)}"]`);
+          if (el) selectElementContents(el);
+        });
+      }
+      return;
+    }
+
+    if (action === 'copy-loc-url') {
+      const url = btn.dataset.url || '';
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('Link copied');
+      } catch (_) {
+        toast('Could not copy link', true);
+      }
+      return;
+    }
+
+    if (action === 'save-location-row') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to propose a location', true);
+        return;
+      }
+      const row = btn.closest('[data-location-row]');
+      if (!row) return;
+      await saveLocationRow(root, state, row);
+      return;
+    }
+
+    if (action === 'toggle-location') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to save location preferences', true);
+        return;
+      }
+      const id = btn.dataset.location;
+      state.selectedLocations.has(id) ? state.selectedLocations.delete(id) : state.selectedLocations.add(id);
+      try {
+        const data = await apiPost({ action: 'save_location_prefs', slug: state.slug, attendee_id: state.attendeeId, location_ids: [...state.selectedLocations] });
+        state.meet = data.meet;
+        render(root, state);
+        toast(state.selectedLocations.has(id) ? 'Location preference saved' : 'Location preference removed');
+      } catch (err) {
+        state.selectedLocations.has(id) ? state.selectedLocations.delete(id) : state.selectedLocations.add(id);
+        toast(err.message, true);
+      }
+      return;
+    }
+
     if (action === 'delete-location') {
       if (!window.confirm('Remove this location proposal from the meeting?')) return;
       try {
-        const data = await apiPost({
-          action: 'remove_location', slug: state.slug,
-          acting_attendee_id: state.attendeeId, location_id: btn.dataset.locationId,
-        });
+        const data = await apiPost({ action: 'remove_location', slug: state.slug, acting_attendee_id: state.attendeeId, location_id: btn.dataset.locationId });
         state.meet = data.meet;
         state.selectedLocations.delete(btn.dataset.locationId);
+        if (state.editingLocationId === btn.dataset.locationId) state.editingLocationId = null;
         render(root, state);
         toast('Location removed');
       } catch (err) { toast(err.message, true); }
       return;
     }
-    if (action === 'prev-days') {
-      const min = calendarMinStart(state.meet);
-      const step = visibleDayCount();
-      state.viewStart = addDays(state.viewStart, -step);
-      if (state.viewStart < min) state.viewStart = min;
+
+    if (action === 'edit-location') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to edit a location', true);
+        return;
+      }
+      state.editingLocationId = btn.dataset.locationId;
       render(root, state);
       return;
     }
-    if (action === 'next-days') { state.viewStart = addDays(state.viewStart, visibleDayCount()); render(root, state); return; }
+    if (action === 'cancel-edit-location') {
+      state.editingLocationId = null;
+      render(root, state);
+      return;
+    }
+
+    if (action === 'prev-days') {
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+    if (action === 'prev-week') {
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+    if (action === 'go-today') {
+      state.viewStart = calendarMinStart(state.meet);
+      render(root, state);
+      return;
+    }
+    if (action === 'go-range-start') {
+      state.viewStart = calendarMinStart(state.meet);
+      render(root, state);
+      return;
+    }
+    if (action === 'go-range-end') {
+      const target = jumpTargetEnd(state.meet, state);
+      if (!target) {
+        toast('No end date in Calendar Options, and no marked availability to jump to', true);
+        return;
+      }
+      state.viewStart = target;
+      render(root, state);
+      return;
+    }
+    if (action === 'prev-screen') {
+      const n = preferredDayCount(state, state.meet);
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+    if (action === 'next-screen') {
+      const n = preferredDayCount(state, state.meet);
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+    if (action === 'next-days') {
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+    if (action === 'next-week') {
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends), state);
+      render(root, state);
+      return;
+    }
+
+    if (action === 'toggle-day-mark') {
+      const dateStr = btn.dataset.date;
+      if (!dateStr) return;
+      if (!state.headerMarkedDates) state.headerMarkedDates = new Set();
+      if (state.headerMarkedDates.has(dateStr)) state.headerMarkedDates.delete(dateStr);
+      else state.headerMarkedDates.add(dateStr);
+      render(root, state);
+      return;
+    }
+    if (action === 'set-day-cols') {
+      const n = Number(btn.dataset.cols);
+      if (![3, 5, 7].includes(n)) return;
+      state.dayColPref = n;
+      localStorage.setItem(dayColsKey(state.slug), String(n));
+      state.lastDayCount = n;
+      render(root, state);
+      return;
+    }
+    if (action === 'clear-selection') {
+      if (!state.attendeeId) return;
+      restoreSavedSelectionOnly(state);
+      render(root, state);
+      toast('Selection cleared to saved slots only');
+      return;
+    }
+    if (action === 'copy-avail-days') {
+      const result = copyMarkedDaysToClipboard(state);
+      render(root, state);
+      if (!result.ok) {
+        toast(result.message, true);
+        return;
+      }
+      toast(result.message);
+      return;
+    }
+    if (action === 'paste-avail-days') {
+      const result = pasteClipboardOntoMarkedDays(state);
+      render(root, state);
+      toast(result.message, !result.ok);
+      return;
+    }
+    if (action === 'invert-avail-days') {
+      const result = invertMarkedDays(state);
+      render(root, state);
+      toast(result.message, !result.ok);
+      return;
+    }
+
     if (action === 'jump-slot') {
       state.viewStart = startOfDay(new Date(btn.dataset.slot));
       setTab(state, 'calendar');
       render(root, state);
       return;
     }
+
     if (action === 'use-slot') {
-      state.pendingConfirmSlot = btn.dataset.slot;
-      setTab(state, 'locations');
-      state.scrollAfterRender = 'confirm-form';
-      render(root, state);
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (!me?.is_organizer) {
+        toast('Only organisers can set the meeting start time', true);
+        return;
+      }
+      const slot = btn.dataset.slot;
+      const current = state.meet.confirmed_slot || '';
+      try {
+        if (current && slotsEqual(current, slot)) {
+          const data = await apiPost({
+            action: 'confirm',
+            slug: state.slug,
+            acting_attendee_id: state.attendeeId,
+            confirmed_slot: '',
+          });
+          state.meet = data.meet;
+          state.pendingConfirmSlot = null;
+          render(root, state);
+          toast('Meeting start cleared');
+          return;
+        }
+        const missing = attendeesUnavailableForSlot(state.meet, slot);
+        if (missing.length) {
+          const initials = missing.map((a) => a.initials || deriveInitials(a.display_name)).join(', ');
+          if (!window.confirm(`Are you sure? Unavailable: ${initials}`)) return;
+        }
+        const priorConfirmed = current;
+        const isReschedule = priorConfirmed !== '' && !slotsEqual(priorConfirmed, slot);
+        const data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_slot: slot,
+        });
+        state.meet = data.meet;
+        state.pendingConfirmSlot = null;
+        if (isReschedule) {
+          state.wasRescheduled = true;
+          localStorage.setItem(rescheduledKey(state.slug), 'yes');
+        }
+        render(root, state);
+        toast(isReschedule ? 'Meeting start rescheduled' : 'Meeting start scheduled');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
+    if (action === 'pick-confirm-location') {
+      const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
+      if (!me?.is_organizer) {
+        toast('Only organisers can confirm locations', true);
+        return;
+      }
+      const loc = state.meet.locations.find((l) => l.id === btn.dataset.locationId);
+      if (!loc) return;
+      const cur = [...effectiveConfirmedLocationIds(state, state.meet)];
+      const idx = cur.indexOf(loc.id);
+      if (idx >= 0) cur.splice(idx, 1);
+      else cur.push(loc.id);
+      try {
+        const data = await apiPost({
+          action: 'confirm',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          confirmed_location_ids: cur,
+        });
+        state.meet = data.meet;
+        state.pendingConfirmedLocationIds = null;
+        render(root, state);
+        toast(idx >= 0 ? 'Location unconfirmed' : 'Location confirmed');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
+    if (action === 'confirm-time') {
+      toast('Click a calendar slot to set or clear the meeting start', true);
+      return;
+    }
+    if (action === 'new-meeting') {
+      const path = window.location.pathname;
+      const idx = path.indexOf('/meet');
+      const home = idx >= 0 ? `${path.slice(0, idx + 5)}/` : '/meet/';
+      window.open(`${window.location.origin}${home}`, '_blank', 'noopener');
+      return;
+    }
+    if (action === 'toggle-passcode') {
+      const wrap = btn.closest('.passcode-field');
+      const input = wrap?.querySelector('input');
+      if (!input) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      btn.title = showing ? 'Show passcode' : 'Hide passcode';
+      btn.setAttribute('aria-label', btn.title);
       return;
     }
     if (action === 'switch-user') {
@@ -1502,51 +3888,79 @@
       render(root, state);
       return;
     }
-    if (action === 'claim-row') {
-      if (state.attendeeId === btn.dataset.attendeeId) {
-        toast('Already signed in as this attendee');
+
+    if (action === 'toggle-sign-in') {
+      const targetId = btn.dataset.attendeeId;
+      const target = state.meet.attendees.find((a) => a.id === targetId);
+      if (!target) return;
+      if (state.attendeeId === targetId) {
+        state.attendeeId = '';
+        state.claimingId = null;
+        localStorage.removeItem(attendeeKey(state.slug));
+        state.selectedSlots.clear();
+        state.selectedLocations.clear();
+        render(root, state);
+        toast('Signed out');
         return;
       }
+      if (target.has_pin || btn.dataset.hasPin === '1') {
+        state.claimingId = targetId;
+        render(root, state);
+        requestAnimationFrame(() => root.querySelector('.claim-form input[name="pin"]')?.focus());
+        return;
+      }
+      try {
+        if (state.attendeeId) localStorage.removeItem(attendeeKey(state.slug));
+        const data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: targetId });
+        state.attendeeId = data.attendee_id;
+        state.meet = data.meet;
+        state.claimingId = null;
+        localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
+        restoreAttendeeSelections(state);
+        render(root, state);
+        toast('Signed in');
+      } catch (err) { toast(err.message, true); }
+      return;
+    }
+
+    if (action === 'claim-row') {
+      if (state.attendeeId === btn.dataset.attendeeId) { toast('Already signed in as this attendee'); return; }
       state.claimingId = btn.dataset.attendeeId;
       render(root, state);
       requestAnimationFrame(() => root.querySelector('.claim-form input[name="pin"]')?.focus());
       return;
     }
+
     if (action === 'edit-attendee') {
       state.editingAttendeeId = state.attendeeId;
+      state.changingPin = false;
       state.attendeePanelOpen = true;
       render(root, state);
       requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="display_name"]')?.focus());
       return;
     }
-    if (action === 'cancel-edit-attendee') {
-      state.editingAttendeeId = null;
-      render(root, state);
-      return;
-    }
-    if (action === 'cancel-claim') {
-      state.claimingId = null;
-      render(root, state);
-      return;
-    }
+
+    if (action === 'start-pin-change') { state.changingPin = true; render(root, state); return; }
+    if (action === 'cancel-pin-change') { state.changingPin = false; render(root, state); return; }
+
+    if (action === 'cancel-edit-attendee') { state.editingAttendeeId = null; state.changingPin = false; render(root, state); return; }
+    if (action === 'cancel-claim') { state.claimingId = null; render(root, state); return; }
+
     if (action === 'merge-into-me') {
       const removeId = btn.dataset.removeId;
       const me = state.meet.attendees.find((a) => a.id === state.attendeeId);
       const target = state.meet.attendees.find((a) => a.id === removeId);
       if (!me || !target) return;
       let pin = '';
-      const confirmMsg = `Keep your row (${attendeeLabel(me)}) and delete the duplicate (${attendeeLabel(target)})?\n\nAvailability from the removed row will be combined into yours. Your attendee ID stays the same.`;
+      const confirmMsg = `Keep your row (${attendeeLabel(me)}) and delete the duplicate (${attendeeLabel(target)})?\n\nAvailability from the removed row will be combined into yours.`;
       if (target.has_pin) {
-        pin = window.prompt('Enter the PIN for the duplicate row you are removing:') || '';
+        pin = sanitizePasscode(window.prompt('Enter the passcode for the duplicate row you are removing:') || '');
         if (!pin) return;
       } else if (!window.confirm(confirmMsg)) {
         return;
       }
       try {
-        const data = await apiPost({
-          action: 'merge_attendees', slug: state.slug, keep_id: state.attendeeId, remove_id: removeId,
-          acting_attendee_id: state.attendeeId, pin: pin || undefined,
-        });
+        const data = await apiPost({ action: 'merge_attendees', slug: state.slug, keep_id: state.attendeeId, remove_id: removeId, acting_attendee_id: state.attendeeId, pin: pin || undefined });
         state.meet = data.meet;
         state.attendeeId = data.attendee_id;
         localStorage.setItem(attendeeKey(state.slug), state.attendeeId);
@@ -1556,20 +3970,66 @@
       } catch (err) { toast(err.message, true); }
       return;
     }
+
     if (action === 'set-pin') {
-      const pin = window.prompt('Choose a numeric PIN (for List my meetings on the home page):');
-      if (!pin) return;
+      state.editingAttendeeId = state.attendeeId;
+      state.changingPin = true;
+      state.attendeePanelOpen = true;
+      render(root, state);
+      requestAnimationFrame(() => root.querySelector('.edit-attendee-form input[name="new_pin"]')?.focus());
+      return;
+    }
+
+    if (action === 'edit-attachment') {
+      state.editingAttachmentId = btn.dataset.attachmentId;
+      render(root, state);
+      return;
+    }
+    if (action === 'cancel-edit-attachment') {
+      state.editingAttachmentId = null;
+      render(root, state);
+      return;
+    }
+    if (action === 'delete-attachment') {
+      if (!confirm('Delete this attachment?')) return;
       try {
-        const data = await apiPost({ action: 'claim', slug: state.slug, attendee_id: state.attendeeId, pin });
+        const data = await apiPost({ action: 'remove_attachment', slug: state.slug, attachment_id: btn.dataset.attachmentId });
         state.meet = data.meet;
+        if (state.editingAttachmentId === btn.dataset.attachmentId) state.editingAttachmentId = null;
         render(root, state);
-        toast('PIN saved');
+        toast('Attachment deleted');
       } catch (err) { toast(err.message, true); }
       return;
     }
+
+    if (action === 'delete-attendee') {
+      const targetId = btn.dataset.attendeeId;
+      const target = state.meet.attendees.find((a) => a.id === targetId);
+      const label = target ? attendeeLabel(target) : 'this attendee';
+      if (!confirm(`Remove ${label} from this meeting? Their availability and location preferences will be deleted.`)) return;
+      try {
+        const data = await apiPost({
+          action: 'remove_attendee',
+          slug: state.slug,
+          acting_attendee_id: state.attendeeId,
+          attendee_id: targetId,
+        });
+        state.meet = data.meet;
+        if (state.attendeeId === targetId) {
+          state.attendeeId = '';
+          localStorage.removeItem(attendeeKey(state.slug));
+          state.selectedSlots.clear();
+          state.selectedLocations.clear();
+        }
+        render(root, state);
+        toast('Attendee removed');
+      } catch (err) { toast(err.message, true); }
+      return;
+    }
+
     if (action === 'save-availability') {
       try {
-        const data = await apiPost({ action: 'save_availability', slug: state.slug, attendee_id: state.attendeeId, slots: [...state.selectedSlots] });
+        const data = await apiPost({ action: 'save_availability', slug: state.slug, attendee_id: state.attendeeId, slots: [...state.selectedSlots], client_timezone: tz });
         localStorage.setItem(slotsKey(state.slug, state.attendeeId), JSON.stringify([...state.selectedSlots]));
         state.meet = data.meet;
         render(root, state);
@@ -1577,6 +4037,19 @@
       } catch (err) { toast(err.message, true); }
       return;
     }
+    if (action === 'toggle-group-hours') {
+      state.showAllGroupHours = !state.showAllGroupHours;
+      localStorage.setItem(groupHoursKey(state.slug), state.showAllGroupHours ? 'all' : 'compact');
+      render(root, state);
+      return;
+    }
+    if (action === 'toggle-group-days') {
+      state.showAllGroupDays = !state.showAllGroupDays;
+      localStorage.setItem(groupDaysKey(state.slug), state.showAllGroupDays ? 'all' : 'compact');
+      render(root, state);
+      return;
+    }
+
     if (action === 'save-locations') {
       try {
         const data = await apiPost({ action: 'save_location_prefs', slug: state.slug, attendee_id: state.attendeeId, location_ids: [...state.selectedLocations] });
@@ -1598,42 +4071,45 @@
     else if (fmt === 'p') insert = `<p>${sel || 'text'}</p>`;
     else if (fmt === 'strong') insert = `<strong>${sel || 'text'}</strong>`;
     else if (fmt === 'em') insert = `<em>${sel || 'text'}</em>`;
-    else if (fmt === 'a') {
-      const href = prompt('Link URL:', 'https://');
-      if (!href) return;
-      insert = `<a href="${href}" target="_blank" rel="noopener noreferrer">${sel || 'link text'}</a>`;
-    } else if (fmt === 'ul') insert = `<ul>\n<li>${sel || 'item'}</li>\n</ul>`;
+    else if (fmt === 'a') { const href = prompt('Link URL:', 'https://'); if (!href) return; insert = `<a href="${href}" target="_blank" rel="noopener noreferrer">${sel || 'link text'}</a>`; }
+    else if (fmt === 'ul') insert = `<ul>\n<li>${sel || 'item'}</li>\n</ul>`;
     ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
     ta.focus();
   }
 
   function handleChange(e, root, state) {
-    if (e.target.matches('details.attendee-block')) {
-      state.attendeePanelOpen = e.target.open;
+    if (e.target.matches('details.overview-help')) {
+      state.overviewHelpOpen = e.target.open;
+      localStorage.setItem(overviewHelpKey(state.slug), e.target.open ? 'open' : 'closed');
       return;
     }
+    if (e.target.matches('details.attendee-block')) { state.attendeePanelOpen = e.target.open; return; }
     if (e.target.matches('[data-action="edit-confirmed-slot"]')) {
       const hidden = document.getElementById('confirmed-slot-hidden');
       if (hidden) hidden.value = e.target.value;
       return;
     }
-    if (e.target.name === 'location_mode') {
+    if (e.target.name === 'loc_type') {
+      state.locType = e.target.value === 'physical' ? 'physical' : 'online';
+      render(root, state);
+      return;
+    }
+    if (e.target.name === 'kind' && e.target.closest('.edit-location-form')) {
       const form = e.target.closest('form');
-      if (form) {
-        form.querySelectorAll('[data-loc-fields]').forEach((el) => {
-          el.hidden = el.dataset.locFields !== e.target.value;
-        });
-      }
+      const isVideo = e.target.value === 'video';
+      form?.querySelector('.loc-edit-online')?.toggleAttribute('hidden', !isVideo);
+      form?.querySelector('.loc-edit-physical')?.toggleAttribute('hidden', isVideo);
+      return;
+    }
+    if (e.target.name === 'attachment_type') {
+      const form = e.target.closest('form');
+      if (form) form.querySelectorAll('[data-attach-fields]').forEach((el) => { el.hidden = el.dataset.attachFields !== e.target.value; });
       return;
     }
     if (e.target.matches('[data-action="sort-order"]')) { state.sortOrder = e.target.value; render(root, state); return; }
-    if (e.target.name === 'add_mode') {
-      const form = e.target.closest('form');
-      if (!form) return;
-      const isSelf = e.target.value === 'self';
-      const pin = form.querySelector('.field-pin');
-      if (pin) pin.hidden = !isSelf;
-      form.querySelector('[data-show-when="propose"]')?.toggleAttribute('hidden', isSelf);
+    if (e.target.name === 'clear_pin') {
+      syncClearPinFields(e.target.closest('form'));
+      if (e.target.checked) e.target.closest('form')?.querySelector('[name="current_pin"]')?.focus();
       return;
     }
     if (e.target.name === 'recurrence_type') {
@@ -1649,27 +4125,16 @@
       root.querySelectorAll('#weekday-checks input[type="checkbox"]').forEach((cb) => {
         const v = Number(cb.value);
         const weekend = v === 0 || v === 6;
-        if (weekend) {
-          cb.disabled = !e.target.checked;
-          if (!e.target.checked) cb.checked = false;
-        }
+        if (weekend) { cb.disabled = !e.target.checked; if (!e.target.checked) cb.checked = false; }
       });
       return;
     }
     if (e.target.matches('[data-action="toggle-organizer"]')) {
       const targetId = e.target.dataset.attendeeId;
       const checked = e.target.checked;
-      apiPost({
-        action: 'set_organizer', slug: state.slug,
-        acting_attendee_id: state.attendeeId, attendee_id: targetId, organizer: checked,
-      }).then((data) => {
-        state.meet = data.meet;
-        render(root, state);
-        toast('Organiser updated');
-      }).catch((err) => {
-        e.target.checked = !checked;
-        toast(err.message, true);
-      });
+      apiPost({ action: 'set_organizer', slug: state.slug, acting_attendee_id: state.attendeeId, attendee_id: targetId, organizer: checked })
+        .then((data) => { state.meet = data.meet; render(root, state); toast('Organiser updated'); })
+        .catch((err) => { e.target.checked = !checked; toast(err.message, true); });
     }
   }
 
@@ -1679,6 +4144,7 @@
     const slot = e.target.closest('[data-action="toggle-slot"]');
     if (!slot || !state.attendeeId) return;
     state.dragging = true;
+    state.dragHandledClick = true;
     state.dragSelect = !state.selectedSlots.has(slot.dataset.slot);
     if (state.dragSelect) state.selectedSlots.add(slot.dataset.slot);
     else state.selectedSlots.delete(slot.dataset.slot);
@@ -1687,6 +4153,10 @@
 
   function handlePointerOver(e, root, state) {
     if (!state.dragging) return;
+    if (typeof e.buttons === 'number' && e.buttons === 0) {
+      state.dragging = false;
+      return;
+    }
     const slot = e.target.closest('[data-action="toggle-slot"]');
     if (!slot) return;
     if (state.dragSelect) state.selectedSlots.add(slot.dataset.slot);
@@ -1697,6 +4167,8 @@
   function toggleSlot(state, slot) {
     state.selectedSlots.has(slot) ? state.selectedSlots.delete(slot) : state.selectedSlots.add(slot);
   }
+
+  // ─── Sorting ─────────────────────────────────────────────────────────────────
 
   function sortPartialSuggestions(m, order) {
     const list = (m.suggestions?.partial_slots || []).map((s) => ({ ...s }));
@@ -1713,17 +4185,300 @@
     return list;
   }
 
-  function getVisibleDays(start, count, showWeekends) {
+  // ─── Calendar helpers ─────────────────────────────────────────────────────────
+
+  function getVisibleDays(start, count, showWeekends, m = null) {
     const days = [];
     let cursor = startOfDay(new Date(start));
+    const minStart = m ? bookableStartDate(m) : null;
+    const maxEnd = m ? bookableEndDate(m) : null;
+    if (minStart && cursor < minStart) cursor = new Date(minStart);
     let guard = 0;
-    while (days.length < count && guard < 366) {
+    while (days.length < count && guard < 400) {
+      if (maxEnd && cursor > maxEnd) break;
       const dow = cursor.getDay();
       if (showWeekends || (dow !== 0 && dow !== 6)) days.push(new Date(cursor));
       cursor = addDays(cursor, 1);
       guard++;
     }
     return days;
+  }
+
+  /** Move the calendar window by N displayed days (skips Sat/Sun when weekends hidden). */
+  function shiftViewByDisplayedDays(start, delta, showWeekends) {
+    let cursor = startOfDay(new Date(start));
+    const step = delta >= 0 ? 1 : -1;
+    let moved = 0;
+    let guard = 0;
+    while (moved < Math.abs(delta) && guard < 366) {
+      cursor = addDays(cursor, step);
+      const dow = cursor.getDay();
+      if (showWeekends || (dow !== 0 && dow !== 6)) moved++;
+      guard++;
+    }
+    return cursor;
+  }
+
+  function dayHasGapBefore(days, index) {
+    if (index <= 0) return false;
+    const ms = days[index].getTime() - days[index - 1].getTime();
+    return ms > 36 * 60 * 60 * 1000; // more than 1.5 days → weekend/hidden days skipped
+  }
+
+  function bookableStartDate(m) {
+    const iso = m.range_start_stored || m.calendar_start || m.range_start || meetingTodayStr(m);
+    return parseDateIsoLocal(iso);
+  }
+
+  function bookableEndDate(m) {
+    const stored = String(m.range_end_stored || m.calendar_end || '').trim();
+    if (!stored || stored === OPEN_ENDED_RANGE_END) return null;
+    return parseDateIsoLocal(stored);
+  }
+
+  function isDateBookable(m, dateObj) {
+    const d = startOfDay(dateObj);
+    if (d < bookableStartDate(m)) return false;
+    const end = bookableEndDate(m);
+    if (end && d > end) return false;
+    return true;
+  }
+
+  function calendarMaxViewStart(m, state = null) {
+    const end = bookableEndDate(m);
+    if (!end) return null;
+    const dayCount = state ? preferredDayCount(state, m) : preferredDayCount({ slug: m.slug || '', dayColPref: null }, m);
+    let target = shiftViewByDisplayedDays(end, -(dayCount - 1), m.show_weekends);
+    const min = bookableStartDate(m);
+    if (target < min) target = min;
+    if (target > end) target = end;
+    return target;
+  }
+
+  function clampViewStart(m, proposed, state = null) {
+    let v = startOfDay(proposed);
+    const min = bookableStartDate(m);
+    if (v < min) v = min;
+    const maxStart = calendarMaxViewStart(m, state);
+    if (maxStart && v > maxStart) v = maxStart;
+    return v;
+  }
+
+  /** Jump to last bookable date; if open-ended, last marked availability day. */
+  function jumpTargetEnd(m, state = null) {
+    const maxStart = calendarMaxViewStart(m, state);
+    if (maxStart) return maxStart;
+    const lastAvail = lastAvailabilityDay(m);
+    if (!lastAvail) return null;
+    const dayCount = state ? preferredDayCount(state, m) : preferredDayCount({ slug: m.slug || '', dayColPref: null }, m);
+    let target = shiftViewByDisplayedDays(startOfDay(lastAvail), -(dayCount - 1), m.show_weekends);
+    const min = bookableStartDate(m);
+    if (target < min) target = min;
+    return target;
+  }
+
+  function slotHmInTz(iso, timeZone) {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(new Date(iso)).map((x) => [x.type, x.value])
+    );
+    return {
+      dateStr: `${p.year}-${p.month}-${p.day}`,
+      hour: Number(p.hour),
+      minute: Number(p.minute),
+    };
+  }
+
+  function slotSavedForMe(m, slotIso, attendeeId) {
+    if (!attendeeId) return false;
+    return availabilityIdsAt(m, slotIso).includes(attendeeId);
+  }
+
+  function countCandidateSlots(state, m) {
+    if (!state.attendeeId) return 0;
+    let n = 0;
+    for (const iso of state.selectedSlots) {
+      if (!slotSavedForMe(m, iso, state.attendeeId)) n++;
+    }
+    return n;
+  }
+
+  function countPendingClearSlots(state, m) {
+    if (!state.attendeeId) return 0;
+    let n = 0;
+    for (const [iso, ids] of Object.entries(m.availability || {})) {
+      if (!(ids || []).includes(state.attendeeId)) continue;
+      if (!state.selectedSlots.has(iso)) n++;
+    }
+    return n;
+  }
+
+  function restoreSavedSelectionOnly(state) {
+    state.selectedSlots.clear();
+    if (!state.attendeeId) return;
+    for (const [iso, ids] of Object.entries(state.meet.availability || {})) {
+      if ((ids || []).includes(state.attendeeId)) state.selectedSlots.add(iso);
+    }
+  }
+
+  function selectedTimesOnDate(state, dateStr) {
+    const m = state.meet;
+    const mtz = meetingTz(m);
+    const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
+    const times = [];
+    for (const hm of hours) {
+      const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+      if (state.selectedSlots.has(iso)) {
+        times.push({ hour: hm.hour, minute: hm.minute });
+      }
+    }
+    return times;
+  }
+
+  function dayOfMonthLabel(dateStr) {
+    return String(Number(String(dateStr).slice(8, 10)));
+  }
+
+  /** Marked days in chronological / display order (weekends only if shown in the grid). */
+  function markedDatesInDisplayOrder(state, m) {
+    const marked = [...(state.headerMarkedDates || [])];
+    marked.sort();
+    return marked.filter((ds) => {
+      const d = parseDateIsoLocal(ds);
+      if (!isDateBookable(m, d)) return false;
+      const dow = d.getDay();
+      if (!m.show_weekends && (dow === 0 || dow === 6)) return false;
+      return true;
+    });
+  }
+
+  /** Next `count` displayed days starting at dateStr (inclusive), stopping at bookable end. */
+  function displayedDaysFrom(startDateStr, count, m) {
+    const out = [];
+    let cursor = startOfDay(parseDateIsoLocal(startDateStr));
+    const maxEnd = bookableEndDate(m);
+    let guard = 0;
+    while (out.length < count && guard < 500) {
+      if (maxEnd && cursor > maxEnd) break;
+      if (isDateBookable(m, cursor)) {
+        const dow = cursor.getDay();
+        if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+          out.push(toDateIso(cursor));
+        }
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return out;
+  }
+
+  function copyMarkedDaysToClipboard(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to copy availability' };
+    const dates = markedDatesInDisplayOrder(state, state.meet);
+    if (!dates.length) {
+      return { ok: false, message: 'Mark one or more day columns first, then Copy days' };
+    }
+    const patterns = dates.map((dateStr) => ({
+      times: selectedTimesOnDate(state, dateStr),
+    }));
+    const labels = dates.map(dayOfMonthLabel);
+    const withTimes = patterns.filter((p) => p.times.length).length;
+    state.availClipboard = { patterns, labels: [...labels], sourceDates: [...dates] };
+    state.headerMarkedDates = new Set();
+    return {
+      ok: true,
+      message: `Copied ${dates.length} day(s): ${labels.join(', ')} — mark the first destination day, then Paste`,
+      withTimes,
+    };
+  }
+
+  /** OR into selection only — never clears; leave already-selected (incl. saved) unchanged. */
+  function applyTimesToDate(state, dateStr, times) {
+    const m = state.meet;
+    const mtz = meetingTz(m);
+    let added = 0;
+    if (!times.length) return { added: 0 };
+    if (!isDateBookable(m, parseDateIsoLocal(dateStr))) {
+      return { added: 0 };
+    }
+    const dow = parseDateIsoLocal(dateStr).getDay();
+    if (!m.show_weekends && (dow === 0 || dow === 6)) {
+      return { added: 0 };
+    }
+    for (const t of times) {
+      const iso = slotIsoFromMeetingDate(dateStr, t, mtz);
+      if (state.selectedSlots.has(iso)) continue;
+      state.selectedSlots.add(iso);
+      added++;
+    }
+    return { added };
+  }
+
+  function pasteClipboardOntoMarkedDays(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to paste availability' };
+    const clip = state.availClipboard;
+    if (!clip?.patterns?.length) {
+      return { ok: false, message: 'Nothing to paste — Copy days first' };
+    }
+    const marked = markedDatesInDisplayOrder(state, state.meet);
+    if (!marked.length) {
+      return { ok: false, message: 'Mark the first destination day column, then Paste' };
+    }
+    const start = marked[0];
+    const targets = displayedDaysFrom(start, clip.patterns.length, state.meet);
+    let added = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const r = applyTimesToDate(state, targets[i], clip.patterns[i].times || []);
+      added += r.added;
+    }
+    state.headerMarkedDates = new Set();
+    const destLabels = targets.map(dayOfMonthLabel).join(', ');
+    const truncated = targets.length < clip.patterns.length;
+    let message = `Pasted ${clip.patterns.length} day sequence onto ${targets.length} day(s): ${destLabels}`;
+    if (added) message += ` · ${added} new pick(s)`;
+    message += ' — edit then Save';
+    if (truncated) message += ' (stopped at end of bookable range)';
+    return { ok: true, message };
+  }
+
+  function invertMarkedDays(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to invert days' };
+    const m = state.meet;
+    const dates = markedDatesInDisplayOrder(state, m);
+    if (!dates.length) {
+      return { ok: false, message: 'Mark one or more day columns first, then Invert days' };
+    }
+    const mtz = meetingTz(m);
+    const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
+    let flipped = 0;
+    for (const dateStr of dates) {
+      for (const hm of hours) {
+        const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+        const saved = slotSavedForMe(m, iso, state.attendeeId);
+        const selected = state.selectedSlots.has(iso);
+        // Leave solid saved selection alone
+        if (saved && selected) continue;
+        if (selected) {
+          state.selectedSlots.delete(iso);
+          flipped++;
+        } else {
+          state.selectedSlots.add(iso);
+          flipped++;
+        }
+      }
+    }
+    state.headerMarkedDates = new Set();
+    return {
+      ok: true,
+      message: `Inverted ${dates.length} day(s) · ${flipped} slot(s) flipped (saved solid picks unchanged)`,
+    };
   }
 
   function buildHours(startStr, endStr, granularity) {
@@ -1741,21 +4496,21 @@
     return { hour: h || 0, minute: m || 0 };
   }
 
+  // ─── Recurrence ───────────────────────────────────────────────────────────────
+
   const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   function weekdaySelect(name, value) {
-    return `<select name="${name}">${WEEKDAYS.map((d, i) =>
-      `<option value="${i}"${Number(value) === i ? ' selected' : ''}>${d}</option>`).join('')}</select>`;
+    return `<select name="${name}">${WEEKDAYS.map((d, i) => `<option value="${i}"${Number(value) === i ? ' selected' : ''}>${d}</option>`).join('')}</select>`;
   }
 
   function nthSelect(name, value) {
-    return `<select name="${name}">${[[1, '1st'], [2, '2nd'], [3, '3rd'], [4, '4th'], [-1, 'last (e.g. last Friday)']].map(([v, l]) =>
-      `<option value="${v}"${Number(value) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+    return `<select name="${name}">${[[1, '1st'], [2, '2nd'], [3, '3rd'], [4, '4th'], [-1, 'last']].map(([v, l]) => `<option value="${v}"${Number(value) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
   }
 
   function recurrenceOptions(current) {
     return [
-      ['none', 'One-off (find one time, then confirm)'],
+      ['none', 'One-off'],
       ['weekly', 'Weekly on chosen day(s)'],
       ['monthly_day', 'Same date each month (e.g. the 19th)'],
       ['monthly_nth_weekday', 'Same weekday each month (e.g. 3rd Monday)'],
@@ -1766,23 +4521,14 @@
   function recurrenceExtraFields(rec, showWeekends = false) {
     const type = rec.type || 'none';
     if (type === 'weekly') {
-      return `
-        <label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="52"> week(s)</label>
-        ${weekdayCheckboxes(rec, showWeekends)}`;
+      return `<label>Repeat every <input type="number" name="interval" value="${rec.interval || 1}" min="1" max="52"> week(s)</label>${weekdayCheckboxes(rec, showWeekends)}`;
     }
     if (type === 'monthly_day') {
       const day = Number(rec.day || 1);
       const interval = Number(rec.interval || 1);
-      const dayOpts = Array.from({ length: 31 }, (_, i) => {
-        const v = i + 1;
-        return `<option value="${v}"${day === v ? ' selected' : ''}>${v}</option>`;
-      }).join('');
-      const intOpts = Array.from({ length: 24 }, (_, i) => {
-        const v = i + 1;
-        return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`;
-      }).join('');
-      return `
-        <p class="meta">Same calendar date each month (e.g. the 19th). Shorter months use the last day if needed.</p>
+      const dayOpts = Array.from({ length: 31 }, (_, i) => { const v = i + 1; return `<option value="${v}"${day === v ? ' selected' : ''}>${v}</option>`; }).join('');
+      const intOpts = Array.from({ length: 24 }, (_, i) => { const v = i + 1; return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`; }).join('');
+      return `<p class="meta">Same calendar date each month. Shorter months use the last day.</p>
         <div class="recurrence-inline">
           <label>Day <select name="day">${dayOpts}</select></label>
           <label>every <select name="interval">${intOpts}</select> month(s)</label>
@@ -1790,12 +4536,8 @@
     }
     if (type === 'monthly_nth_weekday') {
       const interval = Number(rec.interval || 1);
-      const intOpts = Array.from({ length: 24 }, (_, i) => {
-        const v = i + 1;
-        return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`;
-      }).join('');
-      return `
-        <p class="meta">Example: 3rd Monday every 2 months.</p>
+      const intOpts = Array.from({ length: 24 }, (_, i) => { const v = i + 1; return `<option value="${v}"${interval === v ? ' selected' : ''}>${v}</option>`; }).join('');
+      return `<p class="meta">Example: 3rd Monday every 2 months.</p>
         <div class="recurrence-inline">
           <label>${nthSelect('nth', rec.nth ?? 3)}</label>
           <label>${weekdaySelect('weekday', rec.weekday ?? 1)}</label>
@@ -1803,15 +4545,14 @@
         </div>`;
     }
     if (type === 'friday_13th') {
-      return '<p class="meta">Highlights dates that are both the <strong>13th</strong> and a <strong>Friday</strong>. Rare — usually leave as One-off.</p>';
+      return '<p class="meta">Highlights dates that are the 13th and a Friday. Rare — usually leave as One-off.</p>';
     }
-    return '<p class="meta">Pick a time everyone can make, then confirm it. Recurrence marks similar future dates on the calendar.</p>';
+    return '<p class="meta">Pick a time everyone can make, then schedule it on Confirm meeting choices.</p>';
   }
 
   function weekdayCheckboxes(rec, showWeekends) {
     const selected = new Set(rec.weekdays || [1]);
-    return `
-      <label>On these days</label>
+    return `<label>On these days</label>
       <div class="weekday-checks" id="weekday-checks">
         ${WEEKDAYS.map((d, i) => {
           const weekend = i === 0 || i === 6;
@@ -1824,14 +4565,8 @@
 
   function weekdaysFromForm(fd) {
     const weekdays = [];
-    for (let i = 0; i < 7; i++) {
-      if (fd.get(`weekday_${i}`) !== null) weekdays.push(i);
-    }
+    for (let i = 0; i < 7; i++) { if (fd.get(`weekday_${i}`) !== null) weekdays.push(i); }
     return weekdays;
-  }
-
-  function weekdaysToNames(nums) {
-    return (nums || [1]).map((n) => WEEKDAYS[Number(n)] || n).join(', ');
   }
 
   function buildRecurrenceFromForm(fd) {
@@ -1852,86 +4587,101 @@
     return base;
   }
 
-  function slotIsoFromLocal(day, hm) {
-    const d = new Date(day);
-    d.setHours(hm.hour, hm.minute, 0, 0);
-    return d.toISOString();
-  }
+  // ─── Date/time utilities ──────────────────────────────────────────────────────
 
   function startOfDay(date) { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
   function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
   function meetingTodayStr(m) {
-    try {
-      return new Intl.DateTimeFormat('en-CA', { timeZone: meetingTz(m) }).format(new Date());
-    } catch (_) {
-      return new Intl.DateTimeFormat('en-CA').format(new Date());
-    }
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: meetingTz(m) }).format(new Date()); }
+    catch (_) { return new Intl.DateTimeFormat('en-CA').format(new Date()); }
   }
-  function parseDateIsoLocal(iso) {
-    const [y, mo, d] = iso.split('-').map(Number);
-    return startOfDay(new Date(y, mo - 1, d));
-  }
-  function calendarMinStart(m) {
-    return parseDateIsoLocal(m.calendar_start || meetingTodayStr(m));
-  }
+  function parseDateIsoLocal(iso) { const [y, mo, d] = iso.split('-').map(Number); return startOfDay(new Date(y, mo - 1, d)); }
+  function calendarMinStart(m) { return bookableStartDate(m); }
   function calendarViewStart(state, m) {
-    const min = calendarMinStart(m);
-    return state.viewStart < min ? min : state.viewStart;
+    return clampViewStart(m, state.viewStart, state);
   }
   function toDateIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function formatDayHead(d) { return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
+  function lastAvailabilityDay(m) {
+    let maxMs = 0;
+    for (const [iso, ids] of Object.entries(m.availability || {})) {
+      if (!ids || !ids.length) continue;
+      const t = new Date(iso).getTime();
+      if (!Number.isNaN(t) && t > maxMs) maxMs = t;
+    }
+    return maxMs ? startOfDay(new Date(maxMs)) : null;
+  }
+
   function formatDayRangeLabel(days) {
     if (!days.length) return '';
     return days.length === 1 ? formatDayHead(days[0]) : `${formatDayHead(days[0])} – ${formatDayHead(days[days.length - 1])}`;
   }
-  function formatHour(hm) { const d = new Date(); d.setHours(hm.hour, hm.minute, 0, 0); return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
-  function formatSlotLocal(iso) { return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  function formatSlotLocal(iso) {
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: tz,
+    });
+  }
+  function formatSlotUtc(iso) { return new Date(iso).toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC'); }
   function attendeeName(m, id) { return m.attendees.find((a) => a.id === id)?.display_name || id; }
   function attendeeLabel(a) { return a.initials ? `${a.display_name} (${a.initials})` : a.display_name; }
   function attendeeLabelById(m, id) { const a = m.attendees.find((x) => x.id === id); return a ? attendeeLabel(a) : id; }
   function attendeeInitials(m, id) { const a = m.attendees.find((x) => x.id === id); return a ? (a.initials || deriveInitials(a.display_name)) : ''; }
   function deriveInitials(name) { return String(name).trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3).toUpperCase(); }
   function countSlotsFor(m, id) { return Object.values(m.availability).filter((ids) => ids.includes(id)).length; }
-  function locationLabel(m, id) { return m.locations.find((l) => l.id === id)?.label || id; }
-  function isWellFormedEmail(s) {
-    const v = String(s || '').trim();
-    if (!v) return false;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
-  }
+  function countLocationPrefsFor(m, id) { return (m.location_preferences?.[id] || []).length; }
+  function lines(v) { return String(v || '').split('\n').map((s) => s.trim()).filter(Boolean); }
+  function shareUrl(slug) { return meetingUrl(slug); }
 
+  function isWellFormedEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || '').trim()); }
   function validateContact(raw) {
     const v = String(raw || '').trim();
     if (!v) return '';
-    if (v.includes('@') && !isWellFormedEmail(v)) {
-      throw new Error('Contact must be a valid email (e.g. name@example.com) or a phone number without @');
+    const parts = v.split(',').map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (part.includes('@') && !isWellFormedEmail(part)) {
+        throw new Error('Contact must be a valid email and/or phone number (comma-separated OK)');
+      }
     }
     return v;
+  }
+  function isWellFormedWebUrl(s) {
+    const raw = String(s || '').trim();
+    if (!raw) return false;
+    try {
+      const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/+/, '')}`);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (_) { return false; }
   }
 
   function contactHref(c) {
     const v = String(c || '').trim();
-    if (!v) return '#';
-    if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : '#';
-    return `tel:${v}`;
+    if (!v || v.includes(',')) return null;
+    if (v.includes('@')) return isWellFormedEmail(v) ? `mailto:${v}` : null;
+    if (/^https?:\/\//i.test(v) || /^www\./i.test(v) || /\.[a-z]{2,}(\/|$)/i.test(v)) {
+      return isWellFormedWebUrl(v) ? normalizeExternalUrl(v) : null;
+    }
+    return null;
   }
-
   function renderContactCell(a) {
     if (!a.contact) return '—';
-    if (a.contact.includes('@') && !isWellFormedEmail(a.contact)) {
-      return `${escapeHtml(a.contact)} <span class="badge warn" title="Not a valid email — use Edit to fix">check</span>`;
+    const parts = String(a.contact).split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return parts.map((part) => {
+        const href = contactHref(part);
+        return href ? `<a href="${escapeHtml(href)}">${escapeHtml(part)}</a>` : escapeHtml(part);
+      }).join(', ');
     }
     const href = contactHref(a.contact);
-    if (href === '#') return escapeHtml(a.contact);
-    return `<a href="${escapeHtml(href)}">${escapeHtml(a.contact)}</a>`;
+    if (href) return `<a href="${escapeHtml(href)}">${escapeHtml(a.contact)}</a>`;
+    return escapeHtml(a.contact);
   }
 
-  function lines(v) { return String(v || '').split('\n').map((s) => s.trim()).filter(Boolean); }
-  function shareUrl(slug) { return meetingUrl(slug); }
-  function slugify(v) { return String(v).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'meet'; }
-
-  function formatSlotUtc(iso) {
-    const d = new Date(iso);
-    return d.toISOString().replace('T', ' ').replace('.000Z', ' UTC').replace('Z', ' UTC');
+  function normalizeExternalUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '#';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith('//')) return `https:${raw}`;
+    return `https://${raw.replace(/^\/+/, '')}`;
   }
 
   function sanitizeHtml(html) {
@@ -1958,6 +4708,6 @@
     el.style.background = isError ? '#b91c1c' : '#111827';
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
   }
 })();

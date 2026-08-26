@@ -35,14 +35,23 @@ final class MeetFile
             'location_preferences' => [],
             'notes' => '',
             'show_weekends' => false,
-            'day_start' => '08:00',
-            'day_end' => '20:00',
+            'day_start' => '09:00',
+            'day_end' => '16:00',
+            'am_start' => '09:00',
+            'am_end' => '12:00',
+            'pm_start' => '12:00',
+            'pm_end' => '16:00',
             'timezone' => '',
+            'recorded_timezones' => [],
             'organizer_intro' => '',
             'page_times_intro' => '',
             'page_after_intro' => '',
             'confirmed_slot' => null,
             'confirmed_location' => null,
+            'confirmed_location_physical' => null,
+            'confirmed_location_online' => null,
+            'confirmed_location_ids' => [],
+            'app_version' => '1.8.53',
         ];
     }
 
@@ -99,10 +108,11 @@ final class MeetFile
         $meet = self::normalize($meet);
         $out = ["@meet v{$meet['version']}"];
         $header = [
-            'id', 'slug', 'title', 'created', 'updated',
+            'id', 'slug', 'title', 'created', 'updated', 'app_version',
             'duration_minutes', 'slot_granularity_minutes',
             'range_start', 'range_end',
             'show_weekends', 'day_start', 'day_end', 'timezone',
+            'am_start', 'am_end', 'pm_start', 'pm_end',
         ];
         foreach ($header as $key) {
             if (!array_key_exists($key, $meet) || $meet[$key] === null || $meet[$key] === '') {
@@ -114,8 +124,30 @@ final class MeetFile
         if (!empty($meet['confirmed_slot'])) {
             $out[] = 'confirmed_slot: ' . $meet['confirmed_slot'];
         }
-        if (!empty($meet['confirmed_location'])) {
-            $out[] = 'confirmed_location: ' . $meet['confirmed_location'];
+        $recordedTzs = array_values(array_filter(array_map('strval', $meet['recorded_timezones'] ?? [])));
+        if ($recordedTzs !== []) {
+            $out[] = 'recorded_timezones: ' . implode(',', $recordedTzs);
+        }
+        // Prefer explicit dual fields; keep legacy confirmed_location for older readers.
+        $phys = trim((string) ($meet['confirmed_location_physical'] ?? ''));
+        $online = trim((string) ($meet['confirmed_location_online'] ?? ''));
+        $legacy = trim((string) ($meet['confirmed_location'] ?? ''));
+        if ($phys !== '') {
+            $out[] = 'confirmed_location_physical: ' . $phys;
+        }
+        if ($online !== '') {
+            $out[] = 'confirmed_location_online: ' . $online;
+        }
+        $compat = $online !== '' ? $online : ($phys !== '' ? $phys : $legacy);
+        if ($compat !== '') {
+            $out[] = 'confirmed_location: ' . $compat;
+        }
+        $confirmedIds = array_values(array_filter(array_map(
+            'strval',
+            $meet['confirmed_location_ids'] ?? []
+        )));
+        if ($confirmedIds !== []) {
+            $out[] = 'confirmed_location_ids: ' . implode(',', $confirmedIds);
         }
 
         $out[] = '';
@@ -370,23 +402,116 @@ final class MeetFile
         $meet['location_preferences'] = $meet['location_preferences'] ?? [];
         $meet['recurrence'] = $meet['recurrence'] ?? ['type' => 'none'];
         $meet['show_weekends'] = (bool) ($meet['show_weekends'] ?? false);
-        $meet['day_start'] = $meet['day_start'] ?? '08:00';
-        $meet['day_end'] = $meet['day_end'] ?? '20:00';
+        $meet['day_start'] = $meet['day_start'] ?? '09:00';
+        $meet['day_end'] = $meet['day_end'] ?? '16:00';
+        $meet['am_start'] = $meet['am_start'] ?? '09:00';
+        $meet['am_end'] = $meet['am_end'] ?? '12:00';
+        $meet['pm_start'] = $meet['pm_start'] ?? '12:00';
+        $meet['pm_end'] = $meet['pm_end'] ?? '16:00';
         $meet['timezone'] = Timezone::normalize((string) ($meet['timezone'] ?? ''));
+        $rawRecorded = $meet['recorded_timezones'] ?? [];
+        if (is_string($rawRecorded)) {
+            $rawRecorded = array_map('trim', explode(',', $rawRecorded));
+        }
+        $meet['recorded_timezones'] = array_values(array_unique(array_filter(array_map(
+            static fn ($z) => Timezone::normalize((string) $z),
+            is_array($rawRecorded) ? $rawRecorded : []
+        ), static fn ($z) => $z !== '')));
         $meet['organizer_intro'] = $meet['organizer_intro'] ?? '';
         $meet['page_times_intro'] = $meet['page_times_intro'] ?? '';
         $meet['page_after_intro'] = $meet['page_after_intro'] ?? '';
+        $meet['confirmed_location_physical'] = $meet['confirmed_location_physical'] ?? null;
+        $meet['confirmed_location_online'] = $meet['confirmed_location_online'] ?? null;
+        $meet['app_version'] = trim((string) ($meet['app_version'] ?? ''));
+        $rawIds = $meet['confirmed_location_ids'] ?? [];
+        if (is_string($rawIds)) {
+            $rawIds = array_map('trim', explode(',', $rawIds));
+        }
+        $meet['confirmed_location_ids'] = array_values(array_unique(array_filter(array_map(
+            'strval',
+            is_array($rawIds) ? $rawIds : []
+        ))));
+        // Migrate legacy single confirmed_location into physical/online by kind.
+        $legacy = trim((string) ($meet['confirmed_location'] ?? ''));
+        if ($legacy !== '') {
+            $phys = trim((string) ($meet['confirmed_location_physical'] ?? ''));
+            $online = trim((string) ($meet['confirmed_location_online'] ?? ''));
+            if ($phys === '' && $online === '') {
+                $kind = 'other';
+                foreach ($meet['locations'] as $loc) {
+                    if (($loc['id'] ?? '') === $legacy) {
+                        $kind = (string) ($loc['kind'] ?? 'other');
+                        break;
+                    }
+                }
+                if ($kind === 'hybrid') {
+                    $meet['confirmed_location_online'] = $legacy;
+                    $meet['confirmed_location_physical'] = $legacy;
+                } elseif (in_array($kind, ['video', 'phone'], true)) {
+                    $meet['confirmed_location_online'] = $legacy;
+                } else {
+                    $meet['confirmed_location_physical'] = $legacy;
+                }
+            }
+        }
+        if ($meet['confirmed_location_ids'] === []) {
+            foreach (['confirmed_location_online', 'confirmed_location_physical', 'confirmed_location'] as $key) {
+                $id = trim((string) ($meet[$key] ?? ''));
+                if ($id !== '' && !in_array($id, $meet['confirmed_location_ids'], true)) {
+                    $meet['confirmed_location_ids'][] = $id;
+                }
+            }
+        }
         foreach ($meet['attendees'] as &$attendee) {
             if (!isset($attendee['contact']) && isset($attendee['alias'])) {
                 $attendee['contact'] = $attendee['alias'];
             }
             $attendee['contact'] = $attendee['contact'] ?? '';
             $attendee['initials'] = $attendee['initials'] ?? '';
-            $attendee['pin'] = preg_replace('/\D/', '', (string) ($attendee['pin'] ?? ''));
+            $attendee['pin'] = self::normalizePasscode((string) ($attendee['pin'] ?? ''));
             $attendee['organizer'] = !empty($attendee['organizer']);
         }
         unset($attendee);
+        self::sanitizeAttendanceData($meet);
         return $meet;
+    }
+
+    /** Drop availability and location prefs for removed attendees. */
+    public static function sanitizeAttendanceData(array &$meet): void
+    {
+        $valid = array_flip(array_column($meet['attendees'] ?? [], 'id'));
+        foreach ($meet['availability'] as $slot => $ids) {
+            $filtered = array_values(array_filter(
+                is_array($ids) ? $ids : [],
+                static fn ($id) => isset($valid[(string) $id])
+            ));
+            if ($filtered === []) {
+                unset($meet['availability'][$slot]);
+            } else {
+                $meet['availability'][$slot] = $filtered;
+            }
+        }
+        foreach (array_keys($meet['location_preferences'] ?? []) as $attendeeId) {
+            if (!isset($valid[$attendeeId])) {
+                unset($meet['location_preferences'][$attendeeId]);
+            }
+        }
+    }
+
+    /** @return string|null Error message, or null if valid. */
+    public static function validateDurationSlot(int $duration, int $slot): ?string
+    {
+        if ($duration < 1) {
+            return 'Meeting length must be at least 1 minute.';
+        }
+        if ($slot < 1) {
+            return 'Calendar slot size must be at least 1 minute.';
+        }
+        if ($duration % $slot !== 0) {
+            return 'Calendar slot size must divide meeting length evenly.';
+        }
+
+        return null;
     }
 
     private static function castScalar(string $key, string $value): mixed
@@ -399,6 +524,12 @@ final class MeetFile
         }
         if (in_array($key, ['weekdays'], true)) {
             return array_map('intval', array_filter(array_map('trim', explode(',', $value))));
+        }
+        if ($key === 'confirmed_location_ids') {
+            return array_values(array_filter(array_map('trim', explode(',', $value))));
+        }
+        if ($key === 'recorded_timezones') {
+            return array_values(array_filter(array_map('trim', explode(',', $value))));
         }
         return $value;
     }
@@ -427,6 +558,15 @@ final class MeetFile
     public static function sanitizePipeField(string $value): string
     {
         return trim(str_replace('|', '/', (string) $value));
+    }
+
+    /** Sanitize stored passcode on load (no length wipe — preserves legacy short codes). */
+    public static function normalizePasscode(string $pin): string
+    {
+        $pin = strtolower(trim($pin));
+        $pin = preg_replace('/[|\r\n\t]/', '', $pin) ?? '';
+        $pin = preg_replace('/[^\x20-\x7e]/', '', $pin) ?? '';
+        return preg_replace('/ {2,}/', ' ', $pin) ?? '';
     }
 
     public static function sanitizeHeaderValue(string $value): string
@@ -467,7 +607,16 @@ final class MeetFile
 
     public static function generateRandomSlug(): string
     {
-        return substr(bin2hex(random_bytes(6)), 0, 12);
+        // Pronounceable 7-letter pattern: C V C C V C C (lowercase a–z only).
+        $cons = 'bcdfghjklmnpqrstvwxz';
+        $vow = 'aeiou';
+        $pattern = ['c', 'v', 'c', 'c', 'v', 'c', 'c'];
+        $out = '';
+        foreach ($pattern as $kind) {
+            $alphabet = $kind === 'v' ? $vow : $cons;
+            $out .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        return $out;
     }
 
     public static function slugify(string $input): string

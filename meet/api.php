@@ -39,6 +39,9 @@ try {
             case 'list_meetings':
                 handleListMeetings($store, $input);
                 break;
+            case 'delete_meeting':
+                handleDeleteMeeting($store, $input);
+                break;
             case 'join':
                 handleJoin($store, $slug, $input);
                 break;
@@ -60,6 +63,9 @@ try {
             case 'add_location':
                 handleAddLocation($store, $slug, $input);
                 break;
+            case 'update_location':
+                handleUpdateLocation($store, $slug, $input);
+                break;
             case 'remove_location':
                 handleRemoveLocation($store, $slug, $input);
                 break;
@@ -69,6 +75,12 @@ try {
             case 'add_attachment':
                 handleAddAttachment($store, $slug, $input);
                 break;
+            case 'update_attachment':
+                handleUpdateAttachment($store, $slug, $input);
+                break;
+            case 'remove_attachment':
+                handleRemoveAttachment($store, $slug, $input);
+                break;
             case 'confirm':
                 handleConfirm($store, $slug, $input);
                 break;
@@ -77,6 +89,9 @@ try {
                 break;
             case 'update_attendee':
                 handleUpdateAttendee($store, $slug, $input);
+                break;
+            case 'remove_attendee':
+                handleRemoveAttendee($store, $slug, $input);
                 break;
             default:
                 Response::error('Unknown action', 400);
@@ -91,6 +106,7 @@ try {
     }
     Response::error($e->getMessage(), $code);
 } catch (\Throwable $e) {
+    error_log('meet api.php: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     Response::error('Server error', 500);
 }
 
@@ -124,6 +140,42 @@ function handleListMeetings(MeetStore $store, array $input): void
     Response::json(['ok' => true, 'meetings' => $meetings]);
 }
 
+function handleDeleteMeeting(MeetStore $store, array $input): void
+{
+    $displayName = trim((string) ($input['display_name'] ?? ''));
+    $pin = trim((string) ($input['pin'] ?? ''));
+    $slug = trim((string) ($input['slug'] ?? ''));
+    if ($displayName === '' || $pin === '' || $slug === '') {
+        Response::error('Name, passcode, and meeting are required');
+    }
+    $pin = sanitizePasscode($pin);
+    $matches = $store->listMeetingsForPerson($displayName, $pin);
+    $allowed = false;
+    foreach ($matches as $row) {
+        if (($row['slug'] ?? '') === $store->resolveSlug($slug) || ($row['slug'] ?? '') === $slug) {
+            $allowed = true;
+            break;
+        }
+    }
+    // Also allow match after resolve
+    if (!$allowed) {
+        $resolved = $store->resolveSlug($slug);
+        foreach ($matches as $row) {
+            if ($store->resolveSlug((string) ($row['slug'] ?? '')) === $resolved) {
+                $allowed = true;
+                break;
+            }
+        }
+    }
+    if (!$allowed) {
+        Response::error('Meeting not found for that identity and passcode', 404);
+    }
+    if (!$store->deleteMeetingBySlug($slug)) {
+        Response::error('Could not delete meeting', 500);
+    }
+    Response::json(['ok' => true]);
+}
+
 function handleJoin(MeetStore $store, string $slug, array $input): void
 {
     $displayName = trim((string) ($input['display_name'] ?? ''));
@@ -145,7 +197,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
             applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
             maybeSetAttendeePin($m['attendees'][$idx], $pin);
             $resolvedId = $m['attendees'][$idx]['id'];
-            return $m;
+            return recordClientTimezone($m, $clientTz);
         }
 
         $matchedId = matchExistingAttendee($m['attendees'], $displayName, $alias, $initials);
@@ -155,7 +207,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
                 applyAttendeeJoin($m['attendees'][$idx], $displayName, $alias, $initials);
                 maybeSetAttendeePin($m['attendees'][$idx], $pin);
                 $resolvedId = $matchedId;
-                return $m;
+                return recordClientTimezone($m, $clientTz);
             }
         }
 
@@ -174,6 +226,7 @@ function handleJoin(MeetStore $store, string $slug, array $input): void
         if ($isFirst || !Timezone::isValid((string) ($m['timezone'] ?? ''))) {
             $m['timezone'] = Timezone::normalize((string) ($m['timezone'] ?? ''), $clientTz !== '' ? $clientTz : 'UTC');
         }
+        $m = recordClientTimezone($m, $clientTz);
         return $m;
     });
 
@@ -359,11 +412,30 @@ function verifyAttendeePin(array $attendee, string $pin): bool
     if (!attendeeHasPin($attendee)) {
         return true;
     }
-    $pin = normalizePin($pin);
+    $pin = sanitizePasscode($pin);
     if ($pin === '') {
         return false;
     }
-    return $pin === (string) ($attendee['pin'] ?? '');
+    return $pin === sanitizePasscode((string) ($attendee['pin'] ?? ''));
+}
+
+/** @param array<string, mixed> $meet */
+function recordClientTimezone(array $meet, string $clientTz): array
+{
+    $norm = Timezone::normalize($clientTz);
+    if ($norm === '' || !Timezone::isValid($norm)) {
+        return $meet;
+    }
+    $list = $meet['recorded_timezones'] ?? [];
+    if (!is_array($list)) {
+        $list = array_filter(array_map('trim', explode(',', (string) $list)));
+    }
+    $list = array_values(array_unique(array_filter(array_map('strval', $list))));
+    if (!in_array($norm, $list, true)) {
+        $list[] = $norm;
+    }
+    $meet['recorded_timezones'] = $list;
+    return $meet;
 }
 
 /** @param array<string, mixed> $attendee */
@@ -377,6 +449,12 @@ function setAttendeePin(array &$attendee, string $pin): void
 }
 
 /** @param array<string, mixed> $attendee */
+function clearAttendeePin(array &$attendee): void
+{
+    $attendee['pin'] = '';
+}
+
+/** @param array<string, mixed> $attendee */
 function maybeSetAttendeePin(array &$attendee, string $pin): void
 {
     if ($pin === '' || attendeeHasPin($attendee)) {
@@ -385,9 +463,21 @@ function maybeSetAttendeePin(array &$attendee, string $pin): void
     setAttendeePin($attendee, $pin);
 }
 
+/** Fold case and strip unsafe characters. Does not enforce length (legacy codes). */
+function sanitizePasscode(string $pin): string
+{
+    return MeetFile::normalizePasscode($pin);
+}
+
+/** Sanitize and require length 2–20 for newly set passcodes. */
 function normalizePin(string $pin): string
 {
-    return preg_replace('/\D/', '', $pin) ?? '';
+    $pin = sanitizePasscode($pin);
+    $len = strlen($pin);
+    if ($len < 2 || $len > 20) {
+        return '';
+    }
+    return $pin;
 }
 
 /** @param array<int, array<string, mixed>> $attendees */
@@ -463,6 +553,53 @@ function mergeAttendeeRows(array &$meet, string $keepId, string $removeId): void
     ));
 }
 
+/** @param array<string, mixed> $meet */
+function removeAttendeeFromMeet(array &$meet, string $attendeeId): void
+{
+    if (attendeeIndexById($meet['attendees'], $attendeeId) === null) {
+        throw new \RuntimeException('Attendee not found', 404);
+    }
+    if (count($meet['attendees']) <= 1) {
+        throw new \RuntimeException('Cannot remove the only attendee', 400);
+    }
+
+    foreach ($meet['availability'] as $slot => $ids) {
+        $meet['availability'][$slot] = array_values(array_filter($ids, fn ($id) => $id !== $attendeeId));
+        if ($meet['availability'][$slot] === []) {
+            unset($meet['availability'][$slot]);
+        }
+    }
+
+    unset($meet['location_preferences'][$attendeeId]);
+
+    $meet['attendees'] = array_values(array_filter(
+        $meet['attendees'],
+        fn ($att) => ($att['id'] ?? '') !== $attendeeId
+    ));
+}
+
+function handleRemoveAttendee(MeetStore $store, string $slug, array $input): void
+{
+    $actingId = trim((string) ($input['acting_attendee_id'] ?? ''));
+    $targetId = trim((string) ($input['attendee_id'] ?? ''));
+    if ($actingId === '' || $targetId === '') {
+        Response::error('acting_attendee_id and attendee_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    requireActingOrganizer($meet, $actingId);
+
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId) {
+        removeAttendeeFromMeet($m, $targetId);
+        return $m;
+    });
+
+    Response::json([
+        'ok' => true,
+        'meet' => $store->publicView($meet),
+    ]);
+}
+
 function handleSaveAvailability(MeetStore $store, string $slug, array $input): void
 {
     $attendeeId = trim((string) ($input['attendee_id'] ?? ''));
@@ -472,7 +609,8 @@ function handleSaveAvailability(MeetStore $store, string $slug, array $input): v
     }
 
     $meet = $store->loadBySlug($slug);
-    $meet = $store->update($meet['id'], function (array $m) use ($attendeeId, $slots) {
+    $clientTz = trim((string) ($input['client_timezone'] ?? ''));
+    $meet = $store->update($meet['id'], function (array $m) use ($attendeeId, $slots, $clientTz) {
         foreach ($m['availability'] as $slot => $ids) {
             $m['availability'][$slot] = array_values(array_filter($ids, fn ($id) => $id !== $attendeeId));
             if ($m['availability'][$slot] === []) {
@@ -489,7 +627,7 @@ function handleSaveAvailability(MeetStore $store, string $slug, array $input): v
                 $m['availability'][$slot][] = $attendeeId;
             }
         }
-        return $m;
+        return recordClientTimezone($m, $clientTz);
     });
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
@@ -502,6 +640,7 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         'title', 'duration_minutes', 'slot_granularity_minutes', 'day_start', 'day_end',
         'timezone', 'show_weekends', 'organizer_intro', 'page_times_intro', 'page_after_intro',
         'range_start', 'range_end', 'recurrence',
+        'am_start', 'am_end', 'pm_start', 'pm_end',
     ];
     $needsOrganizer = false;
     foreach ($organizerFields as $field) {
@@ -519,6 +658,7 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
             'title', 'notes', 'range_start', 'range_end',
             'duration_minutes', 'slot_granularity_minutes',
             'day_start', 'day_end', 'timezone',
+            'am_start', 'am_end', 'pm_start', 'pm_end',
             'organizer_intro', 'page_times_intro', 'page_after_intro',
         ];
         foreach ($fields as $field) {
@@ -541,35 +681,121 @@ function handleUpdateMeta(MeetStore $store, string $slug, array $input): void
         if (!empty($input['recurrence']) && is_array($input['recurrence'])) {
             $m['recurrence'] = $input['recurrence'];
         }
-        return $m;
+        $duration = (int) ($m['duration_minutes'] ?? 60);
+        $slot = (int) ($m['slot_granularity_minutes'] ?? 30);
+        $slotErr = MeetFile::validateDurationSlot($duration, $slot);
+        if ($slotErr !== null) {
+            throw new \RuntimeException($slotErr, 400);
+        }
+        $clientTz = trim((string) ($input['client_timezone'] ?? ''));
+        return recordClientTimezone($m, $clientTz);
     });
 
     Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }
 
+function isRowLocationInput(array $input): bool
+{
+    return array_key_exists('location_text', $input)
+        || array_key_exists('online_url', $input)
+        || array_key_exists('physical_text', $input)
+        || array_key_exists('notes', $input);
+}
+
+/** @return array{online: string, physical: string} */
+function parseLocationTextField(string $text): array
+{
+    $text = trim($text);
+    if ($text === '') {
+        return ['online' => '', 'physical' => ''];
+    }
+    if (preg_match('#^https?://#i', $text)) {
+        $url = normalizeAttachmentUrl($text);
+        if (!preg_match('#^https?://#i', $url)) {
+            throw new \RuntimeException('Location URL must be a well-formed web address (http:// or https://).', 400);
+        }
+
+        return ['online' => $url, 'physical' => ''];
+    }
+    if (looksLikeMalformedLocationUrl($text)) {
+        return ['online' => '', 'physical' => $text];
+    }
+
+    return ['online' => '', 'physical' => $text];
+}
+
+function looksLikeMalformedLocationUrl(string $text): bool
+{
+    $markers = ['/', '.', 'ww', ':', 'ttp'];
+    $count = 0;
+    foreach ($markers as $m) {
+        if (str_contains($text, $m)) {
+            $count++;
+        }
+    }
+
+    return $count >= 3;
+}
+
+/** @return array{id: string, label: string, kind: string, detail: string} */
+function buildRowLocation(array $input, ?string $existingId = null): array
+{
+    $notes = trim((string) ($input['notes'] ?? $input['label'] ?? ''));
+    if (array_key_exists('location_text', $input)) {
+        $parsed = parseLocationTextField((string) ($input['location_text'] ?? ''));
+        $online = $parsed['online'];
+        $physical = $parsed['physical'];
+    } else {
+        $online = trim((string) ($input['online_url'] ?? ''));
+        $physical = trim((string) ($input['physical_text'] ?? ''));
+    }
+    if ($online === '' && $physical === '') {
+        throw new \RuntimeException('Enter a location (URL or place name).', 400);
+    }
+    if ($online !== '') {
+        $online = normalizeAttachmentUrl($online);
+        if (!preg_match('#^https?://#i', $online)) {
+            throw new \RuntimeException('Location URL must be a well-formed web address (http:// or https://).', 400);
+        }
+    }
+    $label = $notes !== '' ? $notes : ($online !== '' ? 'Online' : 'Physical');
+
+    return [
+        'id' => $existingId ?? MeetFile::generateId('loc'),
+        'label' => $label,
+        'kind' => 'row',
+        'detail' => json_encode(['online' => $online, 'physical' => $physical], JSON_UNESCAPED_UNICODE),
+    ];
+}
+
 function handleAddLocation(MeetStore $store, string $slug, array $input): void
 {
-    $label = trim((string) ($input['label'] ?? ''));
-    if ($label === '') {
-        Response::error('Location label required');
-    }
-
-    $kind = trim((string) ($input['kind'] ?? 'other'));
-    $detail = trim((string) ($input['detail'] ?? ''));
-    if ($kind === 'video' && $detail === '') {
-        Response::error('Online locations need a meeting link URL.');
-    }
-
     $meet = $store->loadBySlug($slug);
-    $location = [
-        'id' => MeetFile::generateId('loc'),
-        'label' => $label,
-        'kind' => $kind,
-        'detail' => $detail,
-    ];
 
-    if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {
-        $location['detail'] = normalizeLocationDetail($location['kind'], $location['detail']);
+    if (isRowLocationInput($input)) {
+        $location = buildRowLocation($input);
+    } else {
+        $label = trim((string) ($input['label'] ?? ''));
+        if ($label === '') {
+            Response::error('Location label required');
+        }
+
+        $kind = trim((string) ($input['kind'] ?? 'other'));
+        $detail = trim((string) ($input['detail'] ?? ''));
+        if ($kind === 'video' && $detail === '') {
+            $detail = 'Link to be added';
+        }
+
+        $location = [
+            'id' => MeetFile::generateId('loc'),
+            'label' => $label,
+            'kind' => $kind,
+            'detail' => $detail,
+        ];
+
+        if (in_array($location['kind'], ['video', 'hybrid'], true) && $location['detail'] !== '') {
+            $location['detail'] = normalizeLocationDetail($location['kind'], $location['detail']);
+        }
     }
 
     $meet = $store->update($meet['id'], function (array $m) use ($location) {
@@ -578,6 +804,75 @@ function handleAddLocation(MeetStore $store, string $slug, array $input): void
     });
 
     Response::json(['ok' => true, 'location' => $location, 'meet' => $store->publicView($meet)]);
+}
+
+function handleUpdateLocation(MeetStore $store, string $slug, array $input): void
+{
+    $locationId = trim((string) ($input['location_id'] ?? ''));
+    if ($locationId === '') {
+        Response::error('location_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+
+    if (isRowLocationInput($input)) {
+        $location = buildRowLocation($input, $locationId);
+        $meet = $store->update($meet['id'], function (array $m) use ($locationId, $location) {
+            $found = false;
+            foreach ($m['locations'] as &$loc) {
+                if (($loc['id'] ?? '') !== $locationId) {
+                    continue;
+                }
+                $found = true;
+                $loc['label'] = $location['label'];
+                $loc['kind'] = $location['kind'];
+                $loc['detail'] = $location['detail'];
+                break;
+            }
+            unset($loc);
+            if (!$found) {
+                throw new \RuntimeException('Location not found', 404);
+            }
+            return $m;
+        });
+    } else {
+        $label = trim((string) ($input['label'] ?? ''));
+        $kind = trim((string) ($input['kind'] ?? ''));
+        $detail = trim((string) ($input['detail'] ?? ''));
+        if ($label === '') {
+            Response::error('label required');
+        }
+        if ($kind === '') {
+            Response::error('kind required');
+        }
+        if ($kind === 'video' && $detail === '') {
+            $detail = 'Link to be added';
+        }
+
+        $meet = $store->update($meet['id'], function (array $m) use ($locationId, $label, $kind, $detail) {
+            $found = false;
+            foreach ($m['locations'] as &$loc) {
+                if (($loc['id'] ?? '') !== $locationId) {
+                    continue;
+                }
+                $found = true;
+                $loc['label'] = $label;
+                $loc['kind'] = $kind;
+                $loc['detail'] = $detail;
+                if (in_array($kind, ['video', 'hybrid'], true) && $detail !== '') {
+                    $loc['detail'] = normalizeLocationDetail($kind, $detail);
+                }
+                break;
+            }
+            unset($loc);
+            if (!$found) {
+                throw new \RuntimeException('Location not found', 404);
+            }
+            return $m;
+        });
+    }
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
 }
 
 function handleRemoveLocation(MeetStore $store, string $slug, array $input): void
@@ -592,6 +887,19 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
     requireActingOrganizer($meet, $actingId);
 
     $meet = $store->update($meet['id'], function (array $m) use ($locationId) {
+        $confirmedIds = array_values(array_unique(array_filter(array_map(
+            'strval',
+            $m['confirmed_location_ids'] ?? []
+        ))));
+        foreach (['confirmed_location', 'confirmed_location_physical', 'confirmed_location_online'] as $legacyKey) {
+            $legacyId = trim((string) ($m[$legacyKey] ?? ''));
+            if ($legacyId !== '' && !in_array($legacyId, $confirmedIds, true)) {
+                $confirmedIds[] = $legacyId;
+            }
+        }
+        if (in_array($locationId, $confirmedIds, true)) {
+            throw new \RuntimeException('Cannot delete a confirmed location. Clear it from Confirm meeting choices first, then remove this one.', 400);
+        }
         $m['locations'] = array_values(array_filter(
             $m['locations'],
             fn ($loc) => ($loc['id'] ?? '') !== $locationId
@@ -601,9 +909,6 @@ function handleRemoveLocation(MeetStore $store, string $slug, array $input): voi
                 $ids,
                 fn ($id) => $id !== $locationId
             ));
-        }
-        if (($m['confirmed_location'] ?? '') === $locationId) {
-            $m['confirmed_location'] = '';
         }
         return $m;
     });
@@ -656,6 +961,68 @@ function handleAddAttachment(MeetStore $store, string $slug, array $input): void
     Response::json(['ok' => true, 'attachment' => $attachment, 'meet' => $store->publicView($meet)]);
 }
 
+function handleUpdateAttachment(MeetStore $store, string $slug, array $input): void
+{
+    $attachmentId = trim((string) ($input['attachment_id'] ?? ''));
+    $label = trim((string) ($input['label'] ?? ''));
+    if ($attachmentId === '' || $label === '') {
+        Response::error('attachment_id and label required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($attachmentId, $label, $input) {
+        $found = false;
+        foreach ($m['attachments'] as &$att) {
+            if (($att['id'] ?? '') !== $attachmentId) {
+                continue;
+            }
+            $found = true;
+            $att['label'] = $label;
+            if (array_key_exists('url', $input)) {
+                $att['type'] = 'url';
+                $att['url'] = normalizeAttachmentUrl(trim((string) $input['url']));
+                unset($att['body']);
+            }
+            if (array_key_exists('body', $input)) {
+                $att['type'] = 'text';
+                $att['body'] = (string) $input['body'];
+                unset($att['url']);
+            }
+            break;
+        }
+        unset($att);
+        if (!$found) {
+            throw new \RuntimeException('Attachment not found', 404);
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
+function handleRemoveAttachment(MeetStore $store, string $slug, array $input): void
+{
+    $attachmentId = trim((string) ($input['attachment_id'] ?? ''));
+    if ($attachmentId === '') {
+        Response::error('attachment_id required');
+    }
+
+    $meet = $store->loadBySlug($slug);
+    $meet = $store->update($meet['id'], function (array $m) use ($attachmentId) {
+        $before = count($m['attachments']);
+        $m['attachments'] = array_values(array_filter(
+            $m['attachments'],
+            static fn ($att) => ($att['id'] ?? '') !== $attachmentId
+        ));
+        if (count($m['attachments']) === $before) {
+            throw new \RuntimeException('Attachment not found', 404);
+        }
+        return $m;
+    });
+
+    Response::json(['ok' => true, 'meet' => $store->publicView($meet)]);
+}
+
 function normalizeAttachmentUrl(string $url): string
 {
     $url = trim($url);
@@ -699,8 +1066,9 @@ function normalizeLocationDetail(string $kind, string $detail): string
         Response::error('Hybrid online link must be a well-formed URL (e.g. https://meet.example.com/room).');
     }
 
-    $suffix = trim(str_replace($matches[1], '', $detail, 1));
-    $suffix = trim(preg_replace('#^·\s*#', '', $suffix));
+    // PHP 8+: str_replace's 4th arg is &$count (by reference) — never pass a literal.
+    $suffix = trim(str_replace($matches[1], '', $detail));
+    $suffix = trim(preg_replace('#^·\s*#', '', $suffix) ?? $suffix);
 
     return $suffix !== '' ? $url . ' · ' . $suffix : $url;
 }
@@ -712,11 +1080,58 @@ function handleConfirm(MeetStore $store, string $slug, array $input): void
         requireActingOrganizer($meet, trim((string) ($input['acting_attendee_id'] ?? '')));
     }
     $meet = $store->update($meet['id'], function (array $m) use ($input) {
-        if (!empty($input['confirmed_slot'])) {
-            $m['confirmed_slot'] = trim((string) $input['confirmed_slot']);
+        if (array_key_exists('confirmed_slot', $input)) {
+            $slot = $input['confirmed_slot'];
+            if ($slot === null || $slot === '') {
+                $m['confirmed_slot'] = null;
+            } else {
+                $m['confirmed_slot'] = trim((string) $slot);
+            }
         }
-        if (!empty($input['confirmed_location'])) {
-            $m['confirmed_location'] = trim((string) $input['confirmed_location']);
+        if (array_key_exists('confirmed_location_ids', $input)) {
+            $ids = $input['confirmed_location_ids'];
+            if (!is_array($ids)) {
+                Response::error('confirmed_location_ids must be an array');
+            }
+            $ids = array_values(array_unique(array_filter(array_map('strval', $ids))));
+            $m['confirmed_location_ids'] = $ids;
+            $m['confirmed_location'] = $ids[0] ?? null;
+            $m['confirmed_location_online'] = null;
+            $m['confirmed_location_physical'] = null;
+        } elseif (array_key_exists('confirmed_location_physical', $input)
+            || array_key_exists('confirmed_location_online', $input)) {
+            $phys = trim((string) ($input['confirmed_location_physical'] ?? ''));
+            $online = trim((string) ($input['confirmed_location_online'] ?? ''));
+            $m['confirmed_location_physical'] = $phys !== '' ? $phys : null;
+            $m['confirmed_location_online'] = $online !== '' ? $online : null;
+            $m['confirmed_location'] = $online !== '' ? $online : ($phys !== '' ? $phys : null);
+            $ids = [];
+            foreach ([$online, $phys] as $id) {
+                if ($id !== '' && !in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+            $m['confirmed_location_ids'] = $ids;
+        } elseif (!empty($input['confirmed_location'])) {
+            // Legacy single-field confirm: map by kind.
+            $id = trim((string) $input['confirmed_location']);
+            $kind = 'other';
+            foreach ($m['locations'] as $loc) {
+                if (($loc['id'] ?? '') === $id) {
+                    $kind = (string) ($loc['kind'] ?? 'other');
+                    break;
+                }
+            }
+            if ($kind === 'hybrid') {
+                $m['confirmed_location_physical'] = $id;
+                $m['confirmed_location_online'] = $id;
+            } elseif (in_array($kind, ['video', 'phone'], true)) {
+                $m['confirmed_location_online'] = $id;
+            } else {
+                $m['confirmed_location_physical'] = $id;
+            }
+            $m['confirmed_location'] = $id;
+            $m['confirmed_location_ids'] = array_values(array_unique(array_filter([$id])));
         }
         return $m;
     });
@@ -773,13 +1188,18 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
 
     $contact = validateContactField(trim((string) ($input['contact'] ?? '')));
     $initials = strtoupper(trim((string) ($input['initials'] ?? '')));
+    $newPin = trim((string) ($input['new_pin'] ?? ''));
+    $currentPin = trim((string) ($input['current_pin'] ?? ''));
+    $clearPin = isset($input['clear_pin']) && (bool) $input['clear_pin'];
 
     $meet = $store->loadBySlug($slug);
     if ($targetId !== $actingId) {
         requireActingOrganizer($meet, $actingId);
     }
 
-    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials) {
+    $skipCurrentPin = isset($input['skip_current_pin']) && (bool) $input['skip_current_pin'] && $targetId === $actingId;
+
+    $meet = $store->update($meet['id'], function (array $m) use ($targetId, $displayName, $contact, $initials, $newPin, $currentPin, $clearPin, $skipCurrentPin) {
         $idx = attendeeIndexById($m['attendees'], $targetId);
         if ($idx === null) {
             throw new \RuntimeException('Attendee not found', 404);
@@ -787,6 +1207,22 @@ function handleUpdateAttendee(MeetStore $store, string $slug, array $input): voi
         $m['attendees'][$idx]['display_name'] = $displayName;
         $m['attendees'][$idx]['contact'] = $contact;
         $m['attendees'][$idx]['initials'] = $initials !== '' ? $initials : attendeeInitialsFromName($displayName);
+
+        if ($newPin !== '' || $clearPin) {
+            $att = &$m['attendees'][$idx];
+            // When the signed-in user edits their own row, do not require re-entering the current passcode.
+            if (attendeeHasPin($att) && !$skipCurrentPin) {
+                if (!verifyAttendeePin($att, $currentPin)) {
+                    throw new \RuntimeException('Current PIN is incorrect', 403);
+                }
+            }
+            if ($clearPin) {
+                clearAttendeePin($att);
+            } else {
+                setAttendeePin($att, $newPin);
+            }
+        }
+
         return $m;
     });
 
@@ -798,8 +1234,10 @@ function validateContactField(string $contact): string
     if ($contact === '') {
         return '';
     }
-    if (str_contains($contact, '@') && filter_var($contact, FILTER_VALIDATE_EMAIL) === false) {
-        Response::error('Contact must be a valid email (e.g. name@example.com) or a phone number without @');
+    foreach (array_map('trim', explode(',', $contact)) as $part) {
+        if ($part !== '' && str_contains($part, '@') && filter_var($part, FILTER_VALIDATE_EMAIL) === false) {
+            Response::error('Contact must be a valid email and/or phone number (comma-separated OK)');
+        }
     }
     return $contact;
 }
