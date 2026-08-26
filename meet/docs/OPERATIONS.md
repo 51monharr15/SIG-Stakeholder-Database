@@ -40,11 +40,10 @@ Edited 24/08/26
 ### Dashboard tabs
 
 - **Getting started** — Persistent setup checklist for organisers.
-- **Overview** — Summary: status, description, agenda, attendees, best start times, location popularity.
+- **Overview** — Summary: status, description, agenda, attendees, best start times (contiguous same-match starts collapse to a range), location popularity.
 - **Attendees** — Register, claim identity, edit details and passcode, organiser roles.
 - **My availability** — Your free times on the calendar grid. Use **Show 3 / 5 / 7 days** (seven allowed even when weekends are hidden) to fit the screen. Mark day headings to **Copy days** / **Paste** / **Invert days**. Copy keeps a full day sequence (including blank days) as shown left-to-right; Paste fills from the first marked destination onward. On touch, swipe the grid to move dates.
 - **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Empty hours and days can be hidden. Same **Show 3 / 5 / 7 days** control as My availability. Cells show all initials who marked each slot. Organiser status required to edit.
-- **Overview** — Summary including top start times; contiguous starts with the same attendance collapse to a start-time range.
 - **Locations** — Propose and vote; see who OK’d each place. On a phone, tap **Add** or tap outside the field to save a new row (there is no Tab key).
 - **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets). Notes appear on Overview under Agenda and decisions; press Enter for a new line (avoid also inserting `<br>` unless you want an extra blank).
 - **Calendar Options** — Meeting length, slot size, bookable dates and hours (organiser edits; others may view read-only).
