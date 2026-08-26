@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.46  
+**Build:** 1.8.47  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -414,7 +414,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | slotHint (multi) | Select {N} consecutive {gran} slot(s) to cover the full {dur} meeting. |
 | slotHint (single) | Each slot is {gran} — one slot covers the full meeting. |
 | Slot colours | Solid blue tint = your selection (already saved, or matching what is saved). **Orange dashed** = new pick not saved yet. **Grey dashed** = you turned off a saved slot — still on the meeting until you Save. Light green = someone marked it (initials). A **+** means more people than fit in the cell. |
-| Copy hint | **Copy / paste:** click a **day date heading** to mark that column (blue outline). **Copy days** copies your *already-saved* times from marked days. Mark target day heading(s), then **Paste** (creates orange dashed candidates — then Save). **Copy week → next** copies this week’s saved times onto the next week and jumps the view forward. **Clear selection** drops unsaved changes and restores your last saved slots. |
+| Copy hint | **Copy / paste** uses days **as shown** (left → right). Empty marked days stay in the sequence. With weekends off, Fri then Mon are two adjacent steps. Mark headings → **Copy days** (reports every marked day) → mark first destination → **Paste** (runs forward on displayed days; OR into selection). **Invert days** flips blank ↔ orange dashed (solid saved unchanged). **Clear selection** restores last saved slots. Touch: ballistic swipe on the grid moves dates. |
 | Nav hint | Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates. |
 | Hours | Meeting hours {start}–{end} (meeting base). Times at left show **your** local timezone ({tz}){; tap the second time to cycle other attendees’ timezones when recorded attendee timezones exist}. |
 
@@ -439,8 +439,8 @@ Shown when signed in. Buttons appear **above** the grid (form-save header) and a
 - **Clear selection** (title: Discard unsaved picks and pending removals — restore your last saved availability)
 - **Copy days** (title: Copy already-saved times from day headings you have marked)
 - **Paste** (title: Paste onto marked day headings as orange dashed candidates (then Save))
-- **Copy week → next** (title: Copy this week’s saved times onto next week as candidates, then jump the view forward)
-- Explain (above grid): **Save** keeps blue/orange picks and drops grey dashed. **Clear selection** undoes unsaved edits. Mark date headings → **Copy days** / **Paste**, or **Copy week → next**.
+- **Invert days** (title: Copy this week’s saved times onto next week as candidates, then jump the view forward)
+- Explain (above grid): **Save** keeps blue/orange picks and drops grey dashed. **Clear selection** undoes unsaved edits. Mark date headings → **Copy days** / **Paste**, or **Invert days**.
 - Meta: Clipboard: {N} day pattern(s) ready to paste — mark target day column(s), then Paste. *(when clipboard set)*
 - Meta: {N} slot(s) selected · {optional unsaved pick / to remove on Save / day marked notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
 

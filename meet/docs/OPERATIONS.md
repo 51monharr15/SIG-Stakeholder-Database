@@ -42,7 +42,7 @@ Edited 24/08/26
 - **Getting started** — Persistent setup checklist for organisers.
 - **Overview** — Summary: status, description, agenda, attendees, best start times, location popularity.
 - **Attendees** — Register, claim identity, edit details and passcode, organiser roles.
-- **My availability** — Your free times on the calendar grid. Mark day column headers to **Copy days** / **Paste**, or use **Copy week → next**. Only saved slots are copied; paste creates unsaved candidates until you Save. **Clear selection** restores saved slots only.
+- **My availability** — Your free times on the calendar grid. Mark day headings to **Copy days** / **Paste** / **Invert days**. Copy keeps a full day sequence (including blank days) as shown left-to-right; Paste fills from the first marked destination onward. On touch, swipe the grid to move dates.
 - **Confirm meeting choices** — Group calendar overlap view and organiser scheduling. Click a start to save it immediately (click again to clear). Confirm location(s). Empty hours and days can be hidden. Organiser status required to edit.
 - **Locations** — Propose and vote; see who OK’d each place.
 - **Meeting Resources** — Description, agenda, decisions, notes, attachments (all meeting assets).

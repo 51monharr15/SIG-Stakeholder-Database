@@ -312,6 +312,10 @@
     if (isTouchUi) {
       root.addEventListener('touchstart', (e) => handlePanelSwipeStart(e, state), { passive: true });
       root.addEventListener('touchend', (e) => handlePanelSwipeEnd(e, root, state), { passive: true });
+      root.addEventListener('touchstart', (e) => handleCalSwipeStart(e, state), { passive: true });
+      root.addEventListener('touchmove', (e) => handleCalSwipeMove(e, root, state), { passive: false });
+      root.addEventListener('touchend', (e) => handleCalSwipeEnd(e, root, state), { passive: true });
+      root.addEventListener('touchcancel', () => { state.calSwipe = null; }, { passive: true });
     }
     window.addEventListener('pointerup', () => { state.dragging = false; });
     window.addEventListener('resize', () => {
@@ -1269,8 +1273,8 @@
       ? (!days.length || startOfDay(days[days.length - 1]) < end)
       : true;
     const slotHint = calendarNavHint(m);
-    const clipInfo = state.availClipboard
-      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day pattern(s) ready to paste — mark target day column(s), then Paste.</p>`
+    const clipInfo = state.availClipboard?.patterns?.length
+      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day(s) in sequence (${escapeHtml((state.availClipboard.labels || []).join(', ') || '…')}) — mark the first destination day, then Paste (fills that day and the next displayed days). Paste again from another start if you like.</p>`
       : '';
 
     return `
@@ -1281,8 +1285,8 @@
           <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> to write your selection to the meeting. Tap a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
           <p class="meta slot-legend-note"><strong>Slot colours:</strong> solid blue tint = your selection (already saved, or matching what is saved). <strong>Orange dashed</strong> = new pick not saved yet. <strong>Grey dashed</strong> = you turned off a saved slot — still on the meeting until you Save. Light green = someone marked it (initials). A <strong>+</strong> means more people than fit in the cell.</p>
-          <p class="meta"><strong>Copy / paste:</strong> click a <strong>day date heading</strong> to mark that column (blue outline). <strong>Copy days</strong> copies your <em>already-saved</em> times from marked days. Mark target day heading(s), then <strong>Paste</strong> (creates orange dashed candidates — then Save). <strong>Copy week → next</strong> copies this week’s saved times onto the next week and jumps the view forward. <strong>Clear selection</strong> drops unsaved changes and restores your last saved slots.</p>
-          <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
+          <p class="meta"><strong>Copy / paste</strong> uses days <strong>as shown</strong> (left → right). Empty marked days stay in the sequence so gaps are preserved (e.g. Tue + blank Wed + Thu stays three steps). With weekends off, Fri then Mon are two adjacent steps — Sat/Sun are not in the sequence. Mark day headings → <strong>Copy days</strong> (keeps every marked day) → mark the <strong>first</strong> destination day → <strong>Paste</strong> fills that day and the following displayed days. Clipboard stays for another Paste. <strong>Invert days</strong> flips blank ↔ orange dashed on marked days (solid saved picks unchanged). <strong>Clear selection</strong> restores last saved slots.</p>
+          <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.${isTouchUi ? ' On a phone or tablet, swipe the grid left/right — a gentle swipe moves a little; a stronger swipe carries further.' : ''}</p>
           <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle other attendees’ timezones' : ''}.</p>
         </details>
         </div>
@@ -1335,7 +1339,7 @@
           const marked = availabilityCopy && state?.headerMarkedDates?.has(dateStr);
           const label = `${formatDayHeadDateStr(dateStr, mtz)}${isToday ? '<br><small>today</small>' : ''}${recur ? '<br><small>recurring</small>' : ''}`;
           if (availabilityCopy) {
-            return `<button type="button" class="day-head day-head-markable${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}${marked ? ' day-head-marked' : ''}" data-action="toggle-day-mark" data-date="${escapeHtml(dateStr)}" title="Mark this day for Copy days / Paste">${label}</button>`;
+            return `<button type="button" class="day-head day-head-markable${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}${marked ? ' day-head-marked' : ''}" data-action="toggle-day-mark" data-date="${escapeHtml(dateStr)}" title="Mark this day for Copy days, Paste (start), or Invert days. Copy/paste follow days as shown; empty days stay in the sequence.">${label}</button>`;
           }
           return `<div class="day-head${gap ? ' day-gap-before' : ''}${recur ? ' recurring' : ''}${isToday ? ' is-today' : ''}" title="${escapeHtml(formatDayHeadDateStr(dateStr, mtz))}${isToday ? ' — today' : ''}">${label}</div>`;
         }).join('')}
@@ -1347,10 +1351,10 @@
     const hint = isTouchUi ? 'tap slots to select' : 'drag or tap slots to select a range';
     const saveBtn = `<button type="button" data-action="save-availability" title="Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off)">Save</button>`;
     const clearBtn = `<button type="button" class="btn-cancel" data-action="clear-selection" title="Discard unsaved picks and pending removals — restore your last saved availability">Clear selection</button>`;
-    const copyDaysBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-days" title="Copy already-saved times from day headings you have marked">Copy days</button>`;
-    const pasteBtn = `<button type="button" class="btn-cancel" data-action="paste-avail-days" title="Paste onto marked day headings as orange dashed candidates (then Save)">Paste</button>`;
-    const copyWeekBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-week-next" title="Copy this week’s saved times onto next week as candidates, then jump the view forward">Copy week → next</button>`;
-    const buttons = `${saveBtn}${clearBtn}${copyDaysBtn}${pasteBtn}${copyWeekBtn}`;
+    const copyDaysBtn = `<button type="button" class="btn-cancel" data-action="copy-avail-days" title="Copy marked days as a sequence (as shown left→right). Empty days stay in the sequence. Uses your current selection on each day.">Copy days</button>`;
+    const pasteBtn = `<button type="button" class="btn-cancel" data-action="paste-avail-days" title="Paste the sequence from the leftmost marked day onward (next displayed days). Adds to selection only. Clipboard kept for another Paste.">Paste</button>`;
+    const invertBtn = `<button type="button" class="btn-cancel" data-action="invert-avail-days" title="On marked days: flip blank ↔ orange dashed. Solid saved selections are left unchanged.">Invert days</button>`;
+    const buttons = `${saveBtn}${clearBtn}${copyDaysBtn}${pasteBtn}${invertBtn}`;
     const candidateCount = countCandidateSlots(state, m);
     const pendingClearCount = countPendingClearSlots(state, m);
     const count = state.selectedSlots.size;
@@ -1358,7 +1362,7 @@
     const candNote = candidateCount ? ` · ${candidateCount} unsaved pick(s)` : '';
     const clearNote = pendingClearCount ? ` · ${pendingClearCount} to remove on Save` : '';
     const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
-    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps blue/orange picks and drops grey dashed. <strong>Clear selection</strong> undoes unsaved edits. Mark date headings → <strong>Copy days</strong> / <strong>Paste</strong>, or <strong>Copy week → next</strong>.</p>`;
+    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps blue/orange picks and drops grey dashed. Mark date headings → <strong>Copy days</strong> (full sequence, including blanks) → mark first destination → <strong>Paste</strong> (runs forward on displayed days). <strong>Invert days</strong> flips blank ↔ orange dashed. With weekends off, Fri→Mon counts as two steps.</p>`;
     let html = '';
     if (showTopDuplicate) {
       html += formSaveHeader(buttons);
@@ -2893,12 +2897,17 @@
 
   function handlePanelSwipeStart(e, state) {
     if (!e.touches || e.touches.length !== 1) return;
-    if (e.target.closest('.calendar, .cal-body, .locations-table-scroll, .attendee-table-wrap, input, textarea, select, button, a')) return;
+    if (e.target.closest('.calendar, .cal-body, .calendar-scroll, .locations-table-scroll, .attendee-table-wrap, input, textarea, select, button, a')) return;
     state.swipeStartX = e.touches[0].clientX;
     state.swipeStartY = e.touches[0].clientY;
   }
 
   function handlePanelSwipeEnd(e, root, state) {
+    if (state.calSwipe?.active || state.calSwipe?.axis === 'h') {
+      state.swipeStartX = null;
+      state.swipeStartY = null;
+      return;
+    }
     if (state.swipeStartX == null || !e.changedTouches || !e.changedTouches.length) {
       state.swipeStartX = null;
       state.swipeStartY = null;
@@ -2916,6 +2925,95 @@
       ? tabs[(idx + 1) % tabs.length]
       : tabs[(idx - 1 + tabs.length) % tabs.length];
     gotoTab(root, state, next);
+  }
+
+  function handleCalSwipeStart(e, state) {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (!e.target.closest('.calendar-scroll, .calendar')) return;
+    if (e.target.closest('.cal-nav, button.day-head-markable, input, textarea, select, a')) return;
+    if (!['calendar', 'group'].includes(state.activeTab)) return;
+    const t = e.touches[0];
+    state.calSwipe = {
+      active: true,
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastT: performance.now(),
+      originX: t.clientX,
+      vel: 0,
+      axis: null,
+      stepped: false,
+    };
+  }
+
+  function advanceCalendarByDisplayedDays(root, state, delta) {
+    if (!state.meet || !delta) return;
+    const next = clampViewStart(
+      state.meet,
+      shiftViewByDisplayedDays(calendarViewStart(state, state.meet), delta, state.meet.show_weekends)
+    );
+    if (+next === +calendarViewStart(state, state.meet)) return false;
+    state.viewStart = next;
+    render(root, state);
+    return true;
+  }
+
+  function handleCalSwipeMove(e, root, state) {
+    const s = state.calSwipe;
+    if (!s?.active || !e.touches?.[0]) return;
+    const t = e.touches[0];
+    const dx = t.clientX - s.startX;
+    const dy = t.clientY - s.startY;
+    if (!s.axis) {
+      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
+      s.axis = Math.abs(dx) > Math.abs(dy) * 1.25 ? 'h' : 'v';
+      if (s.axis === 'v') {
+        s.active = false;
+        return;
+      }
+    }
+    if (s.axis !== 'h') return;
+    if (e.cancelable) e.preventDefault();
+    const now = performance.now();
+    const dt = Math.max(8, now - s.lastT);
+    s.vel = (t.clientX - s.lastX) / dt;
+    s.lastX = t.clientX;
+    s.lastT = now;
+    const stepPx = 40;
+    let delta = t.clientX - s.originX;
+    while (Math.abs(delta) >= stepPx) {
+      const dir = delta < 0 ? 1 : -1; // finger left → later days
+      if (!advanceCalendarByDisplayedDays(root, state, dir)) break;
+      s.originX += dir > 0 ? -stepPx : stepPx;
+      s.stepped = true;
+      delta = t.clientX - s.originX;
+    }
+  }
+
+  function handleCalSwipeEnd(e, root, state) {
+    const s = state.calSwipe;
+    state.calSwipe = null;
+    if (!s || s.axis !== 'h') return;
+    if (state.calSwipeMomentumTimer) {
+      clearTimeout(state.calSwipeMomentumTimer);
+      state.calSwipeMomentumTimer = null;
+    }
+    // Momentum from release velocity (px/ms). Swipe left (vel < 0) → forward.
+    const speed = Math.abs(s.vel);
+    if (speed < 0.4) return;
+    const dir = s.vel < 0 ? 1 : -1;
+    let remaining = Math.min(18, Math.max(1, Math.round(speed * 14)));
+    const tick = () => {
+      state.calSwipeMomentumTimer = null;
+      if (remaining <= 0 || !state.meet) return;
+      if (!advanceCalendarByDisplayedDays(root, state, dir)) return;
+      remaining -= 1;
+      if (remaining > 0) {
+        const delay = 28 + (18 - remaining) * 6;
+        state.calSwipeMomentumTimer = setTimeout(tick, delay);
+      }
+    };
+    state.calSwipeMomentumTimer = setTimeout(tick, 20);
   }
 
   async function handleSubmit(e, root, state) {
@@ -3264,6 +3362,7 @@
         state.dragHandledClick = false;
         return;
       }
+      if (state.calSwipe?.stepped || state.calSwipe?.axis === 'h') return;
       toggleSlot(state, btn.dataset.slot);
       render(root, state);
       return;
@@ -3451,8 +3550,8 @@
       toast(result.message, !result.ok);
       return;
     }
-    if (action === 'copy-avail-week-next') {
-      const result = copyWeekToNextWeek(state);
+    if (action === 'invert-avail-days') {
+      const result = invertMarkedDays(state);
       render(root, state);
       toast(result.message, !result.ok);
       return;
@@ -4011,147 +4110,157 @@
     }
   }
 
-  function savedTimesOnDate(m, attendeeId, dateStr) {
+  function selectedTimesOnDate(state, dateStr) {
+    const m = state.meet;
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
     const times = [];
     for (const hm of hours) {
       const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
-      if (slotSavedForMe(m, iso, attendeeId)) {
+      if (state.selectedSlots.has(iso)) {
         times.push({ hour: hm.hour, minute: hm.minute });
       }
     }
     return times;
   }
 
-  function markedDatesInViewOrder(state, m) {
-    const days = getVisibleDays(calendarViewStart(state, m), visibleDayCount(), m.show_weekends, m);
-    const marked = state.headerMarkedDates || new Set();
-    return days.map((d) => toDateIso(d)).filter((ds) => marked.has(ds));
+  function dayOfMonthLabel(dateStr) {
+    return String(Number(String(dateStr).slice(8, 10)));
+  }
+
+  /** Marked days in chronological / display order (weekends only if shown in the grid). */
+  function markedDatesInDisplayOrder(state, m) {
+    const marked = [...(state.headerMarkedDates || [])];
+    marked.sort();
+    return marked.filter((ds) => {
+      const d = parseDateIsoLocal(ds);
+      if (!isDateBookable(m, d)) return false;
+      const dow = d.getDay();
+      if (!m.show_weekends && (dow === 0 || dow === 6)) return false;
+      return true;
+    });
+  }
+
+  /** Next `count` displayed days starting at dateStr (inclusive), stopping at bookable end. */
+  function displayedDaysFrom(startDateStr, count, m) {
+    const out = [];
+    let cursor = startOfDay(parseDateIsoLocal(startDateStr));
+    const maxEnd = bookableEndDate(m);
+    let guard = 0;
+    while (out.length < count && guard < 500) {
+      if (maxEnd && cursor > maxEnd) break;
+      if (isDateBookable(m, cursor)) {
+        const dow = cursor.getDay();
+        if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+          out.push(toDateIso(cursor));
+        }
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return out;
   }
 
   function copyMarkedDaysToClipboard(state) {
     if (!state.attendeeId) return { ok: false, message: 'Sign in to copy availability' };
-    const dates = markedDatesInViewOrder(state, state.meet);
+    const dates = markedDatesInDisplayOrder(state, state.meet);
     if (!dates.length) {
       return { ok: false, message: 'Mark one or more day columns first, then Copy days' };
     }
     const patterns = dates.map((dateStr) => ({
-      dateStr,
-      times: savedTimesOnDate(state.meet, state.attendeeId, dateStr),
+      times: selectedTimesOnDate(state, dateStr),
     }));
-    const withSlots = patterns.filter((p) => p.times.length);
-    if (!withSlots.length) {
-      return { ok: false, message: 'No saved slots on the marked day(s) — save availability first, then copy' };
-    }
-    state.availClipboard = { patterns: withSlots.map((p) => ({ times: p.times })) };
+    const labels = dates.map(dayOfMonthLabel);
+    const withTimes = patterns.filter((p) => p.times.length).length;
+    state.availClipboard = { patterns, labels: [...labels], sourceDates: [...dates] };
     state.headerMarkedDates = new Set();
-    const n = withSlots.reduce((sum, p) => sum + p.times.length, 0);
     return {
       ok: true,
-      message: `Copied ${withSlots.length} day pattern(s) (${n} saved slot(s)) — mark target day(s), then Paste`,
+      message: `Copied ${dates.length} day(s): ${labels.join(', ')} — mark the first destination day, then Paste`,
+      withTimes,
     };
   }
 
+  /** OR into selection only — never clears; leave already-selected (incl. saved) unchanged. */
   function applyTimesToDate(state, dateStr, times) {
     const m = state.meet;
     const mtz = meetingTz(m);
     let added = 0;
-    let skippedSaved = 0;
-    let skippedRange = 0;
+    if (!times.length) return { added: 0 };
     if (!isDateBookable(m, parseDateIsoLocal(dateStr))) {
-      return { added: 0, skippedSaved: 0, skippedRange: times.length };
+      return { added: 0 };
     }
-    // Skip weekend columns when weekends hidden
     const dow = parseDateIsoLocal(dateStr).getDay();
     if (!m.show_weekends && (dow === 0 || dow === 6)) {
-      return { added: 0, skippedSaved: 0, skippedRange: times.length };
+      return { added: 0 };
     }
     for (const t of times) {
       const iso = slotIsoFromMeetingDate(dateStr, t, mtz);
-      if (slotSavedForMe(m, iso, state.attendeeId)) {
-        skippedSaved++;
-        continue;
-      }
-      if (!state.selectedSlots.has(iso)) {
-        state.selectedSlots.add(iso);
-        added++;
-      }
+      if (state.selectedSlots.has(iso)) continue;
+      state.selectedSlots.add(iso);
+      added++;
     }
-    return { added, skippedSaved, skippedRange };
+    return { added };
   }
 
   function pasteClipboardOntoMarkedDays(state) {
     if (!state.attendeeId) return { ok: false, message: 'Sign in to paste availability' };
     const clip = state.availClipboard;
     if (!clip?.patterns?.length) {
-      return { ok: false, message: 'Nothing to paste — Copy days or Copy week → next first' };
+      return { ok: false, message: 'Nothing to paste — Copy days first' };
     }
-    const targets = markedDatesInViewOrder(state, state.meet);
-    if (!targets.length) {
-      return { ok: false, message: 'Mark one or more target day columns, then Paste' };
+    const marked = markedDatesInDisplayOrder(state, state.meet);
+    if (!marked.length) {
+      return { ok: false, message: 'Mark the first destination day column, then Paste' };
     }
-    const patterns = clip.patterns;
-    let mapping = [];
-    if (patterns.length === 1) {
-      mapping = targets.map((dateStr) => ({ dateStr, times: patterns[0].times }));
-    } else if (patterns.length === targets.length) {
-      mapping = targets.map((dateStr, i) => ({ dateStr, times: patterns[i].times }));
-    } else {
-      return {
-        ok: false,
-        message: `Clipboard has ${patterns.length} day(s); mark ${patterns.length} target days (or copy a single day to paste onto many)`,
-      };
-    }
+    const start = marked[0];
+    const targets = displayedDaysFrom(start, clip.patterns.length, state.meet);
     let added = 0;
-    let skippedSaved = 0;
-    let skippedRange = 0;
-    for (const row of mapping) {
-      const r = applyTimesToDate(state, row.dateStr, row.times);
+    for (let i = 0; i < targets.length; i++) {
+      const r = applyTimesToDate(state, targets[i], clip.patterns[i].times || []);
       added += r.added;
-      skippedSaved += r.skippedSaved;
-      skippedRange += r.skippedRange;
     }
     state.headerMarkedDates = new Set();
-    let message = added
-      ? `Pasted ${added} unsaved candidate slot(s) — edit then Save`
-      : 'No new candidates added';
-    if (skippedRange) message += `. Some times could not be replicated (${skippedRange} outside bookable range or weekend).`;
-    if (skippedSaved && !skippedRange) message += ` (${skippedSaved} already saved, left unchanged)`;
-    return { ok: added > 0 || skippedSaved > 0, message };
+    const destLabels = targets.map(dayOfMonthLabel).join(', ');
+    const truncated = targets.length < clip.patterns.length;
+    let message = `Pasted ${clip.patterns.length} day sequence onto ${targets.length} day(s): ${destLabels}`;
+    if (added) message += ` · ${added} new pick(s)`;
+    message += ' — edit then Save';
+    if (truncated) message += ' (stopped at end of bookable range)';
+    return { ok: true, message };
   }
 
-  function copyWeekToNextWeek(state) {
-    if (!state.attendeeId) return { ok: false, message: 'Sign in to copy availability' };
+  function invertMarkedDays(state) {
+    if (!state.attendeeId) return { ok: false, message: 'Sign in to invert days' };
     const m = state.meet;
-    const days = getVisibleDays(calendarViewStart(state, m), visibleDayCount(), m.show_weekends, m);
-    if (!days.length) return { ok: false, message: 'No days in view' };
-    let added = 0;
-    let skippedSaved = 0;
-    let skippedRange = 0;
-    let sourceSlots = 0;
-    for (const day of days) {
-      const dateStr = toDateIso(day);
-      const times = savedTimesOnDate(m, state.attendeeId, dateStr);
-      sourceSlots += times.length;
-      if (!times.length) continue;
-      const dest = addDays(day, 7);
-      const destStr = toDateIso(dest);
-      const r = applyTimesToDate(state, destStr, times);
-      added += r.added;
-      skippedSaved += r.skippedSaved;
-      skippedRange += r.skippedRange;
+    const dates = markedDatesInDisplayOrder(state, m);
+    if (!dates.length) {
+      return { ok: false, message: 'Mark one or more day columns first, then Invert days' };
     }
-    if (!sourceSlots) {
-      return { ok: false, message: 'No saved slots in this week to copy — save availability first' };
+    const mtz = meetingTz(m);
+    const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
+    let flipped = 0;
+    for (const dateStr of dates) {
+      for (const hm of hours) {
+        const iso = slotIsoFromMeetingDate(dateStr, hm, mtz);
+        const saved = slotSavedForMe(m, iso, state.attendeeId);
+        const selected = state.selectedSlots.has(iso);
+        // Leave solid saved selection alone
+        if (saved && selected) continue;
+        if (selected) {
+          state.selectedSlots.delete(iso);
+          flipped++;
+        } else {
+          state.selectedSlots.add(iso);
+          flipped++;
+        }
+      }
     }
-    state.viewStart = clampViewStart(m, shiftViewByDisplayedDays(calendarViewStart(state, m), 7, m.show_weekends));
     state.headerMarkedDates = new Set();
-    let message = added
-      ? `Copied week → next: ${added} unsaved candidate(s) — edit then Save`
-      : 'Week copy produced no new candidates';
-    if (skippedRange) message += `. Some times could not be replicated (${skippedRange} outside bookable range or weekend).`;
-    return { ok: added > 0 || skippedSaved > 0, message };
+    return {
+      ok: true,
+      message: `Inverted ${dates.length} day(s) · ${flipped} slot(s) flipped (saved solid picks unchanged)`,
+    };
   }
 
   function buildHours(startStr, endStr, granularity) {
