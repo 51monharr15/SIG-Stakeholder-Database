@@ -2602,11 +2602,11 @@
     if (signedIn) {
       return `
         <details ${paneDetailsAttrs(state, 'att-add', { secondary: true, extraClass: 'tint-people' })}>
-          <summary class="add-attendee-summary row"><span>Add another attendee</span>${saveBtn}</summary>
+          <summary class="add-attendee-summary"><span class="add-attendee-summary-label">Add another attendee</span>${saveBtn}</summary>
           <div class="pane-details-body">
           <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
             ${fieldGuide}
-            <p class="meta">They are not emailed — share the meeting link. They can sign in from the table (passcode required if you set one). You stay signed in as yourself.</p>
+            <p class="meta">This app doesn't email — 'You' must share the meeting link manually. They can sign in from the table (passcode required if set). You stay signed in as yourself.</p>
             ${fields}
           </form>
           </div>
@@ -2633,7 +2633,7 @@
 
     return `
         <details ${paneDetailsAttrs(state, 'att-add-first', { extraClass: 'tint-people' })}>
-            <summary class="add-attendee-summary row">
+            <summary class="add-attendee-summary">
               <span class="add-attendee-summary-label">${escapeHtml(summary)}</span>
               ${saveBtn}
             </summary>

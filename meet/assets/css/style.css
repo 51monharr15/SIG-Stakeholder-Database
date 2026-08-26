@@ -1247,11 +1247,12 @@ button.linkish {
   border-color: #1e3a5f;
 }
 
-/* Calendar toolbars (My availability + Confirm): controls left, explainer right */
+/* Calendar toolbars (My availability + Confirm): controls left, explainer right;
+   bottom-align controls with the explainer (toward the calendar). */
 .cal-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 0.65rem 1.25rem;
   margin: 0 0 0.5rem;
   width: 100%;
@@ -1525,17 +1526,28 @@ button.linkish {
 .add-attendee-summary {
   cursor: pointer;
   list-style: none;
-  justify-content: space-between;
+  display: flex;
+  justify-content: flex-start;
   align-items: center;
   gap: 0.5rem;
+  width: 100%;
   font-weight: 600;
   margin: 0 0 0.35rem;
+  text-align: left;
 }
 
 .add-attendee-summary::-webkit-details-marker { display: none; }
 
+.add-attendee-summary > span,
 .add-attendee-summary-label {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  text-align: left;
+  margin-right: auto;
+}
+
+.add-attendee-summary .add-summary-save {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .add-attendee-submit-full {
@@ -1586,22 +1598,13 @@ button.linkish {
   max-width: 12rem;
 }
 
-.add-attendee-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-}
-.add-attendee-summary .add-summary-save {
-  margin-left: auto;
-  flex-shrink: 0;
-}
 .add-attendee-first-title {
   margin: 0 0 0.35rem;
   font-size: 0.95rem;
   font-weight: 600;
+  text-align: left;
 }
+
 .add-field-guide {
   margin: 0 0 0.5rem;
 }

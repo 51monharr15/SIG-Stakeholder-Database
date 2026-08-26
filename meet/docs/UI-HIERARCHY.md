@@ -346,8 +346,8 @@ Shown when already signed in (or after attendees exist and the add-another path 
 
 | Kind | Text |
 |------|------|
-| Summary | Add another attendee |
-| Hint | They are not emailed — share the meeting link. They can sign in from the table (passcode required if you set one). You stay signed in as yourself. |
+| Summary | Add another attendee *(title left-aligned; Save on the right of the summary)* |
+| Hint | This app doesn't email — 'You' must share the meeting link manually. They can sign in from the table (passcode required if set). You stay signed in as yourself. |
 | Field guide | Same as Add yourself |
 | Button | **Save Attendee Identity** (also on the summary row) |
 
@@ -434,7 +434,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 **Show 3 / 5 / 7 days** (persisted per meeting). Seven is allowed even when weekends are hidden. Defaults: phone ≈ 3, wider ≈ 5, very wide ≈ 7.
 
-**Calendar toolbar (shared with Confirm):** view controls **left**; short explainer **right**. Action buttons (**Save** and secondary tools) are **left-aligned** above and below the grid (dual placement). Do not right-align the calendar action band.
+**Calendar toolbar (shared with Confirm):** view controls **left** and **bottom-aligned** with the explainer; short explainer **right**. Action buttons (**Save** and secondary tools) are **left-aligned** above and below the grid (dual placement). Do not right-align the calendar action band. Do not top-align the day controls with the explainer.
 
 **Day column headings stick to the viewport** under the sticky dashboard (`top: var(--sticky-h)`). They must not scroll off-screen. `.calendar` is a column flex (not a grid of header+body) so sticky is not trapped in a short grid row. Applies to **My availability** and **Group calendar**.
 
@@ -570,7 +570,7 @@ There is no separate session-only “propose” step and no separate Confirm but
 | Summary | **Confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
 | Status (none) | **Meeting start:** none scheduled yet — click a slot below to save one *(organiser only when not org)* |
 | Status (scheduled) | **Meeting scheduled:** {start – end pair with tz + UTC}. Click the same slot again to clear |
-| Toolbar left | Stacked, left-aligned: **Show all hours** / **Hide empty hours** · **Show all days** / **Hide empty days** · **Show** 3 5 7 **days** (same `.cal-toolbar` pattern as My availability) |
+| Toolbar left | Stacked, left-aligned, **bottom-aligned with explainer**: **Show all hours** / **Hide empty hours** · **Show all days** / **Hide empty days** · **Show** 3 5 7 **days** (same `.cal-toolbar` pattern as My availability) |
 | Toolbar right (explain) | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}). Currently empty hours are hidden (thicker line = omitted hours); empty days are hidden (thicker vertical line = omitted days). *(hidden clauses only when compact).* **Initials** in cells show everyone who marked that slot. |
 | Hours toggle title | Show or hide hours with no availability marked |
 | Days toggle title | Show or hide days with no availability marked |
