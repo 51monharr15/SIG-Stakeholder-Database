@@ -1988,6 +1988,22 @@ details summary { cursor: pointer; }
 .save-band-explain {
   margin: 0.25rem 0 0.45rem;
 }
+.day-cols-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+}
+.day-cols-toggle .day-cols-on {
+  background: #1e3a5f;
+  color: #fff;
+  border-color: #1e3a5f;
+}
+.day-cols-toggle button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 /* Day headers are <button>s for mark/copy — must not use global action-button colours
    (white text on pale day-head background made dates look “missing”). */
 button.day-head,

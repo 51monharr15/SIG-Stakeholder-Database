@@ -248,6 +248,7 @@
       editingLocationId: null,
       showAllGroupHours: localStorage.getItem(groupHoursKey(slug)) === 'all',
       showAllGroupDays: localStorage.getItem(groupDaysKey(slug)) === 'all',
+      dayColPref: Number(localStorage.getItem(dayColsKey(slug)) || 0) || null,
       openNotesEditor: false,
       overviewHelpOpen: localStorage.getItem(overviewHelpKey(slug)) !== 'closed',
       attendeePanelOpen: undefined,
@@ -306,16 +307,30 @@
       }
     });
     root.addEventListener('change', (e) => handleChange(e, root, state));
+    root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (!e.target.matches('input.loc-cell[data-loc-field="location"]')) return;
+      e.preventDefault();
+      e.target.blur();
+    });
     root.addEventListener('submit', (e) => handleSubmit(e, root, state));
     root.addEventListener('pointerdown', (e) => handlePointerDown(e, root, state));
     root.addEventListener('pointerover', (e) => handlePointerOver(e, root, state));
     if (isTouchUi) {
       root.addEventListener('touchstart', (e) => handlePanelSwipeStart(e, state), { passive: true });
       root.addEventListener('touchend', (e) => handlePanelSwipeEnd(e, root, state), { passive: true });
+      // Calendar swipe: touchstart on root; move/end on document (see handleCalSwipeStart)
+      // so tracking continues if the finger leaves the grid.
       root.addEventListener('touchstart', (e) => handleCalSwipeStart(e, state), { passive: true });
-      root.addEventListener('touchmove', (e) => handleCalSwipeMove(e, root, state), { passive: false });
-      root.addEventListener('touchend', (e) => handleCalSwipeEnd(e, root, state), { passive: true });
-      root.addEventListener('touchcancel', () => { state.calSwipe = null; }, { passive: true });
+      root.addEventListener('touchcancel', () => {
+        if (state._calSwipeDoc) {
+          document.removeEventListener('touchmove', state._calSwipeDoc.onMove);
+          document.removeEventListener('touchend', state._calSwipeDoc.onEnd);
+          document.removeEventListener('touchcancel', state._calSwipeDoc.onEnd);
+          state._calSwipeDoc = null;
+        }
+        state.calSwipe = null;
+      }, { passive: true });
     }
     window.addEventListener('pointerup', () => { state.dragging = false; });
     window.addEventListener('resize', () => {
@@ -328,7 +343,7 @@
         render(root, state);
         return;
       }
-      const dc = visibleDayCount();
+      const dc = preferredDayCount(state, state.meet);
       if (dc === state.lastDayCount) return;
       state.lastDayCount = dc;
       render(root, state);
@@ -340,10 +355,45 @@
   /** When viewer TZ ≠ meeting TZ, show organiser wall time in parentheses (set false to revert). */
   const SHOW_ORGANISER_TIME_IN_GUTTER = true;
 
+  /** Preferred day columns (3 / 5 / 7). Seven only when weekends are included. */
+  function dayColsKey(slug) { return `meet_day_cols_${slug}`; }
+
+  function preferredDayCount(state, m) {
+    const weekends = !!(m && m.show_weekends);
+    let pref = Number(state?.dayColPref);
+    if (![3, 5, 7].includes(pref)) {
+      const stored = Number(localStorage.getItem(dayColsKey(state.slug)));
+      pref = [3, 5, 7].includes(stored) ? stored : 0;
+    }
+    if (![3, 5, 7].includes(pref)) {
+      if (window.innerWidth >= 1200) pref = weekends ? 7 : 5;
+      else if (window.innerWidth >= 900) pref = 5;
+      else if (window.innerWidth >= 640) pref = 5;
+      else pref = 3;
+    }
+    if (pref === 7 && !weekends) pref = 5;
+    return pref;
+  }
+
+  function renderDayCountToggle(state, m) {
+    const cur = preferredDayCount(state, m);
+    const weekends = !!m.show_weekends;
+    const btn = (n) => {
+      const disabled = n === 7 && !weekends;
+      const on = cur === n ? ' day-cols-on' : '';
+      const title = disabled
+        ? 'Turn on Include weekends in Calendar Options to show 7 days'
+        : `Show ${n} day column${n === 1 ? '' : 's'}`;
+      return `<button type="button" class="btn-cancel compact-btn${on}" data-action="set-day-cols" data-cols="${n}" title="${escapeHtml(title)}" ${disabled ? 'disabled' : ''}>${n}</button>`;
+    };
+    return `<div class="row day-cols-toggle"><span class="meta">Days shown:</span>${btn(3)}${btn(5)}${btn(7)}</div>`;
+  }
+
   function visibleDayCount() {
+    // Fallback when state/meet not available (resize bootstrap).
     if (window.innerWidth >= 1200) return 7;
     if (window.innerWidth >= 900) return 5;
-    if (window.innerWidth >= 640) return 4;
+    if (window.innerWidth >= 640) return 5;
     return 3;
   }
 
@@ -1057,7 +1107,7 @@
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title">Getting started</h2>
-        <details class="getting-started-intro"${autoDetailsOpen(true) ? ' open' : ''}>
+        <details class="getting-started-intro" data-pane-id="gs-intro"${paneOpenAttr(state, 'gs-intro')}>
           <summary class="section-title">Instructions for organisers and attendees. Completed steps marked with a ✓</summary>
           <p class="meta">Steps below are aimed at the meeting organiser. Attendees skip organiser-only steps. Essential steps for <strong>all</strong> attendees: sign in on <strong>Attendees</strong>, mark <strong>My availability</strong>, vote on <strong>Locations</strong>.</p>
           <p class="meta">For fuller guidance, open <strong>How to use this</strong> at the top of the page, or the <a href="operations.php">operations manual</a> at the foot of the page.</p>
@@ -1124,41 +1174,46 @@
     const agendaOpen = kind !== 'past' && kind !== 'summarised';
     const scheduled = kind === 'scheduled' || kind === 'rescheduled' || kind === 'past' || kind === 'summarised';
     const availabilityCount = m.attendees.filter((a) => countSlotsFor(m, a.id) > 0).length;
+    const rangeStart = optionsRangeStart(m);
+    const rangeEnd = optionsRangeEnd(m);
+    const openEnded = !rangeEnd;
     const timeSummary = m.confirmed_slot
       ? formatTimePair(m.confirmed_slot, m)
-      : 'None selected yet';
+      : (openEnded
+        ? `No time selected yet. Attendees, enter availability from ${escapeHtml(rangeStart)} (start date) onward — end date is open.`
+        : `No time selected yet. Attendees, enter availability between ${escapeHtml(rangeStart)} and ${escapeHtml(rangeEnd)} (Calendar Options start and end dates).`);
 
     return `
       <section class="panel stack overview-panel">
         <h2 class="section-title overview-title">Overview <span class="label-hint">— tap ▶ headings to expand</span></h2>
         <p class="meta">Coloured sections group topics — lavender dates/times, blue text, pink people, green places.</p>
-        <details class="overview-block tint-dates"${autoDetailsOpen(true) ? ' open' : ''}>
+        <details class="overview-block tint-dates" data-pane-id="ov-time"${paneOpenAttr(state, 'ov-time')}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Time · Recurrence</summary>
           <p class="meta"><strong>Scheduled time:</strong> ${timeSummary}</p>
           <p class="meta"><strong>Meeting length:</strong> ${formatDurationLabel(m.duration_minutes)} · <strong>Calendar slot:</strong> ${formatDurationLabel(m.slot_granularity_minutes)}</p>
           <p class="meta"><strong>Recurrence:</strong> ${escapeHtml(m.recurrence_label || 'One-off')}</p>
         </details>
-        <details class="overview-block tint-text"${agendaOpen ? ' open' : ''}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
+        <details class="overview-block tint-text" data-pane-id="ov-agenda"${paneOpenAttr(state, 'ov-agenda', { secondary: !agendaOpen })}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Agenda and decisions <span class="label-hint">(Set in Meeting Resources)</span></summary>
           ${m.agenda.length ? `<p class="meta"><strong>Agenda:</strong></p><ul class="list-plain">${m.agenda.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No agenda yet — go to <strong>Meeting Resources</strong> to set it.</p>'}
           ${m.decisions.length ? `<p class="meta"><strong>Decisions required:</strong></p><ul class="list-plain">${m.decisions.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '<p class="meta">No decisions listed yet — go to <strong>Meeting Resources</strong> to set them.</p>'}
-          ${(m.notes || '').trim() ? `<div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
+          ${(m.notes || '').trim() ? `<p class="meta"><strong>Notes:</strong></p><div class="meet-intro-body">${sanitizeHtml(m.notes)}</div>` : ''}
         </details>
-        <details class="overview-block tint-people"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
+        <details class="overview-block tint-people" data-pane-id="ov-attendees"${paneOpenAttr(state, 'ov-attendees')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Attendees registered (${m.attendees.length}) · Availability entered (${availabilityCount})</summary>
           ${renderOverviewAttendeeTable(m)}
         </details>
-        <details class="overview-block tint-dates"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
+        <details class="overview-block tint-dates" data-pane-id="ov-starts"${paneOpenAttr(state, 'ov-starts')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
           ${sorted.length
             ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatOverviewTimeSuggestion(m, s)}</li>`).join('')}</ul>
                <p class="meta">Confirm one with <strong>Confirm meeting choices</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap.</p>`
             : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Confirm meeting choices</strong>.</p>'}
         </details>
-        <details class="overview-block tint-places"><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
+        <details class="overview-block tint-places" data-pane-id="ov-locations"${paneOpenAttr(state, 'ov-locations')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
           ${renderConfirmedLocationsSummary(m, state, scheduled)}
           ${topLocations.length
             ? `<ul class="list-plain">${topLocations.map((item) => `<li>${escapeHtml(locationChipLabel(item.loc))} — ${item.votes} preference${item.votes === 1 ? '' : 's'}</li>`).join('')}</ul>`
             : '<p class="meta">No locations proposed yet.</p>'}
         </details>
-        <details class="overview-block tint-assets"${(m.attachments || []).length ? ' open' : ''}>
+        <details class="overview-block tint-assets" data-pane-id="ov-attachments"${paneOpenAttr(state, 'ov-attachments', { secondary: !(m.attachments || []).length })}>
           <summary class="section-title" title="Tap or click the triangle to expand/collapse">Attachments (${(m.attachments || []).length})</summary>
           ${(m.attachments || []).length
             ? m.attachments.map((a) => renderAttachment(a, attendee)).join('')
@@ -1265,7 +1320,7 @@
   // ─── Calendar tab ────────────────────────────────────────────────────────────
 
   function renderCalendarTab(m, state, attendee) {
-    const dayCount = visibleDayCount();
+    const dayCount = preferredDayCount(state, m);
     const days = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const mtz = meetingTz(m);
     const hours = buildHours(m.day_start, m.day_end, m.slot_granularity_minutes);
@@ -1280,32 +1335,35 @@
       : true;
     const slotHint = calendarNavHint(m);
     const clipInfo = state.availClipboard?.patterns?.length
-      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day(s) in sequence (${escapeHtml((state.availClipboard.labels || []).join(', ') || '…')}) — mark the first destination day, then Paste (fills that day and the next displayed days). Paste again from another start if you like.</p>`
+      ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day(s) in sequence (${escapeHtml((state.availClipboard.labels || []).join(', ') || '…')}) — mark the first destination day, then Paste. Paste again from another start if you like.</p>`
       : '';
+    const hoursLine = `Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle recorded timezones (including yours)' : ''}.`;
 
     return `
       <section class="panel stack calendar-panel">
         <div class="availability-mark-band">
           <details class="calendar-instructions" data-pane-id="cal-instructions"${paneOpenAttr(state, 'cal-instructions', { secondary: isNarrowScreen() })}>
           <summary class="section-title" title="How to mark your availability on the calendar">Mark when you are free</summary>
-          <p class="meta">Each cell is one <strong>calendar slot</strong> (${formatDurationLabel(m.slot_granularity_minutes)}). Drag or tap to select. Use <strong>Save</strong> to write your selection to the meeting. Tap a selected slot again to deselect — save again after changes.</p>
+          <p class="meta">Each cell is an <strong>availability slot</strong> of ${formatDurationLabel(m.slot_granularity_minutes)}. Drag or tap to select (turns orange with a dashed border), then <strong>Save</strong> to write your selection to the meeting (turns solid blue with initials). Tap, click, or drag a selected slot again to deselect — save again after changes.</p>
           <p class="meta"><strong>Meeting length</strong> is ${formatDurationLabel(m.duration_minutes)}.${slotHint} Finer slots let you show partial availability if you cannot make the whole meeting.</p>
-          <p class="meta slot-legend-note"><strong>Slot colours:</strong> solid blue tint = your selection (already saved, or matching what is saved). <strong>Orange dashed</strong> = new pick not saved yet. <strong>Grey dashed</strong> = you turned off a saved slot — still on the meeting until you Save. Light green = someone marked it (initials). A <strong>+</strong> means more people than fit in the cell.</p>
-          <p class="meta"><strong>Copy / paste</strong> uses days <strong>as shown</strong> (left → right). Empty marked days stay in the sequence so gaps are preserved (e.g. Tue + blank Wed + Thu stays three steps). With weekends off, Fri then Mon are two adjacent steps — Sat/Sun are not in the sequence. Mark day headings → <strong>Copy days</strong> (keeps every marked day) → mark the <strong>first</strong> destination day → <strong>Paste</strong> fills that day and the following displayed days. Clipboard stays for another Paste. <strong>Invert days</strong> flips blank ↔ orange dashed on marked days (solid saved picks unchanged). <strong>Clear selection</strong> restores last saved slots.</p>
-          <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.${isTouchUi ? ' On a phone or tablet, swipe the grid left/right — a gentle swipe moves a little; a stronger swipe carries further.' : ''}</p>
-          <p class="meta">Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle other attendees’ timezones' : ''}.</p>
+          <p class="meta slot-legend-note"><strong>Slot colours:</strong> Solid blue tint = your selection (already saved, or matching what is saved). <strong>Orange dashed</strong> = new pick not saved yet. <strong>Grey dashed</strong> = you turned off a saved slot — still in the meeting until you Save again. Light green = others are available (their initials). A <strong>+</strong> means more initials than fit in the cell (tooltips show the full list).</p>
+          <p class="meta"><strong>Copy / paste</strong> replicates a series of days’ availability (e.g. set a week’s pattern, Copy, Paste onto a new week, then hand-tune). Mark days by selecting column headers. Empty marked days stay in the sequence so gaps are preserved. <strong>Copy days</strong> (reports every marked day) → mark the <strong>first</strong> destination day → <strong>Paste</strong>. Example: Copy Mon, Tue, Wed then paste from Thursday → Thu, Fri, Mon when weekends are excluded, or Thu, Fri, Sat when weekends are allowed.</p>
+          <p class="meta"><strong>Invert days</strong> toggles blank ↔ not-yet-saved selection (orange dashed) on marked days; solid saved picks stay. Adjust, then Save. <strong>Clear selection</strong> restores last saved slots.${isTouchUi ? ' Touch: swipe the grid left/right to move dates (a stronger swipe continues further).' : ''}</p>
+          <p class="meta">Use the date navigation (left of the grid) to move by day, screen, or jump to first/last bookable dates.</p>
+          <p class="meta">${hoursLine}</p>
         </details>
         </div>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         <div class="pane-region tint-dates calendar-grid-pane">
-        ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
+        ${renderDayCountToggle(state, m)}
         ${clipInfo}
+        ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
         <div class="calendar-scroll">
         <div class="calendar" style="--cal-cols:${days.length || dayCount}">
           ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet, mtz, state, availabilityCopy: !!attendee })}
           <div class="cal-body">
             ${hours.map((hm) => `
-              <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
+              <div class="time-label" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle recorded timezones (including yours)' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
               ${days.map((day, i) => renderSlotCell(m, state, toDateIso(day), hm, attendee, mtz, dayHasGapBefore(days, i))).join('')}
             `).join('')}
           </div>
@@ -1368,7 +1426,7 @@
     const candNote = candidateCount ? ` · ${candidateCount} unsaved pick(s)` : '';
     const clearNote = pendingClearCount ? ` · ${pendingClearCount} to remove on Save` : '';
     const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
-    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps blue/orange picks and drops grey dashed. Mark date headings → <strong>Copy days</strong> (full sequence, including blanks) → mark first destination → <strong>Paste</strong> (runs forward on displayed days). <strong>Invert days</strong> flips blank ↔ orange dashed. With weekends off, Fri→Mon counts as two steps.</p>`;
+    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps new picks and removes slots you turned off. Mark date headings → <strong>Copy days</strong> → mark first destination → <strong>Paste</strong>. <strong>Invert days</strong> toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.</p>`;
     let html = '';
     if (showTopDuplicate) {
       html += formSaveHeader(buttons);
@@ -1418,7 +1476,7 @@
 
   function renderGroupAvailabilityTab(m, state, attendee) {
     const mtz = meetingTz(m);
-    const dayCount = visibleDayCount();
+    const dayCount = preferredDayCount(state, m);
     const allDays = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = effectiveConfirmSlot(state, m);
@@ -1458,6 +1516,7 @@
               <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
               <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
             </div>
+            ${renderDayCountToggle(state, m)}
             ${emptyHoursNote}
             ${emptyDaysNote}
             <div class="calendar-scroll">
@@ -1465,7 +1524,7 @@
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
                 ${hours.map((hm, hi) => `
-                  <div class="time-label${hourHasGapBefore(hours, hi, m.slot_granularity_minutes) ? ' hour-gap-before' : ''}" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle attendee timezones' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
+                  <div class="time-label${hourHasGapBefore(hours, hi, m.slot_granularity_minutes) ? ' hour-gap-before' : ''}" title="Local time${currentAltTimezone(state, m) ? ' · tap second time to cycle recorded timezones (including yours)' : ''}">${formatWallHourDisplay(hm, m, days[0] ? toDateIso(days[0]) : todayStr, state)}</div>
                   ${days.map((day, i) => renderGroupSlotCell(m, toDateIso(day), hm, mtz, selected, fullMap, partialMap, dayHasGapBefore(days, i), hourHasGapBefore(hours, hi, m.slot_granularity_minutes))).join('')}
                 `).join('')}
               </div>
@@ -1857,7 +1916,7 @@
         return `<span class="loc-url-wrap">
           <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(value)}</a>
           <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
-          <span class="label-hint">(opens in a new window)</span>
+          <span class="label-hint">(Click/Tap to open in a new window)</span>
         </span>`;
       }
       if (expanded) {
@@ -1866,7 +1925,7 @@
           <span class="loc-url-actions row">
             <a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="compact-btn">Open</a>
             <button type="button" class="compact-btn" data-action="copy-loc-url" data-url="${escapeHtml(href)}" title="Copy link to clipboard">Copy</button>
-            <span class="label-hint">(opens in a new window)</span>
+            <span class="label-hint">(Click/Tap to open in a new window)</span>
           </span>
         </span>`;
       }
@@ -1906,8 +1965,12 @@
       ? `<input type="text" class="loc-cell" data-loc-field="location" value="${escapeHtml(f.location)}" placeholder="URL or place name" title="URL or place name">`
       : renderLocFieldDisplay(m, state, id, 'location', f.location, { readOnly: true });
 
+    const addCell = canEdit && !loc
+      ? `<button type="button" class="compact-btn" data-action="save-location-row" title="Add this location (or tap outside the fields)">Add</button>`
+      : '';
+
     const worksCell = !loc
-      ? '—'
+      ? (addCell || '—')
       : readOnly
         ? `<span class="loc-ok-indicator${worksSelected ? ' yes' : ''}">${worksSelected ? 'Yes' : '?'}</span>`
         : !attendee
@@ -1969,7 +2032,7 @@
 
   function renderLocationsTab(m, state, attendee) {
     const hint = attendee
-      ? `<p class="meta pane-lead">Proposed URLs or place names in the <strong>top row</strong> are added to the table. Tab out of an amended cell to save.</p>
+      ? `<p class="meta pane-lead">Proposed URLs or place names in the <strong>top row</strong> are added to the table. On a phone, tap <strong>Add</strong> or tap outside the field to save (there is no Tab key).</p>
          <p class="meta pane-lead">Toggle <strong>OK with me</strong> to record your preference. Tap/click overflow cells to expand; use <strong>Copy</strong> after expanding a link.</p>`
       : '<p class="meta pane-lead">Proposed URLs or place names in the top row are added to the table. Sign in on Attendees to propose locations and mark OK with me.</p>';
     return `
@@ -2244,13 +2307,14 @@
           </div>
         </details>
         <details ${paneDetailsAttrs(state, 'mr-notes', { secondary: true, extraClass: 'tint-text' })}>
-          <summary class="pane-summary-with-save"><span>Notes <span class="label-hint">(simple HTML — Overview)</span></span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
+          <summary class="pane-summary-with-save"><span>Notes <span class="label-hint">(shown on Overview under Agenda and decisions)</span></span>${canEditDesc ? saveBtn('form-update-notes') : ''}</summary>
           <div class="pane-details-body">
           <form class="inline-form" data-form="update-notes" id="form-update-notes">
             <label>Notes
               ${canEditDesc ? formatToolbar('notes', { withHelp: false }) : ''}
               <textarea name="notes" rows="5">${escapeHtml(notesVal)}</textarea>
             </label>
+            <p class="meta">Press Enter for a new line — line breaks are shown automatically. Do not also insert <code>&lt;br&gt;</code> tags unless you want an extra blank line.</p>
             ${canEditDesc ? `<div class="pane-save-row">${saveBtn('form-update-notes')}</div>` : ''}
           </form>
           </div>
@@ -2444,7 +2508,7 @@
       return `<div class="attendee-block stack attendee-block-first"><div class="attendee-block-body stack">${firstAdd}</div></div>`;
     }
 
-    const registeredPane = `<details ${paneDetailsAttrs(state, regPaneId, { extraClass: 'tint-people' })}>
+    const registeredPane = `<details ${paneDetailsAttrs(state, regPaneId, { secondary: !signedIn, extraClass: 'tint-people' })}>
       <summary>Registered attendees (${m.attendees.length || 'none yet'})</summary>
       <div class="pane-details-body stack">${registeredInner}</div>
     </details>`;
@@ -2475,7 +2539,7 @@
 
   function renderAddAttendeeForm(signedIn, m, state) {
     const formId = 'add-attendee-form';
-    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn add-summary-save">Save Attendee Identity</button>`;
+    const saveBtn = `<button type="submit" form="${formId}" class="compact-btn add-summary-save">${signedIn ? 'Save Attendee Identity' : 'Save New Attendee'}</button>`;
     const fieldGuide = `<p class="meta add-field-guide">Display name: any text. Initials: default from display name. Contact optional: comma-separated email, URL, phone, or free text. Passcode optional — ${PASSCODE_TIP}</p>`;
     const fields = `
             <div class="add-attendee-fields">
@@ -2515,7 +2579,7 @@
           <form class="inline-form add-attendee-form" data-form="add-attendee" id="${formId}">
             ${fieldGuide}
             ${fields}
-            <button type="submit" class="add-attendee-submit-full">Save Attendee Identity</button>
+            <button type="submit" class="add-attendee-submit-full">Save New Attendee</button>
           </form>`;
 
     if (!hasOthers) {
@@ -2956,13 +3020,27 @@
       stepped: false,
       samples: [{ t: now, x: t.clientX }],
     };
+    const root = document.getElementById('app');
+    const onMove = (ev) => handleCalSwipeMove(ev, root, state);
+    const onEnd = (ev) => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+      state._calSwipeDoc = null;
+      handleCalSwipeEnd(ev, root, state);
+    };
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+    state._calSwipeDoc = { onMove, onEnd };
   }
 
   function advanceCalendarByDisplayedDays(root, state, delta) {
     if (!state.meet || !delta) return;
     const next = clampViewStart(
       state.meet,
-      shiftViewByDisplayedDays(calendarViewStart(state, state.meet), delta, state.meet.show_weekends)
+      shiftViewByDisplayedDays(calendarViewStart(state, state.meet), delta, state.meet.show_weekends),
+      state
     );
     if (+next === +calendarViewStart(state, state.meet)) return false;
     state.viewStart = next;
@@ -3011,6 +3089,7 @@
     const s = state.calSwipe;
     state.calSwipe = null;
     if (!s || s.axis !== 'h') return;
+    if (s.stepped) state.calSwipeIgnoreClickUntil = performance.now() + 450;
     if (state.calSwipeMomentumTimer) {
       clearTimeout(state.calSwipeMomentumTimer);
       state.calSwipeMomentumTimer = null;
@@ -3385,6 +3464,7 @@
         state.dragHandledClick = false;
         return;
       }
+      if (state.calSwipeIgnoreClickUntil && performance.now() < state.calSwipeIgnoreClickUntil) return;
       if (state.calSwipe?.stepped || state.calSwipe?.axis === 'h') return;
       toggleSlot(state, btn.dataset.slot);
       render(root, state);
@@ -3441,6 +3521,17 @@
       return;
     }
 
+    if (action === 'save-location-row') {
+      if (!state.attendeeId) {
+        toast('Sign in on Attendees first to propose a location', true);
+        return;
+      }
+      const row = btn.closest('[data-location-row]');
+      if (!row) return;
+      await saveLocationRow(root, state, row);
+      return;
+    }
+
     if (action === 'toggle-location') {
       if (!state.attendeeId) {
         toast('Sign in on Attendees first to save location preferences', true);
@@ -3489,12 +3580,12 @@
     }
 
     if (action === 'prev-days') {
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends));
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -1, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
     if (action === 'prev-week') {
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends));
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -7, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
@@ -3509,7 +3600,7 @@
       return;
     }
     if (action === 'go-range-end') {
-      const target = jumpTargetEnd(state.meet);
+      const target = jumpTargetEnd(state.meet, state);
       if (!target) {
         toast('No end date in Calendar Options, and no marked availability to jump to', true);
         return;
@@ -3519,24 +3610,24 @@
       return;
     }
     if (action === 'prev-screen') {
-      const n = visibleDayCount();
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends));
+      const n = preferredDayCount(state, state.meet);
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, -n, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
     if (action === 'next-screen') {
-      const n = visibleDayCount();
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends));
+      const n = preferredDayCount(state, state.meet);
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, n, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
     if (action === 'next-days') {
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends));
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 1, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
     if (action === 'next-week') {
-      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends));
+      state.viewStart = clampViewStart(state.meet, shiftViewByDisplayedDays(state.viewStart, 7, state.meet.show_weekends), state);
       render(root, state);
       return;
     }
@@ -3547,6 +3638,19 @@
       if (!state.headerMarkedDates) state.headerMarkedDates = new Set();
       if (state.headerMarkedDates.has(dateStr)) state.headerMarkedDates.delete(dateStr);
       else state.headerMarkedDates.add(dateStr);
+      render(root, state);
+      return;
+    }
+    if (action === 'set-day-cols') {
+      const n = Number(btn.dataset.cols);
+      if (![3, 5, 7].includes(n)) return;
+      if (n === 7 && !state.meet.show_weekends) {
+        toast('Turn on Include weekends in Calendar Options to show 7 days', true);
+        return;
+      }
+      state.dayColPref = n;
+      localStorage.setItem(dayColsKey(state.slug), String(n));
+      state.lastDayCount = n;
       render(root, state);
       return;
     }
@@ -4049,10 +4153,10 @@
     return true;
   }
 
-  function calendarMaxViewStart(m) {
+  function calendarMaxViewStart(m, state = null) {
     const end = bookableEndDate(m);
     if (!end) return null;
-    const dayCount = visibleDayCount();
+    const dayCount = state ? preferredDayCount(state, m) : preferredDayCount({ slug: m.slug || '', dayColPref: null }, m);
     let target = shiftViewByDisplayedDays(end, -(dayCount - 1), m.show_weekends);
     const min = bookableStartDate(m);
     if (target < min) target = min;
@@ -4060,22 +4164,22 @@
     return target;
   }
 
-  function clampViewStart(m, proposed) {
+  function clampViewStart(m, proposed, state = null) {
     let v = startOfDay(proposed);
     const min = bookableStartDate(m);
     if (v < min) v = min;
-    const maxStart = calendarMaxViewStart(m);
+    const maxStart = calendarMaxViewStart(m, state);
     if (maxStart && v > maxStart) v = maxStart;
     return v;
   }
 
   /** Jump to last bookable date; if open-ended, last marked availability day. */
-  function jumpTargetEnd(m) {
-    const maxStart = calendarMaxViewStart(m);
+  function jumpTargetEnd(m, state = null) {
+    const maxStart = calendarMaxViewStart(m, state);
     if (maxStart) return maxStart;
     const lastAvail = lastAvailabilityDay(m);
     if (!lastAvail) return null;
-    const dayCount = visibleDayCount();
+    const dayCount = state ? preferredDayCount(state, m) : preferredDayCount({ slug: m.slug || '', dayColPref: null }, m);
     let target = shiftViewByDisplayedDays(startOfDay(lastAvail), -(dayCount - 1), m.show_weekends);
     const min = bookableStartDate(m);
     if (target < min) target = min;
@@ -4403,7 +4507,7 @@
   function parseDateIsoLocal(iso) { const [y, mo, d] = iso.split('-').map(Number); return startOfDay(new Date(y, mo - 1, d)); }
   function calendarMinStart(m) { return bookableStartDate(m); }
   function calendarViewStart(state, m) {
-    return clampViewStart(m, state.viewStart);
+    return clampViewStart(m, state.viewStart, state);
   }
   function toDateIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
   function formatDayHead(d) { return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); }
