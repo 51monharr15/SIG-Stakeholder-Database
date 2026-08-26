@@ -434,6 +434,8 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 **Show 3 / 5 / 7 days** (persisted per meeting). Seven is allowed even when weekends are hidden. Defaults: phone ≈ 3, wider ≈ 5, very wide ≈ 7.
 
+**Calendar toolbar (shared with Confirm):** view controls **left**; short explainer **right**. Action buttons (**Save** and secondary tools) are **left-aligned** above and below the grid (dual placement). Do not right-align the calendar action band.
+
 **Day column headings stick to the viewport** under the sticky dashboard (`top: var(--sticky-h)`). They must not scroll off-screen. `.calendar` is a column flex (not a grid of header+body) so sticky is not trapped in a short grid row. Applies to **My availability** and **Group calendar**.
 
 | Kind | Text |
@@ -450,14 +452,14 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Pane: Save band (dual Save)
 
-Shown when signed in. Buttons sit **next to the calendar** (above and below the grid), not only above the long instructions. All save-band buttons share the same height. Copy/clear/invert actions use cancel-style (neutral) buttons; **Save** stays the primary action colour.
+Shown when signed in. **Left-aligned** action band **above and below** the grid (style guide dual placement + compact left-align). Copy/clear/invert use cancel-style (neutral) buttons; **Save** stays the primary action colour. Short how-to sits in the calendar toolbar on the **right** of **Show 3 5 7 days**, not under a right-aligned button row.
 
 - **Save** (title: Write your current selection to the meeting (keeps new picks; removes grey dashed slots you turned off))
 - **Clear selection** (title: Discard unsaved picks and pending removals — restore your last saved availability)
 - **Copy days** (title: Copy marked days as a sequence (as shown left→right). Empty days stay in the sequence. Uses your current selection on each day.)
 - **Paste** (title: Paste the sequence from the leftmost marked day onward (next displayed days). Adds to selection only. Clipboard kept for another Paste.)
 - **Invert days** (title: On marked days: flip blank ↔ orange dashed. Solid saved selections are left unchanged.)
-- Explain (above grid): **Save** keeps new picks and removes slots you turned off. Mark date headings → **Copy days** → mark first destination → **Paste**. **Invert days** toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.
+- Toolbar explain (right of Show days): **Save** keeps new picks and removes slots you turned off. Mark date headings → **Copy days** → mark first destination → **Paste**. **Invert days** toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.
 - Meta: Clipboard: {N} day(s) in sequence ({day numbers}) — mark the first destination day, then Paste. Paste again from another start if you like. *(when clipboard set)*
 - Meta: {N} slot(s) selected · {optional unsaved pick / to remove on Save / day marked notes} · drag or tap slots to select a range *(or “tap slots to select” on touch)* · {optional slotHint from meeting length / granularity}
 
@@ -568,7 +570,7 @@ There is no separate session-only “propose” step and no separate Confirm but
 | Summary | **Confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
 | Status (none) | **Meeting start:** none scheduled yet — click a slot below to save one *(organiser only when not org)* |
 | Status (scheduled) | **Meeting scheduled:** {start – end pair with tz + UTC}. Click the same slot again to clear |
-| Toolbar left | Stacked, left-aligned: **Show all hours** / **Hide empty hours** · **Show all days** / **Hide empty days** · **Show** 3 5 7 **days** |
+| Toolbar left | Stacked, left-aligned: **Show all hours** / **Hide empty hours** · **Show all days** / **Hide empty days** · **Show** 3 5 7 **days** (same `.cal-toolbar` pattern as My availability) |
 | Toolbar right (explain) | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}). Currently empty hours are hidden (thicker line = omitted hours); empty days are hidden (thicker vertical line = omitted days). *(hidden clauses only when compact).* **Initials** in cells show everyone who marked that slot. |
 | Hours toggle title | Show or hide hours with no availability marked |
 | Days toggle title | Show or hide days with no availability marked |

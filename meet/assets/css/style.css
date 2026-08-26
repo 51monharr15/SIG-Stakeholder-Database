@@ -893,7 +893,7 @@ button.linkish {
 .form-save-header {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
   gap: 0.4rem;
   width: 100%;
@@ -1238,7 +1238,7 @@ button.linkish {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
-  margin: 0 0 0.45rem;
+  margin: 0;
   justify-content: flex-start;
 }
 .day-cols-toggle .day-cols-on {
@@ -1246,27 +1246,47 @@ button.linkish {
   color: #fff;
   border-color: #1e3a5f;
 }
-.confirm-cal-controls .day-cols-toggle {
-  margin: 0;
-}
-.confirm-cal-toolbar {
+
+/* Calendar toolbars (My availability + Confirm): controls left, explainer right */
+.cal-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.65rem 1.25rem;
-  margin-bottom: 0.5rem;
+  margin: 0 0 0.5rem;
+  width: 100%;
 }
-.confirm-cal-controls {
+.cal-toolbar-controls {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.35rem;
   flex: 0 0 auto;
+  max-width: 100%;
 }
-.confirm-cal-explain {
+.cal-toolbar-explain {
   flex: 1 1 14rem;
   margin: 0;
-  min-width: 12rem;
+  min-width: min(100%, 12rem);
+}
+.cal-action-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  width: 100%;
+  margin: 0 0 0.35rem;
+}
+.cal-action-band > button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+.cal-action-meta {
+  margin: 0 0 0.45rem;
 }
 
 .suggestions-scroll {
@@ -2019,10 +2039,12 @@ details summary { cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.4rem;
 }
 .calendar-save-row > button,
-.form-save-header > button {
+.form-save-header > button,
+.cal-action-band > button {
   min-height: 2.25rem;
   padding: 0.4rem 0.75rem;
   font-size: 0.95rem;

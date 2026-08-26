@@ -379,7 +379,15 @@
       const on = cur === n ? ' day-cols-on' : '';
       return `<button type="button" class="btn-cancel compact-btn${on}" data-action="set-day-cols" data-cols="${n}" title="Show ${n} day column${n === 1 ? '' : 's'}">${n}</button>`;
     };
-    return `<div class="row day-cols-toggle"><span class="meta">Show</span>${btn(3)}${btn(5)}${btn(7)}<span class="meta">days</span></div>`;
+    return `<div class="day-cols-toggle" role="group" aria-label="Show how many day columns"><span class="meta">Show</span>${btn(3)}${btn(5)}${btn(7)}<span class="meta">days</span></div>`;
+  }
+
+  /** Shared calendar toolbar: view controls left-aligned; explainer on the right. */
+  function renderCalToolbar(controlsHtml, explainHtml) {
+    return `<div class="cal-toolbar">
+      <div class="cal-toolbar-controls">${controlsHtml}</div>
+      ${explainHtml ? `<div class="cal-toolbar-explain meta">${explainHtml}</div>` : ''}
+    </div>`;
   }
 
   function visibleDayCount() {
@@ -1373,6 +1381,7 @@
       ? `<p class="meta">Clipboard: ${state.availClipboard.patterns.length} day(s) in sequence (${escapeHtml((state.availClipboard.labels || []).join(', ') || '…')}) — mark the first destination day, then Paste. Paste again from another start if you like.</p>`
       : '';
     const hoursLine = `Meeting hours ${formatWallHour(hours[0] || { hour: 8, minute: 0 })}–${formatWallHour(hours[hours.length - 1] || { hour: 20, minute: 0 })} (meeting base). Times at left show <strong>your</strong> local timezone (${escapeHtml(tz)})${currentAltTimezone(state, m) ? '; tap the second time to cycle recorded timezones (including yours)' : ''}.`;
+    const availExplain = `<strong>Save</strong> keeps new picks and removes slots you turned off. Mark date headings → <strong>Copy days</strong> → mark first destination → <strong>Paste</strong>. <strong>Invert days</strong> toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.`;
 
     return `
       <section class="panel stack calendar-panel">
@@ -1390,7 +1399,7 @@
         </div>
         ${!meetingEstablished(m) ? renderAttendeesSection(m, state, attendee) : ''}
         <div class="pane-region tint-dates calendar-grid-pane">
-        ${renderDayCountToggle(state, m)}
+        ${renderCalToolbar(renderDayCountToggle(state, m), availExplain)}
         ${clipInfo}
         ${renderSaveRow(state, m, { showTopDuplicate: true, showBottomButton: false })}
         <div class="calendar-scroll">
@@ -1461,16 +1470,15 @@
     const candNote = candidateCount ? ` · ${candidateCount} unsaved pick(s)` : '';
     const clearNote = pendingClearCount ? ` · ${pendingClearCount} to remove on Save` : '';
     const markNote = state.headerMarkedDates?.size ? ` · ${state.headerMarkedDates.size} day(s) marked` : '';
-    const explain = `<p class="meta save-band-explain"><strong>Save</strong> keeps new picks and removes slots you turned off. Mark date headings → <strong>Copy days</strong> → mark first destination → <strong>Paste</strong>. <strong>Invert days</strong> toggles blank ↔ not-yet-saved. With weekends off, Fri→Mon counts as two steps.</p>`;
+    const meta = `<span class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span>`;
     let html = '';
     if (showTopDuplicate) {
-      html += formSaveHeader(buttons);
-      html += explain;
+      // Left-aligned action band (style guide: compact controls left-align). Explain lives in cal-toolbar.
+      html += `<div class="cal-action-band">${buttons}</div>`;
+      html += `<p class="meta cal-action-meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
     }
     if (showBottomButton) {
-      html += `<div class="row save-row calendar-save-row">${buttons}<span class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</span></div>`;
-    } else if (showTopDuplicate) {
-      html += `<p class="meta">${count} slot(s) selected${candNote}${clearNote}${markNote} · ${hint}${slotMeta ? ` · ${slotMeta}` : ''}</p>`;
+      html += `<div class="cal-action-band calendar-save-row">${buttons}${meta}</div>`;
     }
     return html;
   }
@@ -1535,7 +1543,11 @@
     const hideNotes = [];
     if (!state.showAllGroupHours) hideNotes.push('empty hours are hidden (thicker line = omitted hours)');
     if (!state.showAllGroupDays) hideNotes.push('empty days are hidden (thicker vertical line = omitted days)');
-    const confirmExplain = `<p class="meta confirm-cal-explain">Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.${hideNotes.length ? ` Currently ${hideNotes.join('; ')}.` : ''} <strong>Initials</strong> in cells show everyone who marked that slot.</p>`;
+    const confirmExplain = `Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.${hideNotes.length ? ` Currently ${hideNotes.join('; ')}.` : ''} <strong>Initials</strong> in cells show everyone who marked that slot.`;
+    const confirmControls = `
+      <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
+      <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
+      ${renderDayCountToggle(state, m)}`;
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
@@ -1544,14 +1556,7 @@
           <summary title="Click a start on the Group calendar to save or clear it">Confirm a meeting date and time</summary>
           <div class="confirm-section-inner stack">
             ${renderScheduledStartStatus(isOrg, m)}
-            <div class="confirm-cal-toolbar">
-              <div class="confirm-cal-controls">
-                <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
-                <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
-                ${renderDayCountToggle(state, m)}
-              </div>
-              ${confirmExplain}
-            </div>
+            ${renderCalToolbar(confirmControls, confirmExplain)}
             <div class="calendar-scroll">
             <div class="calendar group-calendar" style="--cal-cols:${days.length || 1}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
