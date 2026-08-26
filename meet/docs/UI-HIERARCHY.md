@@ -259,10 +259,11 @@ Completed steps show a leading ✓. Audience markers sit at the **start** of eac
 | Kind | Text |
 |------|------|
 | Summary | Top start times ({shown} of {total}) — best attendance |
-| Line (full) | {time} — {n} of {total} free for full meeting ({dur}) |
-| Line (mixed) | {time} — {n} of {total} for full {dur}; {p} partial |
-| Line (partial) | {time} — {n} of {total} marked (partial overlap) |
-| Hint | Confirm one with **Confirm meeting choices**. Includes times where everyone is free for the full meeting, and times with partial overlap. |
+| Line (full) | {time or start-time range} — {n} of {total} free for full meeting ({dur}) |
+| Line (mixed) | {time or start-time range} — {n} of {total} for full {dur}; {p} partial |
+| Line (partial) | {time or start-time range} — {n} of {total} marked (partial overlap) |
+| Range | Contiguous starts with the same attendance collapse to one line: **{day, start – end}** *(start times, {tz})* |
+| Hint | Confirm one with **Confirm meeting choices**. Includes times where everyone is free for the full meeting, and times with partial overlap. Contiguous starts with the same attendance are shown as a start-time range. |
 | Empty | No overlap times yet — attendees need to mark availability on **My availability**, then check **Confirm meeting choices**. |
 | Pane id | `ov-starts` (open/closed remembered) |
 
@@ -431,7 +432,7 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 
 ### Pane: Calendar grid *tint-dates*
 
-**Days shown:** toggle **3 / 5 / 7** (persisted per meeting). **7** is disabled unless **Include weekends** is on in Calendar Options. Defaults: phone ≈ 3, wider ≈ 5, very wide with weekends ≈ 7.
+**Show 3 / 5 / 7 days** (persisted per meeting). Seven is allowed even when weekends are hidden. Defaults: phone ≈ 3, wider ≈ 5, very wide ≈ 7.
 
 **Day column headings stick to the viewport** under the sticky dashboard (`top: var(--sticky-h)`). They must not scroll off-screen. `.calendar` is a column flex (not a grid of header+body) so sticky is not trapped in a short grid row. Applies to **My availability** and **Group calendar**.
 
@@ -443,8 +444,9 @@ Table sits in a horizontally scrollable wrapper (`.locations-table-scroll`). Wel
 | Time labels | Local / test timezone on top (larger); optional alternate timezone below (smaller, underlined) — tap to cycle recorded timezones (including yours) |
 | Time label title | Local time · tap second time to cycle recorded timezones (including yours) *(when alternates exist)* |
 | Alt timezone button title | {tz} — recorded attendee timezone — click for next |
-| Days shown label | Days shown: |
-| Days shown buttons | 3 · 5 · 7 (7 title when disabled: Turn on Include weekends in Calendar Options to show 7 days) |
+| Days shown label | Show |
+| Days shown buttons | 3 · 5 · 7 |
+| Days shown trailing | days |
 
 ### Pane: Save band (dual Save)
 
@@ -566,13 +568,12 @@ There is no separate session-only “propose” step and no separate Confirm but
 | Summary | **Confirm a meeting date and time** (title: Click a start on the Group calendar to save or clear it) |
 | Status (none) | **Meeting start:** none scheduled yet — click a slot below to save one *(organiser only when not org)* |
 | Status (scheduled) | **Meeting scheduled:** {start – end pair with tz + UTC}. Click the same slot again to clear |
-| Hint | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}) |
-| Hours toggle | Hide empty hours / Show all hours (title: Show or hide hours with no availability marked) |
-| Days toggle | Hide empty days / Show all days (title: Show or hide days with no availability marked) |
-| Hidden hours | Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted. |
-| Hidden days | Empty days are hidden. Use "Show all days" to show every day in range. A thicker vertical line marks a gap where days were omitted. |
-| Initials note | **Initials** in cells show who marked that slot on My availability. |
+| Toolbar left | Stacked, left-aligned: **Show all hours** / **Hide empty hours** · **Show all days** / **Hide empty days** · **Show** 3 5 7 **days** |
+| Toolbar right (explain) | Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone ({tz}). Currently empty hours are hidden (thicker line = omitted hours); empty days are hidden (thicker vertical line = omitted days). *(hidden clauses only when compact).* **Initials** in cells show everyone who marked that slot. |
+| Hours toggle title | Show or hide hours with no availability marked |
+| Days toggle title | Show or hide days with no availability marked |
 | Time labels | Same local (+ optional cycling alt timezone) behaviour as My availability |
+| Initials | All attendee initials who marked the slot (not truncated) |
 | Legend | Light green = all attendees available for full meeting if this start is chosen · Amber = all attendees, only partial meeting if this start is chosen · Purple = some attendees unavailable if this start is chosen · Dark green border = scheduled start |
 
 ### Pane: Confirm a meeting location `group-locations`

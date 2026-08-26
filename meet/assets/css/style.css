@@ -1224,6 +1224,50 @@ button.linkish {
   line-height: 1.1;
   display: block;
 }
+.group-slot .slot-initials {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.55rem;
+  line-height: 1.15;
+  max-width: 100%;
+}
+
+.day-cols-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
+  justify-content: flex-start;
+}
+.day-cols-toggle .day-cols-on {
+  background: #1e3a5f;
+  color: #fff;
+  border-color: #1e3a5f;
+}
+.confirm-cal-controls .day-cols-toggle {
+  margin: 0;
+}
+.confirm-cal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.confirm-cal-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+.confirm-cal-explain {
+  flex: 1 1 14rem;
+  margin: 0;
+  min-width: 12rem;
+}
 
 .suggestions-scroll {
   max-height: 360px;
@@ -1987,22 +2031,6 @@ details summary { cursor: pointer; }
 }
 .save-band-explain {
   margin: 0.25rem 0 0.45rem;
-}
-.day-cols-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0 0 0.45rem;
-}
-.day-cols-toggle .day-cols-on {
-  background: #1e3a5f;
-  color: #fff;
-  border-color: #1e3a5f;
-}
-.day-cols-toggle button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 /* Day headers are <button>s for mark/copy — must not use global action-button colours
    (white text on pale day-head background made dates look “missing”). */

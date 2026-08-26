@@ -355,38 +355,31 @@
   /** When viewer TZ ≠ meeting TZ, show organiser wall time in parentheses (set false to revert). */
   const SHOW_ORGANISER_TIME_IN_GUTTER = true;
 
-  /** Preferred day columns (3 / 5 / 7). Seven only when weekends are included. */
+  /** Preferred day columns (3 / 5 / 7). Seven allowed even when weekends are hidden. */
   function dayColsKey(slug) { return `meet_day_cols_${slug}`; }
 
   function preferredDayCount(state, m) {
-    const weekends = !!(m && m.show_weekends);
     let pref = Number(state?.dayColPref);
     if (![3, 5, 7].includes(pref)) {
       const stored = Number(localStorage.getItem(dayColsKey(state.slug)));
       pref = [3, 5, 7].includes(stored) ? stored : 0;
     }
     if (![3, 5, 7].includes(pref)) {
-      if (window.innerWidth >= 1200) pref = weekends ? 7 : 5;
+      if (window.innerWidth >= 1200) pref = 7;
       else if (window.innerWidth >= 900) pref = 5;
       else if (window.innerWidth >= 640) pref = 5;
       else pref = 3;
     }
-    if (pref === 7 && !weekends) pref = 5;
     return pref;
   }
 
   function renderDayCountToggle(state, m) {
     const cur = preferredDayCount(state, m);
-    const weekends = !!m.show_weekends;
     const btn = (n) => {
-      const disabled = n === 7 && !weekends;
       const on = cur === n ? ' day-cols-on' : '';
-      const title = disabled
-        ? 'Turn on Include weekends in Calendar Options to show 7 days'
-        : `Show ${n} day column${n === 1 ? '' : 's'}`;
-      return `<button type="button" class="btn-cancel compact-btn${on}" data-action="set-day-cols" data-cols="${n}" title="${escapeHtml(title)}" ${disabled ? 'disabled' : ''}>${n}</button>`;
+      return `<button type="button" class="btn-cancel compact-btn${on}" data-action="set-day-cols" data-cols="${n}" title="Show ${n} day column${n === 1 ? '' : 's'}">${n}</button>`;
     };
-    return `<div class="row day-cols-toggle"><span class="meta">Days shown:</span>${btn(3)}${btn(5)}${btn(7)}</div>`;
+    return `<div class="row day-cols-toggle"><span class="meta">Show</span>${btn(3)}${btn(5)}${btn(7)}<span class="meta">days</span></div>`;
   }
 
   function visibleDayCount() {
@@ -1164,7 +1157,7 @@
   // ─── Overview tab ────────────────────────────────────────────────────────────
 
   function renderOverviewTab(m, state, attendee) {
-    const allSuggestions = overviewTimeSuggestions(m);
+    const allSuggestions = collapseOverviewTimeSuggestions(overviewTimeSuggestions(m), m);
     const suggestionTotal = allSuggestions.length;
     const sorted = allSuggestions.slice(0, 10);
     const locationRanked = overviewLocationRankings(m);
@@ -1204,7 +1197,7 @@
         <details class="overview-block tint-dates" data-pane-id="ov-starts"${paneOpenAttr(state, 'ov-starts')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top start times (${Math.min(10, suggestionTotal)} of ${suggestionTotal}) — best attendance</summary>
           ${sorted.length
             ? `<ul class="list-plain">${sorted.map((s) => `<li>${formatOverviewTimeSuggestion(m, s)}</li>`).join('')}</ul>
-               <p class="meta">Confirm one with <strong>Confirm meeting choices</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap.</p>`
+               <p class="meta">Confirm one with <strong>Confirm meeting choices</strong>. Includes times where everyone is free for the full meeting, and times with partial overlap. Contiguous starts with the same attendance are shown as a start-time range.</p>`
             : '<p class="meta">No overlap times yet — attendees need to mark availability on <strong>My availability</strong>, then check <strong>Confirm meeting choices</strong>.</p>'}
         </details>
         <details class="overview-block tint-places" data-pane-id="ov-locations"${paneOpenAttr(state, 'ov-locations')}><summary class="section-title" title="Tap or click the triangle to expand/collapse">Top locations (${Math.min(3, locationTotal)} of ${locationTotal}) — by popularity</summary>
@@ -1242,7 +1235,6 @@
 
   /** Merge full and partial overlap starts for Overview (partial-only was omitted before). */
   function overviewTimeSuggestions(m) {
-    const total = m.attendees.length;
     const bySlot = new Map();
     for (const s of m.suggestions?.slots || []) {
       bySlot.set(s.slot, { slot: s.slot, fullCount: s.count, partialCount: 0, kind: 'full' });
@@ -1263,10 +1255,53 @@
     });
   }
 
+  function suggestionMatchKey(s) {
+    return `${s.kind}:${s.fullCount}:${s.partialCount}`;
+  }
+
+  /** Collapse contiguous starts that share the same match degree into one range entry. */
+  function collapseOverviewTimeSuggestions(suggestions, m) {
+    const gran = Number(m.slot_granularity_minutes) || 30;
+    const stepMs = gran * 60000;
+    const byTime = [...suggestions].sort((a, b) => a.slot.localeCompare(b.slot));
+    const runs = [];
+    for (const s of byTime) {
+      const prev = runs[runs.length - 1];
+      const prevEnd = prev?.slotEnd || prev?.slot;
+      const adjacent = prev
+        && suggestionMatchKey(prev) === suggestionMatchKey(s)
+        && Math.abs(new Date(s.slot).getTime() - new Date(prevEnd).getTime()) === stepMs;
+      if (adjacent) {
+        prev.slotEnd = s.slot;
+      } else {
+        runs.push({ ...s, slotEnd: s.slot });
+      }
+    }
+    return runs.sort((a, b) => {
+      if (b.fullCount !== a.fullCount) return b.fullCount - a.fullCount;
+      if (b.partialCount !== a.partialCount) return b.partialCount - a.partialCount;
+      return a.slot.localeCompare(b.slot);
+    });
+  }
+
+  function formatOverviewStartRange(firstIso, lastIso) {
+    const dateOpts = { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz };
+    const timeOpts = { hour: 'numeric', minute: '2-digit', timeZone: tz };
+    const first = new Date(firstIso);
+    const last = new Date(lastIso);
+    const d1 = first.toLocaleDateString(undefined, dateOpts);
+    const d2 = last.toLocaleDateString(undefined, dateOpts);
+    const t1 = first.toLocaleTimeString(undefined, timeOpts);
+    const t2 = last.toLocaleTimeString(undefined, timeOpts);
+    const range = d1 === d2 ? `${d1}, ${t1} – ${t2}` : `${d1}, ${t1} – ${d2}, ${t2}`;
+    return `<strong>${escapeHtml(range)}</strong> <span class="label-hint">(start times, ${escapeHtml(tz)})</span>`;
+  }
+
   function formatOverviewTimeSuggestion(m, s) {
     const total = m.attendees.length;
     const durLabel = formatDurationLabel(m.duration_minutes);
-    const when = formatTimePair(s.slot, m);
+    const endSlot = s.slotEnd && s.slotEnd !== s.slot ? s.slotEnd : null;
+    const when = endSlot ? formatOverviewStartRange(s.slot, endSlot) : formatTimePair(s.slot, m);
     if (s.kind === 'full' || s.fullCount === total) {
       return `${when} — ${s.fullCount} of ${total} free for full meeting (${durLabel})`;
     }
@@ -1497,12 +1532,10 @@
     const canGoForward = end
       ? (!allDays.length || startOfDay(allDays[allDays.length - 1]) < end)
       : true;
-    const emptyDaysNote = !state.showAllGroupDays
-      ? '<p class="meta">Empty days are hidden. Use "Show all days" to show every day in range. A thicker vertical line marks a gap where days were omitted.</p>'
-      : '';
-    const emptyHoursNote = !state.showAllGroupHours
-      ? '<p class="meta">Empty time rows are hidden. Use "Show all hours" to display midnight-to-midnight. A thicker line marks a gap where hours were omitted.</p>'
-      : '';
+    const hideNotes = [];
+    if (!state.showAllGroupHours) hideNotes.push('empty hours are hidden (thicker line = omitted hours)');
+    if (!state.showAllGroupDays) hideNotes.push('empty days are hidden (thicker vertical line = omitted days)');
+    const confirmExplain = `<p class="meta confirm-cal-explain">Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.${hideNotes.length ? ` Currently ${hideNotes.join('; ')}.` : ''} <strong>Initials</strong> in cells show everyone who marked that slot.</p>`;
 
     return `
       <section class="panel stack" id="meeting-availability-pane">
@@ -1511,14 +1544,14 @@
           <summary title="Click a start on the Group calendar to save or clear it">Confirm a meeting date and time</summary>
           <div class="confirm-section-inner stack">
             ${renderScheduledStartStatus(isOrg, m)}
-            <p class="meta">Click a slot to set the meeting start (saves immediately). Click the same slot again to clear. Times use your timezone (${escapeHtml(tz)})${queryParam('meet_test_tz') ? ' — test override' : ''}.</p>
-            <div class="row">
-              <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
-              <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
+            <div class="confirm-cal-toolbar">
+              <div class="confirm-cal-controls">
+                <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-hours" title="Show or hide hours with no availability marked">${state.showAllGroupHours ? 'Hide empty hours' : 'Show all hours'}</button>
+                <button type="button" class="btn-cancel compact-btn" data-action="toggle-group-days" title="Show or hide days with no availability marked">${state.showAllGroupDays ? 'Hide empty days' : 'Show all days'}</button>
+                ${renderDayCountToggle(state, m)}
+              </div>
+              ${confirmExplain}
             </div>
-            ${renderDayCountToggle(state, m)}
-            ${emptyHoursNote}
-            ${emptyDaysNote}
             <div class="calendar-scroll">
             <div class="calendar group-calendar" style="--cal-cols:${days.length || 1}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
@@ -1530,7 +1563,6 @@
               </div>
             </div>
             </div>
-            <p class="meta slot-legend-note"><strong>Initials</strong> in cells show who marked that slot on My availability.</p>
             <div class="row group-legend">
               <span class="legend-chip full" title="Every attendee marked enough consecutive slots for the full meeting length">Light green = all attendees available for full meeting if this start is chosen</span>
               <span class="legend-chip partial-full" title="Everyone marked something at this start, but not all for the full meeting length">Amber = all attendees, only partial meeting if this start is chosen</span>
@@ -1729,6 +1761,10 @@
     return m.attendees.filter((a) => !ids.has(a.id));
   }
 
+  function formatGroupSlotInitials(m, ids) {
+    return (ids || []).map((id) => attendeeInitials(m, id)).filter(Boolean).join(' ');
+  }
+
   function renderGroupSlotCell(m, dateStr, hm, mtz, selected, fullMap, partialMap, gapBefore = false, hourGapBefore = false) {
     const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
     let cls = 'empty';
@@ -1741,7 +1777,8 @@
       const s = fullEntry;
       cls = 'full';
       tip += ` · all attendees free for full meeting (${s.count}/${m.attendees.length})`;
-      initials = (s.attendees || []).map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+      const idList = atSlotIds.length ? atSlotIds : (s.attendees || []);
+      initials = formatGroupSlotInitials(m, idList);
     } else if (partialEntry) {
       const p = partialEntry;
       const fullCount = (p.attendees_full || []).length;
@@ -1757,10 +1794,10 @@
         cls = 'partial';
         tip += ' · some attendees available (not full duration for everyone)';
       }
-      const idList = (p.attendees_full || []).length
-        ? p.attendees_full
-        : atSlotIds;
-      initials = idList.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+      const idList = atSlotIds.length
+        ? atSlotIds
+        : ((p.attendees_full || []).length ? p.attendees_full : []);
+      initials = formatGroupSlotInitials(m, idList);
     } else if (atSlotIds.length) {
       // Fallback when suggestion maps miss a slot: judge duration locally
       const fullIds = attendeesFullForStart(m, slotIso);
@@ -1774,7 +1811,7 @@
         cls = 'partial';
         tip += ' · some attendees available';
       }
-      initials = atSlotIds.map((id) => attendeeInitials(m, id)).filter(Boolean).slice(0, 3).join(' ');
+      initials = formatGroupSlotInitials(m, atSlotIds);
     } else {
       tip += ' · no availability marked';
     }
@@ -3644,10 +3681,6 @@
     if (action === 'set-day-cols') {
       const n = Number(btn.dataset.cols);
       if (![3, 5, 7].includes(n)) return;
-      if (n === 7 && !state.meet.show_weekends) {
-        toast('Turn on Include weekends in Calendar Options to show 7 days', true);
-        return;
-      }
       state.dayColPref = n;
       localStorage.setItem(dayColsKey(state.slug), String(n));
       state.lastDayCount = n;
