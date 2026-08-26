@@ -1,6 +1,6 @@
 # Meet Scheduler — UI hierarchy and text constants
 
-**Build:** 1.8.49  
+**Build:** 1.8.53  
 **Purpose:** Map pages → panels → panes, with **exact on-screen text** under each pane so amendments can be referenced by location and wording.
 
 **Sources (on-screen pane/panel copy):** `meet/index.php`, `meet/assets/js/app.js`  
@@ -564,6 +564,8 @@ There is no separate session-only “propose” step and no separate Confirm but
 ### Pane: Confirm a meeting date and time `group-time` *tint-dates*
 
 **Day column headings stick to the viewport** under the sticky dashboard (same as My availability). Colour key sits **inside this pane**. A thicker horizontal line marks a gap where empty hours were omitted; a thicker vertical line marks a gap where empty days were omitted.
+
+**Show N days** = up to N day columns. With **Show all days**, the first N bookable days from the view start (weekends skipped when off). With **Hide empty days**, scan forward and take up to N days that have someone’s free mark or the scheduled start — so sparse marks still fill toward N columns when possible. Forward nav stays enabled only while more signal days exist after the last column. Scheduled start with nobody marked that hour: pale mint fill + dark green border (not a dim empty cell).
 
 | Kind | Text |
 |------|------|

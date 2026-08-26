@@ -1520,7 +1520,6 @@
   function renderGroupAvailabilityTab(m, state, attendee) {
     const mtz = meetingTz(m);
     const dayCount = preferredDayCount(state, m);
-    const allDays = getVisibleDays(calendarViewStart(state, m), dayCount, m.show_weekends, m);
     const allHours = buildHours('00:00', '24:00', m.slot_granularity_minutes);
     const selected = effectiveConfirmSlot(state, m);
     const isOrg = !!attendee?.is_organizer;
@@ -1531,15 +1530,21 @@
     const canGoBack = view > min;
     const fullMap = new Map((m.suggestions?.slots || []).map((s) => [s.slot, s]));
     const partialMap = new Map((m.suggestions?.partial_slots || []).map((s) => [s.slot, s]));
-    const days = state.showAllGroupDays
-      ? allDays
-      : allDays.filter((day) => groupDayHasSignal(m, day, allHours, mtz, selected, fullMap, partialMap));
+    const days = getConfirmDays(state, m, dayCount, allHours, mtz, selected, fullMap, partialMap);
     const hours = state.showAllGroupHours
       ? allHours
       : allHours.filter((hm) => groupHourHasSignal(m, days, hm, mtz, selected, fullMap, partialMap));
-    const canGoForward = end
-      ? (!allDays.length || startOfDay(allDays[allDays.length - 1]) < end)
-      : true;
+    const canGoForward = state.showAllGroupDays
+      ? (end ? (!days.length || startOfDay(days[days.length - 1]) < end) : true)
+      : confirmHasSignalAfter(
+          m,
+          days.length ? days[days.length - 1] : addDays(startOfDay(view), -1),
+          allHours,
+          mtz,
+          selected,
+          fullMap,
+          partialMap
+        );
     const hideNotes = [];
     if (!state.showAllGroupHours) hideNotes.push('empty hours are hidden (thicker line = omitted hours)');
     if (!state.showAllGroupDays) hideNotes.push('empty days are hidden (thicker vertical line = omitted days)');
@@ -1558,7 +1563,7 @@
             ${renderScheduledStartStatus(isOrg, m)}
             ${renderCalToolbar(confirmControls, confirmExplain)}
             <div class="calendar-scroll">
-            <div class="calendar group-calendar" style="--cal-cols:${days.length || 1}">
+            <div class="calendar group-calendar" style="--cal-cols:${days.length || dayCount}">
               ${renderCalendarHeader(days, { canGoBack, canGoForward, todayStr, m, recurringSet: null, mtz })}
               <div class="cal-body">
                 ${hours.map((hm, hi) => `
@@ -1732,9 +1737,57 @@
     const dateStr = toDateIso(day);
     return hours.some((hm) => {
       const slotIso = slotIsoFromMeetingDate(dateStr, hm, mtz);
-      if (slotIso === selected) return true;
+      if (selected && slotsEqual(selected, slotIso)) return true;
       return slotHasSuggestionOrAvailability(m, slotIso, fullMap, partialMap);
     });
+  }
+
+  /**
+   * Confirm calendar days for the current view.
+   * "Show N days" means up to N columns. With empty days hidden, scan forward
+   * until N days with marks (or the scheduled start) are found — do not shrink
+   * the column count just because empties were stripped from a short window.
+   */
+  function getConfirmDays(state, m, dayCount, allHours, mtz, selected, fullMap, partialMap) {
+    const view = calendarViewStart(state, m);
+    if (state.showAllGroupDays) {
+      return getVisibleDays(view, dayCount, m.show_weekends, m);
+    }
+    const days = [];
+    let cursor = startOfDay(new Date(view));
+    const minStart = bookableStartDate(m);
+    const maxEnd = bookableEndDate(m);
+    if (minStart && cursor < minStart) cursor = new Date(minStart);
+    let guard = 0;
+    while (days.length < dayCount && guard < 400) {
+      if (maxEnd && cursor > maxEnd) break;
+      const dow = cursor.getDay();
+      if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+        if (groupDayHasSignal(m, cursor, allHours, mtz, selected, fullMap, partialMap)) {
+          days.push(new Date(cursor));
+        }
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return days;
+  }
+
+  /** True if any weekday (per weekends setting) after afterDay still has Confirm signal. */
+  function confirmHasSignalAfter(m, afterDay, allHours, mtz, selected, fullMap, partialMap) {
+    let cursor = addDays(startOfDay(afterDay), 1);
+    const maxEnd = bookableEndDate(m);
+    let guard = 0;
+    while (guard < 400) {
+      if (maxEnd && cursor > maxEnd) return false;
+      const dow = cursor.getDay();
+      if (m.show_weekends || (dow !== 0 && dow !== 6)) {
+        if (groupDayHasSignal(m, cursor, allHours, mtz, selected, fullMap, partialMap)) return true;
+      }
+      cursor = addDays(cursor, 1);
+      guard++;
+    }
+    return false;
   }
 
   function renderConfirmLocationChoices(m, state, isOrg, selectedLocations) {
