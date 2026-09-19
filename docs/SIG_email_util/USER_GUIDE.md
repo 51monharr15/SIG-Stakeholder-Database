@@ -156,3 +156,13 @@ cd stroke/SIG_email_util && /usr/local/bin/php cron/reengage_inactive.php --dry-
 ## Opt-out table
 
 `sig_mail_prefs`: set `allow_reengage = 0` for a user id to stop reengage mail for that person (welcome is separate / once-only via log).
+
+---
+
+## Appendix — Getting these docs / agent limits
+
+If a Cursor Cloud Agent was started on a **different** GitHub repo, it cannot push files into `SIG_email_util`. That is a hard limit for that chat, not a missing permission tick-box you can fix mid-conversation.
+
+To maintain this project in Cursor later: start a **new** agent and select repository **SIG_email_util**.
+
+If someone mentions “Artifacts” and you do not see that word in the Cursor app, ignore it — open the guide files from GitHub in your web browser instead (Download / Raw / Save As).
