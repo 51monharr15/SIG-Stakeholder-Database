@@ -1,4 +1,1 @@
-meet/data/meets/*
-meet/data/aliases/*
-!meet/data/meets/.gitkeep
-!meet/data/aliases/.gitkeep
+﻿# Local / runtime (none currently tracked under data here)
