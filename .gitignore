@@ -1,0 +1,4 @@
+meet/data/meets/*
+meet/data/aliases/*
+!meet/data/meets/.gitkeep
+!meet/data/aliases/.gitkeep
