@@ -1,0 +1,8 @@
+﻿---
+description: This repo is the Stroke Improvement Group stakeholder database
+alwaysApply: true
+---
+
+# SIG-Stakeholder-Database
+
+Stroke Improvement Group stakeholder database work (e.g. `lusers.php` / MySQL stakeholder data).
