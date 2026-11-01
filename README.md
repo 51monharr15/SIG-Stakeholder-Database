@@ -1,8 +1,9 @@
-# SIG-Stakeholder-Database
+﻿# SIG-Stakeholder-Database
 
-## Projects in this repo
+Stroke Improvement Group stakeholder database work only.
 
 | Path | Description |
 |------|-------------|
 | `lusers.php` | Stakeholder user list (requires MySQL via `config.php`) |
-| [`meet/`](meet/) | **Meet Scheduler** — availability polling app using plain-text files only (no database) |
+
+Meet Scheduler lives in a separate repository: https://github.com/51monharr15/MeetingScheduler
